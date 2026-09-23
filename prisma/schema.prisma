@@ -1,0 +1,146 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String        @id @default(cuid())
+  email       String        @unique
+  name        String
+  role        String        @default("CLINICIAN")
+  npi         String?
+  specialty   String?
+  active      Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  appointments Appointment[] @relation("ProviderAppointments")
+  encounters  Encounter[]   @relation("ProviderEncounters")
+}
+
+model Patient {
+  id              String        @id @default(cuid())
+  mrn             String        @unique
+  firstName       String
+  lastName        String
+  dob             DateTime
+  sex             String
+  phone           String?
+  email           String?
+  addressLine1    String?
+  city            String?
+  state           String?
+  zip             String?
+  status          String        @default("ACTIVE")
+  preferredLanguage String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  insurances      Insurance[]
+  appointments    Appointment[]
+  encounters      Encounter[]
+  allergies       Allergy[]
+  problems        Problem[]
+  medications     Medication[]
+}
+
+model Insurance {
+  id         String   @id @default(cuid())
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  payerName  String
+  memberId   String
+  groupNumber String?
+  planName   String?
+  isPrimary  Boolean  @default(true)
+}
+
+model Allergy {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  allergen  String
+  reaction  String
+  severity  String
+}
+
+model Problem {
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  icd10       String
+  description String
+  status      String    @default("ACTIVE")
+  onsetDate   DateTime?
+}
+
+model Medication {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name      String
+  sig       String
+  status    String  @default("ACTIVE")
+}
+
+model Appointment {
+  id          String     @id @default(cuid())
+  patientId   String
+  patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId  String
+  provider    User       @relation("ProviderAppointments", fields: [providerId], references: [id])
+  startsAt    DateTime
+  endsAt      DateTime
+  visitType   String
+  location    String     @default("Main Clinic")
+  status      String     @default("SCHEDULED")
+  reason      String?
+  createdAt   DateTime   @default(now())
+  encounter   Encounter?
+}
+
+model Encounter {
+  id            String        @id @default(cuid())
+  patientId     String
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId    String
+  provider      User          @relation("ProviderEncounters", fields: [providerId], references: [id])
+  appointmentId String?       @unique
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
+  date          DateTime      @default(now())
+  type          String        @default("OFFICE")
+  status        String        @default("IN_PROGRESS")
+  chiefComplaint String?
+  subjective    String?
+  objective     String?
+  assessment    String?
+  plan          String?
+  charges       Charge[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Charge {
+  id          String     @id @default(cuid())
+  encounterId String
+  encounter   Encounter  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  cptCode     String
+  description String
+  units       Int        @default(1)
+  amountCents Int
+  icd10       String?
+  claim       Claim?
+}
+
+model Claim {
+  id          String   @id @default(cuid())
+  chargeId    String   @unique
+  charge      Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  payerName   String
+  status      String   @default("DRAFT")
+  billedCents Int
+  paidCents   Int      @default(0)
+  submittedAt DateTime?
+  createdAt   DateTime @default(now())
+}
