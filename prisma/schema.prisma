@@ -3,26 +3,138 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model Practice {
+  id           String        @id @default(cuid())
+  name         String
+  slug         String        @unique
+  createdAt    DateTime      @default(now())
+  locations    Location[]
+  users        User[]
+  memberships  Membership[]
+  patients     Patient[]
+  appointments Appointment[]
+  encounters   Encounter[]
+  charges      Charge[]
+  auditLogs    AuditLog[]
+  sessions     Session[]
+  wounds       Wound[]
+  availability ProviderAvailability[]
+  reservedTimes ReservedTime[]
+}
+
+model Membership {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  role       String
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, practiceId])
+}
+
+model Location {
+  id           String        @id @default(cuid())
+  practiceId   String
+  practice     Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name         String
+  addressLine1 String?
+  city         String?
+  state        String?
+  zip          String?
+  phone        String?
+  createdAt    DateTime      @default(now())
+  appointments Appointment[]
+  availability ProviderAvailability[]
+  reservedTimes ReservedTime[]
 }
 
 model User {
   id          String        @id @default(cuid())
+  practiceId  String
+  practice    Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   email       String        @unique
   name        String
   role        String        @default("CLINICIAN")
+  passwordHash String
   npi         String?
   specialty   String?
   active      Boolean       @default(true)
   createdAt   DateTime      @default(now())
   appointments Appointment[] @relation("ProviderAppointments")
   encounters  Encounter[]   @relation("ProviderEncounters")
+  sessions    Session[]
+  prescriptions Medication[] @relation("PrescribedMedications")
+  labOrders   LabOrder[]    @relation("OrderedLabs")
+  auditLogs   AuditLog[]
+  memberships Membership[]
+  woundAssessments WoundAssessment[] @relation("WoundAssessor")
+  debridements     Debridement[]     @relation("DebridementPerformer")
+  availability     ProviderAvailability[] @relation("ProviderAvailability")
+  reservedTimes    ReservedTime[]         @relation("ProviderReservedTime")
+}
+
+model ProviderAvailability {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   User     @relation("ProviderAvailability", fields: [providerId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  createdAt  DateTime @default(now())
+}
+
+model ReservedTime {
+  id         String    @id @default(cuid())
+  practiceId String
+  practice   Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   User      @relation("ProviderReservedTime", fields: [providerId], references: [id], onDelete: Cascade)
+  locationId String?
+  location   Location? @relation(fields: [locationId], references: [id])
+  title      String
+  startsAt   DateTime
+  endsAt     DateTime
+  createdAt  DateTime  @default(now())
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  practiceId String?
+  practice   Practice? @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  entityType String
+  entityId   String?
+  detail     String?
+  createdAt  DateTime  @default(now())
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activePracticeId String?
+  activePractice   Practice? @relation(fields: [activePracticeId], references: [id], onDelete: SetNull)
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
 }
 
 model Patient {
   id              String        @id @default(cuid())
-  mrn             String        @unique
+  practiceId      String
+  practice        Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  mrn             String
   firstName       String
   lastName        String
   dob             DateTime
@@ -43,6 +155,10 @@ model Patient {
   allergies       Allergy[]
   problems        Problem[]
   medications     Medication[]
+  labOrders       LabOrder[]
+  wounds          Wound[]
+
+  @@unique([practiceId, mrn])
 }
 
 model Insurance {
@@ -76,24 +192,33 @@ model Problem {
 }
 
 model Medication {
-  id        String  @id @default(cuid())
-  patientId String
-  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  name      String
-  sig       String
-  status    String  @default("ACTIVE")
+  id             String     @id @default(cuid())
+  patientId      String
+  patient        Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId    String?
+  encounter      Encounter? @relation(fields: [encounterId], references: [id])
+  prescriberId   String?
+  prescriber     User?      @relation("PrescribedMedications", fields: [prescriberId], references: [id])
+  name           String
+  sig            String
+  status         String     @default("ACTIVE")
+  startDate      DateTime   @default(now())
+  discontinuedAt DateTime?
 }
 
 model Appointment {
   id          String     @id @default(cuid())
+  practiceId  String
+  practice    Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   patientId   String
   patient     Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
   providerId  String
   provider    User       @relation("ProviderAppointments", fields: [providerId], references: [id])
+  locationId  String
+  location    Location   @relation(fields: [locationId], references: [id])
   startsAt    DateTime
   endsAt      DateTime
   visitType   String
-  location    String     @default("Main Clinic")
   status      String     @default("SCHEDULED")
   reason      String?
   createdAt   DateTime   @default(now())
@@ -102,6 +227,8 @@ model Appointment {
 
 model Encounter {
   id            String        @id @default(cuid())
+  practiceId    String
+  practice      Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   patientId     String
   patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
   providerId    String
@@ -116,31 +243,189 @@ model Encounter {
   objective     String?
   assessment    String?
   plan          String?
+  patientStatus String?
+  mdmLevel      String?
+  hospice       Boolean       @default(false)
   charges       Charge[]
+  medications   Medication[]
+  vitals        Vitals?
+  labOrders     LabOrder[]
+  woundAssessments WoundAssessment[]
+  diagnoses     EncounterDiagnosis[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 }
 
+model EncounterDiagnosis {
+  id          String    @id @default(cuid())
+  encounterId String
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  icd10       String
+  description String
+  priority    Int
+  createdAt   DateTime  @default(now())
+}
+
+model Vitals {
+  id          String    @id @default(cuid())
+  encounterId String    @unique
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  heightCm    Float?
+  weightKg    Float?
+  tempC       Float?
+  heartRate   Int?
+  respRate    Int?
+  bpSystolic  Int?
+  bpDiastolic Int?
+  spo2        Int?
+  recordedAt  DateTime  @default(now())
+}
+
+model LabOrder {
+  id           String     @id @default(cuid())
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId  String
+  encounter    Encounter  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  orderedById  String
+  orderedBy    User       @relation("OrderedLabs", fields: [orderedById], references: [id])
+  testName     String
+  status       String     @default("ORDERED")
+  orderedAt    DateTime   @default(now())
+  result       LabResult?
+}
+
+model LabResult {
+  id             String   @id @default(cuid())
+  labOrderId     String   @unique
+  labOrder       LabOrder @relation(fields: [labOrderId], references: [id], onDelete: Cascade)
+  value          String
+  unit           String?
+  referenceRange String?
+  flag           String   @default("NORMAL")
+  resultedAt     DateTime @default(now())
+}
+
 model Charge {
   id          String     @id @default(cuid())
+  practiceId  String
+  practice    Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   encounterId String
   encounter   Encounter  @relation(fields: [encounterId], references: [id], onDelete: Cascade)
   cptCode     String
   description String
   units       Int        @default(1)
   amountCents Int
-  icd10       String?
+  modifiers   String?
+  diagnosisPointers String?
   claim       Claim?
+  debridement Debridement?
 }
 
 model Claim {
+  id            String    @id @default(cuid())
+  chargeId      String    @unique
+  charge        Charge    @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  payerName     String
+  status        String    @default("DRAFT")
+  billedCents   Int
+  paidCents     Int       @default(0)
+  adjustedCents Int       @default(0)
+  denialReason  String?
+  attempt       Int       @default(1)
+  submittedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  payments      Payment[]
+}
+
+model Payment {
   id          String   @id @default(cuid())
-  chargeId    String   @unique
-  charge      Charge   @relation(fields: [chargeId], references: [id], onDelete: Cascade)
-  payerName   String
-  status      String   @default("DRAFT")
-  billedCents Int
-  paidCents   Int      @default(0)
-  submittedAt DateTime?
-  createdAt   DateTime @default(now())
+  claimId     String
+  claim       Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  amountCents Int
+  type        String   @default("PAYMENT")
+  note        String?
+  postedAt    DateTime @default(now())
+}
+
+model Wound {
+  id          String            @id @default(cuid())
+  practiceId  String
+  practice    Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  label       String
+  location    String
+  etiology    String
+  onsetDate   DateTime?
+  status      String            @default("ACTIVE")
+  healedDate  DateTime?
+  createdAt   DateTime          @default(now())
+  assessments WoundAssessment[]
+}
+
+model WoundAssessment {
+  id           String    @id @default(cuid())
+  woundId      String
+  wound        Wound     @relation(fields: [woundId], references: [id], onDelete: Cascade)
+  encounterId  String
+  encounter    Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  assessedAt   DateTime  @default(now())
+
+  lengthCm         Float?
+  widthCm          Float?
+  depthCm          Float?
+  areaCm2          Float?
+  underminingCm    Float?
+  underminingClock String?
+  tunnelingCm      Float?
+  tunnelingClock   String?
+
+  stage String?
+
+  granulationPct Int?
+  sloughPct      Int?
+  escharPct      Int?
+  epithelialPct  Int?
+
+  exudateAmount String?
+  exudateType   String?
+
+  periwoundSkin String?
+  odor          Boolean @default(false)
+  painLevel     Int?
+
+  pushExudateAmount    String?
+  pushTissueType       String?
+  pushSurfaceAreaScore Int?
+  pushExudateScore     Int?
+  pushTissueScore      Int?
+  pushTotal            Int?
+
+  bwatItems String?
+  bwatTotal Int?
+
+  photoUrl String?
+  notes    String?
+
+  assessedById String
+  assessedBy   User   @relation("WoundAssessor", fields: [assessedById], references: [id])
+
+  debridement Debridement?
+
+  createdAt DateTime @default(now())
+}
+
+model Debridement {
+  id                String          @id @default(cuid())
+  woundAssessmentId String          @unique
+  woundAssessment   WoundAssessment @relation(fields: [woundAssessmentId], references: [id], onDelete: Cascade)
+  method            String
+  tissueRemoved     String?
+  cptCode           String?
+  chargeId          String?         @unique
+  charge            Charge?         @relation(fields: [chargeId], references: [id])
+  performedById     String
+  performedBy       User            @relation("DebridementPerformer", fields: [performedById], references: [id])
+  createdAt         DateTime        @default(now())
 }

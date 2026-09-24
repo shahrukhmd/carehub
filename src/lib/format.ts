@@ -56,7 +56,33 @@ export const claimStatusLabel: Record<string, string> = {
   SUBMITTED: "Submitted",
   ACCEPTED: "Accepted",
   DENIED: "Denied",
+  PARTIAL: "Partially paid",
   PAID: "Paid",
+};
+
+export function agingBucket(days: number) {
+  if (days <= 30) return "0-30 days";
+  if (days <= 60) return "31-60 days";
+  if (days <= 90) return "61-90 days";
+  return "90+ days";
+}
+
+export function calcBmi(heightCm: number | null, weightKg: number | null) {
+  if (!heightCm || !weightKg) return null;
+  const heightM = heightCm / 100;
+  return weightKg / (heightM * heightM);
+}
+
+export const labFlagLabel: Record<string, string> = {
+  NORMAL: "Normal",
+  ABNORMAL: "Abnormal",
+  CRITICAL: "Critical",
+};
+
+export const labStatusLabel: Record<string, string> = {
+  ORDERED: "Ordered",
+  RESULTED: "Resulted",
+  CANCELLED: "Cancelled",
 };
 
 export const roleLabel: Record<string, string> = {

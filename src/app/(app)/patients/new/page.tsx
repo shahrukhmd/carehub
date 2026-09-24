@@ -1,6 +1,8 @@
 import { createPatient } from "@/app/actions";
+import { requireUser } from "@/lib/auth";
 
-export default function NewPatientPage() {
+export default async function NewPatientPage() {
+  await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
   return (
     <>
       <div className="page-head">

@@ -1,25 +1,30 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { ageFromDob, formatDate, patientName } from "@/lib/format";
+import { ageFromDob, patientName } from "@/lib/format";
+import { requireUser } from "@/lib/auth";
 
 export default async function PatientsPage({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
   const { q } = await searchParams;
   const query = q?.trim();
 
   const patients = await prisma.patient.findMany({
-    where: query
-      ? {
-          OR: [
-            { firstName: { contains: query } },
-            { lastName: { contains: query } },
-            { mrn: { contains: query } },
-          ],
-        }
-      : undefined,
+    where: {
+      practiceId: user.practiceId,
+      ...(query
+        ? {
+            OR: [
+              { firstName: { contains: query } },
+              { lastName: { contains: query } },
+              { mrn: { contains: query } },
+            ],
+          }
+        : {}),
+    },
     include: { insurances: true },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });

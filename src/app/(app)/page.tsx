@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
+import { requireUser } from "@/lib/auth";
 import { formatMoney, formatTime, patientName } from "@/lib/format";
 
 export default async function DashboardPage() {
+  const user = await requireUser();
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
@@ -11,13 +13,13 @@ export default async function DashboardPage() {
 
   const [todayAppts, patientCount, openCharts, claims] = await Promise.all([
     prisma.appointment.findMany({
-      where: { startsAt: { gte: start, lt: end } },
+      where: { practiceId: user.practiceId, startsAt: { gte: start, lt: end } },
       include: { patient: true, provider: true },
       orderBy: { startsAt: "asc" },
     }),
-    prisma.patient.count(),
-    prisma.encounter.count({ where: { status: { not: "SIGNED" } } }),
-    prisma.claim.findMany(),
+    prisma.patient.count({ where: { practiceId: user.practiceId } }),
+    prisma.encounter.count({ where: { practiceId: user.practiceId, status: { not: "SIGNED" } } }),
+    prisma.claim.findMany({ where: { charge: { practiceId: user.practiceId } } }),
   ]);
 
   const billed = claims.reduce((s, c) => s + c.billedCents, 0);

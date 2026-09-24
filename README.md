@@ -9,43 +9,107 @@ This is a local demo, not a HIPAA-covered product. Do not put real patient data 
 | Module | What you can do |
 | --- | --- |
 | Command center | Today’s board, unsigned charts, AR snapshot |
-| Patients | Registry, search, registration, chart (problems, meds, allergies, coverage) |
-| Schedule | 7-day book, check-in, start encounter from the visit |
-| Charting | SOAP note, sign encounter, attach CPT charges |
-| Revenue cycle | Submit claim from a charge, post a payment |
-| Staff | Seeded roles: admin, front desk, clinician, biller |
+| Patients | Registry, search, registration, chart (problems, meds, allergies, coverage, vitals, labs) |
+| Schedule | Day/Week/List/Capacity views, filters (provider, location, visit type), reserved time blocks, missed-visit tracking |
+| Charting | SOAP note, vitals, eRx, lab orders/results, sign encounter, SuperBill-style coding |
+| Revenue cycle | Diagnosis pointers + modifiers on charges, submit/deny/resubmit claims, post payments and adjustments, AR aging, patient statements |
+| Staff | Create/deactivate accounts, change roles, reset passwords |
+| Audit log | Every account change and clinical/financial mutation, who and when |
+| Wound care | Per-patient wound tracking, BWAT + PUSH standardized scoring, photos, healing-trend graph, debridement → auto-charge |
 
 The same patient record is shared across front office, clinical, and billing.
+
+## Wound care
+
+Modeled on Net Health WoundExpert's clinical documentation loop. From an encounter, add a wound (label, body location, etiology) and record assessments over time:
+
+- **Measurements**: length/width/depth, undermining, tunneling, staging (pressure injury stages, unstageable, DTI)
+- **Wound bed**: granulation/slough/eschar/epithelial tissue percentages, exudate amount/type, periwound skin, pain, odor
+- **PUSH Tool 3.0**: surface area subscore computed automatically from length × width per the NPUAP scale, plus exudate and tissue subscores — summed to a real PUSH total
+- **BWAT (Bates-Jensen)**: all 13 standard items (size, depth, edges, undermining, necrotic tissue, exudate, periwound skin, edema, induration, granulation, epithelialization), each 1–5, summed to a real BWAT total
+- **Photo** per assessment, and a **healing-trend graph** plotting wound area over time
+- **Debridement**: document method and tissue removed; entering a CPT code and fee auto-creates the billing charge on the same encounter
+
+See a wound's full history and trend from the encounter's Wounds panel or the patient chart.
+
+## SuperBill-style coding
+
+Modeled on Net Health WoundExpert's SuperBill screen. Each encounter has:
+
+- **Diagnosis coding**: a visit-level, prioritized ICD-10 list (reorderable A/B/C/D…), separate from the patient's chronic Problem List
+- **Billing details**: patient status (new/established), medical decision making level, hospice flag
+- **Charges**: each line supports up to 4 modifiers and up to 4 **diagnosis pointers** referencing letters from the visit's diagnosis list — the real CMS-1500 claim format, instead of a single free-text ICD-10 per charge
+
+## Scheduler
+
+Modeled on Net Health WoundExpert's scheduler. From **Schedule**:
+
+- **Day / Week / List / Capacity** views, navigable by date, with filters for provider, location, visit type, and a "show missed" toggle (missed visits are hidden by default)
+- **Reserved time**: block non-patient time (lunch, admin time, out of office) on a provider's calendar — shown inline with appointments, sorted by time
+- **Capacity view**: a provider × day grid showing which days a provider works (from their weekly **availability**) and how many visits are booked each day
+- **Provider availability** (`/schedule/availability`, admin-only): define each provider's weekly working hours per location — this is what drives the Capacity view
+
+## Multi-practice
+
+CareHub is multi-tenant: each **Practice** has its own locations, staff, patients and financials, fully isolated from every other practice on the same deployment. Anyone can spin up a new practice from `/signup` — it creates the practice, a first location, and an admin account in one step.
+
+Every staff account has a home practice, but a practice admin can also **grant an existing user access to their practice** from **Staff & roles** (for a biller or consultant who works across multiple locations). Anyone with more than one practice membership sees a practice switcher in the top bar and can move between practices instantly — the whole app (dashboard, schedule, patients, billing, staff, audit log) re-scopes to whichever practice is active, and their role can differ per practice.
 
 ## Stack
 
 - Next.js (App Router) + TypeScript
-- Prisma + SQLite (swap `provider` to `postgresql` when you are ready for a real clinic database)
+- Prisma + PostgreSQL
 - Tailwind CSS v4
 
 ## Run locally
 
-You need [Node.js LTS](https://nodejs.org/) 20+. This machine did not have Node installed when the project was created.
+You need [Node.js LTS](https://nodejs.org/) 20+ and a PostgreSQL server (local install, Docker, or a hosted instance).
 
 ```bash
 cd carehub
 npm install
-npx prisma migrate dev --name init
+cp .env.example .env   # edit DATABASE_URL to point at your Postgres instance
+npx prisma migrate deploy
 npm run db:seed
 npm run dev
 ```
 
 Open http://localhost:3000
 
-Seeded clinicians: `maya.chen@carehub.local`, `james.okonkwo@carehub.local` (no login yet).
+Login is required. Seeded accounts (password `carehub123` for all):
+
+| Practice | Email | Role |
+| --- | --- | --- |
+| Riverside Family Practice | `admin@carehub.local` | Administrator |
+| Riverside Family Practice | `maya.chen@carehub.local` | Clinician |
+| Riverside Family Practice | `james.okonkwo@carehub.local` | Clinician |
+| Riverside Family Practice | `priya.shah@carehub.local` | Front desk |
+| Riverside Family Practice | `alex.rivera@carehub.local` | Billing |
+| Lakeside Pediatrics | `admin@lakeside.local` | Administrator |
+| Lakeside Pediatrics | `dana.whitfield@carehub.local` | Clinician |
+
+The two seeded practices share nothing — sign in as each admin to see the isolation. Visit `/signup` to create a new practice of your own.
+
+`alex.rivera@carehub.local` is a Biller at **both** Riverside and Lakeside — sign in as them to see the practice switcher in the top bar.
+
+Admins can create/deactivate staff accounts and reset passwords from **Staff & roles**; every account change and clinical/financial mutation is recorded in **Audit log**, scoped to their own practice.
+
+### Local Postgres via Docker
+
+If you don't have Postgres installed:
+
+```bash
+docker run --name carehub-db -e POSTGRES_USER=carehub -e POSTGRES_PASSWORD=carehub -e POSTGRES_DB=carehub -p 5432:5432 -d postgres:16
+```
+
+Then use the default `DATABASE_URL` from `.env.example`.
 
 ## Suggested next slices
 
-1. Real authentication and role-based screens
-2. Postgres + encrypted backups + audit log
-3. eRx, lab orders, and document imaging
-4. Eligibility / clearinghouse claim files (837)
-5. HIPAA program: BAA, access control, PHI handling, hosting
+1. eRx e-prescribing to a real pharmacy network, lab interfaces (HL7/FHIR), document imaging
+2. Eligibility / clearinghouse claim files (837)
+3. Encrypted backups, connection pooling (pgbouncer), infra-as-code for hosting
+4. HIPAA program: BAA, access control review, PHI handling policy, penetration test
 
 ## License
 

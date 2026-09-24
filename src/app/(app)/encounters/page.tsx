@@ -2,9 +2,12 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatDate, patientName } from "@/lib/format";
+import { requireUser } from "@/lib/auth";
 
 export default async function EncountersPage() {
+  const user = await requireUser(["ADMIN", "CLINICIAN"]);
   const encounters = await prisma.encounter.findMany({
+    where: { practiceId: user.practiceId },
     include: { patient: true, provider: true },
     orderBy: { date: "desc" },
   });

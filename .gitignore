@@ -41,3 +41,7 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 *.tsbuildinfo
+
+# local dev tooling (machine-specific)
+/.claude/
+/dev-with-node.cmd
