@@ -58,6 +58,14 @@ export const claimStatusLabel: Record<string, string> = {
   DENIED: "Denied",
   PARTIAL: "Partially paid",
   PAID: "Paid",
+  EDI_REJECTED: "EDI rejected",
+};
+
+export const eligibilityStatusLabel: Record<string, string> = {
+  ACTIVE: "Active",
+  INACTIVE: "Inactive",
+  UNKNOWN: "Unknown",
+  ERROR: "Check failed",
 };
 
 export function agingBucket(days: number) {

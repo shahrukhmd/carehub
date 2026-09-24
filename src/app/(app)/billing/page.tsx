@@ -22,6 +22,7 @@ export default async function BillingPage() {
   const paid = charges.reduce((s, c) => s + (c.claim?.paidCents ?? 0), 0);
   const adjusted = charges.reduce((s, c) => s + (c.claim?.adjustedCents ?? 0), 0);
   const denied = charges.filter((c) => c.claim?.status === "DENIED").length;
+  const ediRejected = charges.filter((c) => c.claim?.status === "EDI_REJECTED").length;
 
   const now = Date.now();
   const aging = new Map<string, number>();
@@ -87,12 +88,21 @@ export default async function BillingPage() {
           </table>
         </section>
         <section className="panel">
-          <h2>Denials</h2>
-          <p className="stat">
-            <span>Claims denied</span>
-            <strong>{denied}</strong>
+          <h2>Denials &amp; EDI rejections</h2>
+          <div className="grid-stats" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: 0 }}>
+            <div className="stat">
+              <span>Payer denials</span>
+              <strong>{denied}</strong>
+            </div>
+            <div className="stat">
+              <span>EDI rejections</span>
+              <strong>{ediRejected}</strong>
+            </div>
+          </div>
+          <p className="muted">
+            EDI rejections happen at the clearinghouse before a payer ever sees the claim (bad NPI, invalid
+            diagnosis pointer, etc.) — fix and resubmit. Denials happen after a payer adjudicates the claim.
           </p>
-          <p className="muted">Resubmit a denied claim from the table once the issue is corrected.</p>
         </section>
       </div>
 
@@ -132,6 +142,12 @@ export default async function BillingPage() {
                         {claim.attempt > 1 && <div className="muted">Attempt {claim.attempt}</div>}
                         {claim.status === "DENIED" && claim.denialReason && (
                           <div className="muted">Reason: {claim.denialReason}</div>
+                        )}
+                        {claim.status === "EDI_REJECTED" && claim.rejectionReason && (
+                          <div className="muted">Clearinghouse: {claim.rejectionReason}</div>
+                        )}
+                        {claim.clearinghouseClaimId && (
+                          <div className="muted">CH ID: {claim.clearinghouseClaimId}</div>
                         )}
                       </>
                     ) : (
@@ -184,6 +200,14 @@ export default async function BillingPage() {
                         <form action={resubmitClaim.bind(null, claim.id)}>
                           <button className="btn" type="submit">
                             Resubmit claim
+                          </button>
+                        </form>
+                      )}
+
+                      {claim && claim.status === "EDI_REJECTED" && (
+                        <form action={submitClaim.bind(null, c.id)}>
+                          <button className="btn" type="submit">
+                            Resubmit to clearinghouse
                           </button>
                         </form>
                       )}

@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { runEligibilityCheck } from "@/lib/clearinghouse/service";
+import { getClearinghouseAdapter } from "@/lib/clearinghouse";
+import { parsePointerIds } from "@/lib/superbill";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -23,6 +26,18 @@ export async function createPatient(formData: FormData) {
   const dob = required(formData, "dob");
   const sex = required(formData, "sex");
 
+  const payerId = String(formData.get("payerId") ?? "") || null;
+  const referringPhysicianId = String(formData.get("referringPhysicianId") ?? "") || null;
+
+  if (payerId) {
+    await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: user.practiceId } });
+  }
+  if (referringPhysicianId) {
+    await prisma.referringPhysician.findFirstOrThrow({
+      where: { id: referringPhysicianId, practiceId: user.practiceId },
+    });
+  }
+
   const patient = await prisma.patient.create({
     data: {
       practiceId: user.practiceId,
@@ -37,10 +52,11 @@ export async function createPatient(formData: FormData) {
       city: String(formData.get("city") ?? "") || null,
       state: String(formData.get("state") ?? "") || null,
       zip: String(formData.get("zip") ?? "") || null,
-      insurances: formData.get("payerName")
+      referringPhysicianId,
+      insurances: payerId
         ? {
             create: {
-              payerName: String(formData.get("payerName")),
+              payerId,
               memberId: String(formData.get("memberId") ?? "PENDING"),
               planName: String(formData.get("planName") ?? "") || null,
               isPrimary: true,
@@ -70,7 +86,7 @@ export async function createAppointment(formData: FormData) {
   ]);
   if (!patient || !provider || !location) throw new Error("Not found");
 
-  await prisma.appointment.create({
+  const appointment = await prisma.appointment.create({
     data: {
       practiceId: user.practiceId,
       patientId,
@@ -82,6 +98,12 @@ export async function createAppointment(formData: FormData) {
       reason: String(formData.get("reason") ?? "") || null,
       status: "SCHEDULED",
     },
+  });
+
+  await runEligibilityCheck({
+    practiceId: user.practiceId,
+    patientId,
+    appointmentId: appointment.id,
   });
 
   revalidatePath("/schedule");
@@ -269,28 +291,82 @@ export async function submitClaim(chargeId: string) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const charge = await prisma.charge.findFirstOrThrow({
     where: { id: chargeId, practiceId: user.practiceId },
-    include: { encounter: { include: { patient: { include: { insurances: true } } } }, claim: true },
+    include: {
+      encounter: {
+        include: {
+          patient: { include: { insurances: { include: { payer: true } } } },
+          diagnoses: true,
+        },
+      },
+      claim: true,
+    },
   });
 
-  const payer = charge.encounter.patient.insurances.find((i) => i.isPrimary)?.payerName ?? "Self-pay";
+  const insurance = charge.encounter.patient.insurances.find((i) => i.isPrimary);
+  const payerName = insurance?.payer.name ?? "Self-pay";
 
-  if (charge.claim) {
+  const claim = charge.claim
+    ? await prisma.claim.update({
+        where: { id: charge.claim.id },
+        data: { billedCents: charge.amountCents, payerName },
+      })
+    : await prisma.claim.create({
+        data: { chargeId: charge.id, payerName, billedCents: charge.amountCents, status: "DRAFT" },
+      });
+
+  if (!insurance) {
+    // Self-pay: nothing to route through a clearinghouse.
     await prisma.claim.update({
-      where: { id: charge.claim.id },
-      data: { status: "SUBMITTED", submittedAt: new Date(), billedCents: charge.amountCents, payerName: payer },
+      where: { id: claim.id },
+      data: { status: "SUBMITTED", submittedAt: new Date(), clearinghouseStatus: null, rejectionReason: null },
     });
-    await logAudit(user.practiceId, user.id, "SUBMIT_CLAIM", "Claim", charge.claim.id);
-  } else {
-    const claim = await prisma.claim.create({
+    await logAudit(user.practiceId, user.id, "SUBMIT_CLAIM", "Claim", claim.id, "Self-pay");
+    revalidatePath("/billing");
+    return;
+  }
+
+  const pointerIds = parsePointerIds(charge.diagnosisPointers);
+  const diagnosisCodes = charge.encounter.diagnoses
+    .filter((d) => pointerIds.includes(d.id))
+    .map((d) => d.icd10);
+
+  const result = await getClearinghouseAdapter().submitClaim({
+    claimId: claim.id,
+    payerId: insurance.payerId,
+    payerCode: insurance.payer.payerCode,
+    billedCents: charge.amountCents,
+    cptCode: charge.cptCode,
+    diagnosisCodes,
+  });
+
+  if (result.status === "ACCEPTED") {
+    await prisma.claim.update({
+      where: { id: claim.id },
       data: {
-        chargeId: charge.id,
-        payerName: payer,
         status: "SUBMITTED",
-        billedCents: charge.amountCents,
         submittedAt: new Date(),
+        clearinghouseStatus: "ACCEPTED",
+        clearinghouseClaimId: result.clearinghouseClaimId ?? null,
+        rejectionReason: null,
       },
     });
-    await logAudit(user.practiceId, user.id, "SUBMIT_CLAIM", "Claim", claim.id);
+    await logAudit(user.practiceId, user.id, "SUBMIT_CLAIM", "Claim", claim.id, result.clearinghouseClaimId);
+  } else if (result.status === "REJECTED") {
+    await prisma.claim.update({
+      where: { id: claim.id },
+      data: {
+        status: "EDI_REJECTED",
+        clearinghouseStatus: "REJECTED",
+        rejectionReason: result.rejectionReason ?? "Rejected by clearinghouse",
+      },
+    });
+    await logAudit(user.practiceId, user.id, "EDI_REJECTED", "Claim", claim.id, result.rejectionReason);
+  } else {
+    await prisma.claim.update({
+      where: { id: claim.id },
+      data: { clearinghouseStatus: "ERROR", rejectionReason: result.rejectionReason ?? "Clearinghouse error" },
+    });
+    await logAudit(user.practiceId, user.id, "CLEARINGHOUSE_ERROR", "Claim", claim.id, result.rejectionReason);
   }
 
   revalidatePath("/billing");

@@ -24,6 +24,9 @@ model Practice {
   wounds       Wound[]
   availability ProviderAvailability[]
   reservedTimes ReservedTime[]
+  payers       Payer[]
+  referringPhysicians ReferringPhysician[]
+  eligibilityChecks EligibilityCheck[]
 }
 
 model Membership {
@@ -147,6 +150,8 @@ model Patient {
   zip             String?
   status          String        @default("ACTIVE")
   preferredLanguage String?
+  referringPhysicianId String?
+  referringPhysician   ReferringPhysician? @relation(fields: [referringPhysicianId], references: [id])
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   insurances      Insurance[]
@@ -157,6 +162,7 @@ model Patient {
   medications     Medication[]
   labOrders       LabOrder[]
   wounds          Wound[]
+  eligibilityChecks EligibilityCheck[]
 
   @@unique([practiceId, mrn])
 }
@@ -165,11 +171,47 @@ model Insurance {
   id         String   @id @default(cuid())
   patientId  String
   patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  payerName  String
+  payerId    String
+  payer      Payer    @relation(fields: [payerId], references: [id])
   memberId   String
   groupNumber String?
   planName   String?
   isPrimary  Boolean  @default(true)
+}
+
+model Payer {
+  id           String      @id @default(cuid())
+  practiceId   String
+  practice     Practice    @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name         String
+  payerCode    String?
+  phone        String?
+  addressLine1 String?
+  city         String?
+  state        String?
+  zip          String?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  insurances   Insurance[]
+  eligibilityChecks EligibilityCheck[]
+}
+
+model ReferringPhysician {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name         String
+  npi          String?
+  specialty    String?
+  phone        String?
+  fax          String?
+  addressLine1 String?
+  city         String?
+  state        String?
+  zip          String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  patients     Patient[]
 }
 
 model Allergy {
@@ -223,6 +265,7 @@ model Appointment {
   reason      String?
   createdAt   DateTime   @default(now())
   encounter   Encounter?
+  eligibilityChecks EligibilityCheck[]
 }
 
 model Encounter {
@@ -336,6 +379,10 @@ model Claim {
   submittedAt   DateTime?
   createdAt     DateTime  @default(now())
   payments      Payment[]
+
+  clearinghouseStatus   String?
+  clearinghouseClaimId  String?
+  rejectionReason       String?
 }
 
 model Payment {
@@ -428,4 +475,24 @@ model Debridement {
   performedById     String
   performedBy       User            @relation("DebridementPerformer", fields: [performedById], references: [id])
   createdAt         DateTime        @default(now())
+}
+
+model EligibilityCheck {
+  id            String       @id @default(cuid())
+  practiceId    String
+  practice      Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  payerId       String
+  payer         Payer        @relation(fields: [payerId], references: [id])
+  status        String
+  planName      String?
+  copayCents    Int?
+  coinsurancePercent Int?
+  deductibleRemainingCents Int?
+  outOfPocketRemainingCents Int?
+  payerMessage  String?
+  checkedAt     DateTime     @default(now())
 }

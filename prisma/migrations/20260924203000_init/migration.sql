@@ -123,6 +123,7 @@ CREATE TABLE "Patient" (
     "zip" TEXT,
     "status" TEXT NOT NULL DEFAULT 'ACTIVE',
     "preferredLanguage" TEXT,
+    "referringPhysicianId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -133,13 +134,49 @@ CREATE TABLE "Patient" (
 CREATE TABLE "Insurance" (
     "id" TEXT NOT NULL,
     "patientId" TEXT NOT NULL,
-    "payerName" TEXT NOT NULL,
+    "payerId" TEXT NOT NULL,
     "memberId" TEXT NOT NULL,
     "groupNumber" TEXT,
     "planName" TEXT,
     "isPrimary" BOOLEAN NOT NULL DEFAULT true,
 
     CONSTRAINT "Insurance_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "Payer" (
+    "id" TEXT NOT NULL,
+    "practiceId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "payerCode" TEXT,
+    "phone" TEXT,
+    "addressLine1" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "zip" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Payer_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ReferringPhysician" (
+    "id" TEXT NOT NULL,
+    "practiceId" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "npi" TEXT,
+    "specialty" TEXT,
+    "phone" TEXT,
+    "fax" TEXT,
+    "addressLine1" TEXT,
+    "city" TEXT,
+    "state" TEXT,
+    "zip" TEXT,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ReferringPhysician_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -304,6 +341,9 @@ CREATE TABLE "Claim" (
     "attempt" INTEGER NOT NULL DEFAULT 1,
     "submittedAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "clearinghouseStatus" TEXT,
+    "clearinghouseClaimId" TEXT,
+    "rejectionReason" TEXT,
 
     CONSTRAINT "Claim_pkey" PRIMARY KEY ("id")
 );
@@ -390,6 +430,25 @@ CREATE TABLE "Debridement" (
     CONSTRAINT "Debridement_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "EligibilityCheck" (
+    "id" TEXT NOT NULL,
+    "practiceId" TEXT NOT NULL,
+    "patientId" TEXT NOT NULL,
+    "appointmentId" TEXT,
+    "payerId" TEXT NOT NULL,
+    "status" TEXT NOT NULL,
+    "planName" TEXT,
+    "copayCents" INTEGER,
+    "coinsurancePercent" INTEGER,
+    "deductibleRemainingCents" INTEGER,
+    "outOfPocketRemainingCents" INTEGER,
+    "payerMessage" TEXT,
+    "checkedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "EligibilityCheck_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE UNIQUE INDEX "Practice_slug_key" ON "Practice"("slug");
 
@@ -466,7 +525,19 @@ ALTER TABLE "Session" ADD CONSTRAINT "Session_activePracticeId_fkey" FOREIGN KEY
 ALTER TABLE "Patient" ADD CONSTRAINT "Patient_practiceId_fkey" FOREIGN KEY ("practiceId") REFERENCES "Practice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Patient" ADD CONSTRAINT "Patient_referringPhysicianId_fkey" FOREIGN KEY ("referringPhysicianId") REFERENCES "ReferringPhysician"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Insurance" ADD CONSTRAINT "Insurance_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Insurance" ADD CONSTRAINT "Insurance_payerId_fkey" FOREIGN KEY ("payerId") REFERENCES "Payer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Payer" ADD CONSTRAINT "Payer_practiceId_fkey" FOREIGN KEY ("practiceId") REFERENCES "Practice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ReferringPhysician" ADD CONSTRAINT "ReferringPhysician_practiceId_fkey" FOREIGN KEY ("practiceId") REFERENCES "Practice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Allergy" ADD CONSTRAINT "Allergy_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -560,4 +631,16 @@ ALTER TABLE "Debridement" ADD CONSTRAINT "Debridement_chargeId_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "Debridement" ADD CONSTRAINT "Debridement_performedById_fkey" FOREIGN KEY ("performedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EligibilityCheck" ADD CONSTRAINT "EligibilityCheck_practiceId_fkey" FOREIGN KEY ("practiceId") REFERENCES "Practice"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EligibilityCheck" ADD CONSTRAINT "EligibilityCheck_patientId_fkey" FOREIGN KEY ("patientId") REFERENCES "Patient"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EligibilityCheck" ADD CONSTRAINT "EligibilityCheck_appointmentId_fkey" FOREIGN KEY ("appointmentId") REFERENCES "Appointment"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "EligibilityCheck" ADD CONSTRAINT "EligibilityCheck_payerId_fkey" FOREIGN KEY ("payerId") REFERENCES "Payer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 

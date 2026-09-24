@@ -12,7 +12,7 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
   const patient = await prisma.patient.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
-      insurances: true,
+      insurances: { include: { payer: true } },
       allergies: true,
       problems: true,
       medications: { orderBy: { startDate: "desc" } },
@@ -31,6 +31,7 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
         include: { assessments: { orderBy: { assessedAt: "desc" }, take: 1 } },
         orderBy: { createdAt: "desc" },
       },
+      referringPhysician: true,
     },
   });
 
@@ -47,7 +48,7 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
               {ageFromDob(patient.dob)}y {patient.sex} · DOB {formatDate(patient.dob)}
             </span>
             <span>{patient.phone ?? "No phone"}</span>
-            <span>{patient.insurances.find((i) => i.isPrimary)?.payerName ?? "Self-pay"}</span>
+            <span>{patient.insurances.find((i) => i.isPrimary)?.payer.name ?? "Self-pay"}</span>
           </p>
         </div>
         <Link className="btn" href="/schedule">
@@ -179,13 +180,21 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
             </p>
             {patient.insurances.map((i) => (
               <p key={i.id}>
-                {i.payerName}
+                {i.payer.name}
                 <br />
                 <span className="muted">
                   {i.planName} · {i.memberId}
                 </span>
               </p>
             ))}
+            {patient.referringPhysician && (
+              <p>
+                <span className="muted">Referred by</span>
+                <br />
+                {patient.referringPhysician.name}
+                {patient.referringPhysician.specialty ? ` · ${patient.referringPhysician.specialty}` : ""}
+              </p>
+            )}
           </section>
           <section className="panel">
             <h2>Visits</h2>

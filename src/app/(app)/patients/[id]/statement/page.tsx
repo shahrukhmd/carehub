@@ -11,7 +11,7 @@ export default async function PatientStatementPage({ params }: { params: Promise
   const patient = await prisma.patient.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
-      insurances: true,
+      insurances: { include: { payer: true } },
       encounters: {
         include: { charges: { include: { claim: true } } },
         orderBy: { date: "desc" },
@@ -46,7 +46,7 @@ export default async function PatientStatementPage({ params }: { params: Promise
           </h1>
           <p className="chart-meta">
             <span>{patient.mrn}</span>
-            <span>{patient.insurances.find((i) => i.isPrimary)?.payerName ?? "Self-pay"}</span>
+            <span>{patient.insurances.find((i) => i.isPrimary)?.payer.name ?? "Self-pay"}</span>
           </p>
         </div>
       </div>

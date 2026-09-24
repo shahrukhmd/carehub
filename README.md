@@ -16,8 +16,25 @@ This is a local demo, not a HIPAA-covered product. Do not put real patient data 
 | Staff | Create/deactivate accounts, change roles, reset passwords |
 | Audit log | Every account change and clinical/financial mutation, who and when |
 | Wound care | Per-patient wound tracking, BWAT + PUSH standardized scoring, photos, healing-trend graph, debridement → auto-charge |
+| Directories | Shared Payer and Referring Physician lists, instead of typing payer names fresh on every patient |
+| Clearinghouse | Simulated real-time eligibility (270/271) and claim submission (837) via a swappable adapter interface |
 
 The same patient record is shared across front office, clinical, and billing.
+
+## Clearinghouse integration (simulated)
+
+Modeled on Office Ally's clearinghouse features (Automated Eligibility, Claims Awaiting Batch, Repairable Claims). Since this app can't hold real clearinghouse credentials, `src/lib/clearinghouse/` defines a clean adapter interface — `checkEligibility` and `submitClaim` — with a **mock adapter** that returns realistic, deterministic responses. Swapping in a real integration (Office Ally, Availity, Change Healthcare, ...) is a one-file change in `src/lib/clearinghouse/index.ts`; nothing else in the app talks to the clearinghouse directly.
+
+- **Eligibility**: automatically checked (simulated 270/271) when an appointment is booked, and re-checkable any time from the Schedule page. Shows coverage status, plan name, copay, and payer message right on the appointment row.
+- **Claims**: submitting a claim now goes through the adapter first. An **ACCEPTED** response proceeds as a normal submitted claim; a **REJECTED** response (bad NPI, invalid diagnosis pointer, missing prior auth, etc.) sets the claim to **EDI rejected** — a distinct, earlier failure point than a payer denial — with a "Resubmit to clearinghouse" action once fixed. The billing dashboard tracks EDI rejections separately from payer denials.
+
+## Directories
+
+Modeled on Net Health WoundExpert's Facility Admin contact lists. **Payers** and **Referring Physicians** are practice-wide directories (`/directories`, editable by admins/front desk/billing/clinicians as appropriate) instead of free-text fields:
+
+- Patient insurance references a **Payer** by dropdown — keeps payer names consistent across patients instead of "Horizon Blue Cross" vs "Horizon BCBS" typos
+- Patients can be linked to a **Referring Physician** (external, not on staff) for referral tracking
+- Both directories can deactivate entries without deleting history
 
 ## Wound care
 

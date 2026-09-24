@@ -25,7 +25,7 @@ export default async function PatientsPage({
           }
         : {}),
     },
-    include: { insurances: true },
+    include: { insurances: { include: { payer: true } } },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   });
 
@@ -69,7 +69,7 @@ export default async function PatientsPage({
                 <td>
                   {ageFromDob(p.dob)} / {p.sex}
                 </td>
-                <td>{p.insurances.find((i) => i.isPrimary)?.payerName ?? "Self-pay"}</td>
+                <td>{p.insurances.find((i) => i.isPrimary)?.payer.name ?? "Self-pay"}</td>
                 <td>{p.status}</td>
               </tr>
             ))}

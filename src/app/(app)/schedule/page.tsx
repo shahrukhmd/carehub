@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { createAppointment, startEncounter, updateAppointmentStatus } from "@/app/actions";
-import { createReservedTime, deleteReservedTime } from "@/app/(app)/schedule/actions";
+import { checkEligibility, createReservedTime, deleteReservedTime } from "@/app/(app)/schedule/actions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatTime, patientName, visitTypeLabel } from "@/lib/format";
@@ -72,7 +72,13 @@ export default async function SchedulePage({
   const [appointments, reservedTimes] = await Promise.all([
     prisma.appointment.findMany({
       where: apptWhere,
-      include: { patient: true, provider: true, location: true, encounter: true },
+      include: {
+        patient: true,
+        provider: true,
+        location: true,
+        encounter: true,
+        eligibilityChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
+      },
       orderBy: { startsAt: "asc" },
     }),
     prisma.reservedTime.findMany({
@@ -261,6 +267,7 @@ export default async function SchedulePage({
                   <th>Patient / Detail</th>
                   <th>Type</th>
                   <th>Status</th>
+                  <th>Eligibility</th>
                   <th></th>
                 </tr>
               </thead>
@@ -281,6 +288,31 @@ export default async function SchedulePage({
                       <td>{visitTypeLabel[row.appt.visitType] ?? row.appt.visitType}</td>
                       <td>
                         <StatusBadge value={row.appt.status} />
+                      </td>
+                      <td>
+                        {row.appt.eligibilityChecks[0] ? (
+                          <>
+                            <StatusBadge value={row.appt.eligibilityChecks[0].status} />
+                            {row.appt.eligibilityChecks[0].planName && (
+                              <div className="muted">{row.appt.eligibilityChecks[0].planName}</div>
+                            )}
+                            {row.appt.eligibilityChecks[0].copayCents !== null && (
+                              <div className="muted">
+                                Copay ${(row.appt.eligibilityChecks[0].copayCents / 100).toFixed(2)}
+                              </div>
+                            )}
+                            {row.appt.eligibilityChecks[0].payerMessage && (
+                              <div className="muted">{row.appt.eligibilityChecks[0].payerMessage}</div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="muted">Not checked</span>
+                        )}
+                        <form action={checkEligibility.bind(null, row.appt.id)}>
+                          <button className="btn ghost" type="submit">
+                            {row.appt.eligibilityChecks[0] ? "Recheck" : "Check eligibility"}
+                          </button>
+                        </form>
                       </td>
                       <td>
                         <div className="stack">
@@ -323,6 +355,7 @@ export default async function SchedulePage({
                       </td>
                       <td>—</td>
                       <td>—</td>
+                      <td>—</td>
                       <td>
                         <form action={deleteReservedTime.bind(null, row.reserved.id)}>
                           <button className="btn ghost" type="submit">
@@ -335,7 +368,7 @@ export default async function SchedulePage({
                 )}
                 {rows.length === 0 && (
                   <tr>
-                    <td colSpan={5}>Nothing scheduled.</td>
+                    <td colSpan={6}>Nothing scheduled.</td>
                   </tr>
                 )}
               </tbody>

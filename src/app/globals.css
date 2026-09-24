@@ -348,9 +348,17 @@ input[type="submit"] {
 .badge-cancelled,
 .badge-denied,
 .badge-no-show,
-.badge-severe {
+.badge-severe,
+.badge-inactive,
+.badge-error,
+.badge-edi-rejected {
   background: #f3dcdc;
   color: var(--danger);
+}
+
+.badge-unknown {
+  background: #efe3c4;
+  color: #6b5314;
 }
 
 .badge-partial {

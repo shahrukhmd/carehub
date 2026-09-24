@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { runEligibilityCheck } from "@/lib/clearinghouse/service";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -32,6 +33,21 @@ export async function createReservedTime(formData: FormData) {
 export async function deleteReservedTime(id: string) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
   await prisma.reservedTime.deleteMany({ where: { id, practiceId: user.practiceId } });
+  revalidatePath("/schedule");
+}
+
+export async function checkEligibility(appointmentId: string) {
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER"]);
+  const appt = await prisma.appointment.findFirstOrThrow({
+    where: { id: appointmentId, practiceId: user.practiceId },
+  });
+
+  await runEligibilityCheck({
+    practiceId: user.practiceId,
+    patientId: appt.patientId,
+    appointmentId: appt.id,
+  });
+
   revalidatePath("/schedule");
 }
 

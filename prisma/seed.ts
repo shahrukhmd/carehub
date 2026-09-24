@@ -53,6 +53,23 @@ async function main() {
     },
   });
 
+  const [horizonBcbs, aetna, medicare, ibx] = await Promise.all([
+    prisma.payer.create({ data: { practiceId: riverside.id, name: "Horizon Blue Cross", payerCode: "HBC01" } }),
+    prisma.payer.create({ data: { practiceId: riverside.id, name: "Aetna", payerCode: "AET01" } }),
+    prisma.payer.create({ data: { practiceId: riverside.id, name: "Medicare", payerCode: "MCARE" } }),
+    prisma.payer.create({ data: { practiceId: riverside.id, name: "Independence Blue Cross", payerCode: "IBX01" } }),
+  ]);
+
+  const drFoster = await prisma.referringPhysician.create({
+    data: {
+      practiceId: riverside.id,
+      name: "Dr. Karen Foster",
+      npi: "1467892345",
+      specialty: "Podiatry",
+      phone: "555-0177",
+    },
+  });
+
   const [maya, james, priya, alex] = await Promise.all([
     prisma.user.create({
       data: {
@@ -132,9 +149,10 @@ async function main() {
         state: "NJ",
         zip: "08077",
         preferredLanguage: "English",
+        referringPhysicianId: drFoster.id,
         insurances: {
           create: {
-            payerName: "Horizon Blue Cross",
+            payerId: horizonBcbs.id,
             memberId: "HBC-882910",
             groupNumber: "GRP-441",
             planName: "PPO Gold",
@@ -172,7 +190,7 @@ async function main() {
         zip: "08102",
         insurances: {
           create: {
-            payerName: "Aetna",
+            payerId: aetna.id,
             memberId: "AET-441902",
             planName: "HMO Standard",
             isPrimary: true,
@@ -200,7 +218,7 @@ async function main() {
         zip: "08002",
         insurances: {
           create: {
-            payerName: "Medicare",
+            payerId: medicare.id,
             memberId: "1EG4-TE5-MK72",
             planName: "Medicare Part B",
             isPrimary: true,
@@ -229,7 +247,7 @@ async function main() {
         preferredLanguage: "English",
         insurances: {
           create: {
-            payerName: "Independence Blue Cross",
+            payerId: ibx.id,
             memberId: "IBX-229001",
             planName: "Keystone HMO",
             isPrimary: true,
@@ -497,6 +515,10 @@ async function main() {
     },
   });
 
+  const cigna = await prisma.payer.create({
+    data: { practiceId: lakeside.id, name: "Cigna", payerCode: "CIG01" },
+  });
+
   const dana = await prisma.user.create({
     data: {
       practiceId: lakeside.id,
@@ -544,7 +566,7 @@ async function main() {
       zip: "08050",
       insurances: {
         create: {
-          payerName: "Cigna",
+          payerId: cigna.id,
           memberId: "CIG-773311",
           planName: "PPO Family",
           isPrimary: true,

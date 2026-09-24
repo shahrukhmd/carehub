@@ -1,8 +1,19 @@
+import Link from "next/link";
 import { createPatient } from "@/app/actions";
+import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 
 export default async function NewPatientPage() {
-  await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+
+  const [payers, physicians] = await Promise.all([
+    prisma.payer.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
+    prisma.referringPhysician.findMany({
+      where: { practiceId: user.practiceId, active: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+
   return (
     <>
       <div className="page-head">
@@ -59,13 +70,34 @@ export default async function NewPatientPage() {
           </label>
           <label>
             Primary payer
-            <input name="payerName" placeholder="Horizon Blue Cross" />
+            <select name="payerId" defaultValue="">
+              <option value="">Self-pay</option>
+              {payers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Member ID
             <input name="memberId" />
           </label>
+          <label>
+            Referring physician
+            <select name="referringPhysicianId" defaultValue="">
+              <option value="">—</option>
+              {physicians.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
+        <p className="muted">
+          Payer or referring physician missing? <Link href="/directories">Add it to Directories</Link> first.
+        </p>
         <button className="btn" type="submit">
           Create chart
         </button>
