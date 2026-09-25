@@ -28,6 +28,7 @@ export async function createPatient(formData: FormData) {
 
   const payerId = String(formData.get("payerId") ?? "") || null;
   const referringPhysicianId = String(formData.get("referringPhysicianId") ?? "") || null;
+  const guarantorPatientId = String(formData.get("guarantorPatientId") ?? "") || null;
 
   if (payerId) {
     await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: user.practiceId } });
@@ -36,6 +37,9 @@ export async function createPatient(formData: FormData) {
     await prisma.referringPhysician.findFirstOrThrow({
       where: { id: referringPhysicianId, practiceId: user.practiceId },
     });
+  }
+  if (guarantorPatientId) {
+    await prisma.patient.findFirstOrThrow({ where: { id: guarantorPatientId, practiceId: user.practiceId } });
   }
 
   const patient = await prisma.patient.create({
@@ -52,6 +56,18 @@ export async function createPatient(formData: FormData) {
       city: String(formData.get("city") ?? "") || null,
       state: String(formData.get("state") ?? "") || null,
       zip: String(formData.get("zip") ?? "") || null,
+      race: String(formData.get("race") ?? "") || null,
+      ethnicity: String(formData.get("ethnicity") ?? "") || null,
+      maritalStatus: String(formData.get("maritalStatus") ?? "") || null,
+      employmentStatus: String(formData.get("employmentStatus") ?? "") || null,
+      smokingStatus: String(formData.get("smokingStatus") ?? "") || null,
+      emergencyContactName: String(formData.get("emergencyContactName") ?? "") || null,
+      emergencyContactPhone: String(formData.get("emergencyContactPhone") ?? "") || null,
+      emergencyContactRelationship: String(formData.get("emergencyContactRelationship") ?? "") || null,
+      guarantorName: String(formData.get("guarantorName") ?? "") || null,
+      guarantorRelationship: String(formData.get("guarantorRelationship") ?? "") || null,
+      guarantorPhone: String(formData.get("guarantorPhone") ?? "") || null,
+      guarantorPatientId,
       referringPhysicianId,
       insurances: payerId
         ? {
@@ -68,6 +84,59 @@ export async function createPatient(formData: FormData) {
 
   revalidatePath("/patients");
   redirect(`/patients/${patient.id}`);
+}
+
+export async function setPatientStatus(patientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER"]);
+  const status = required(formData, "status");
+  await prisma.patient.updateMany({
+    where: { id: patientId, practiceId: user.practiceId },
+    data: { status },
+  });
+
+  await logAudit(user.practiceId, user.id, "SET_PATIENT_STATUS", "Patient", patientId, status);
+  revalidatePath(`/patients/${patientId}`);
+  revalidatePath("/patients");
+}
+
+export async function setGuarantorAccount(patientId: string, formData: FormData) {
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER"]);
+  await prisma.patient.findFirstOrThrow({ where: { id: patientId, practiceId: user.practiceId } });
+
+  const guarantorPatientId = String(formData.get("guarantorPatientId") ?? "") || null;
+  if (guarantorPatientId === patientId) throw new Error("A patient cannot be their own guarantor account");
+  if (guarantorPatientId) {
+    await prisma.patient.findFirstOrThrow({ where: { id: guarantorPatientId, practiceId: user.practiceId } });
+  }
+
+  await prisma.patient.update({ where: { id: patientId }, data: { guarantorPatientId } });
+
+  await logAudit(user.practiceId, user.id, "SET_GUARANTOR_ACCOUNT", "Patient", patientId, guarantorPatientId ?? "self");
+  revalidatePath(`/patients/${patientId}`);
+}
+
+export async function addChargeFromTemplate(encounterId: string, templateItemId: string) {
+  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const encounter = await prisma.encounter.findFirstOrThrow({
+    where: { id: encounterId, practiceId: user.practiceId },
+  });
+  const item = await prisma.superbillTemplateItem.findFirstOrThrow({
+    where: { id: templateItemId, template: { practiceId: user.practiceId } },
+  });
+
+  await prisma.charge.create({
+    data: {
+      practiceId: user.practiceId,
+      encounterId: encounter.id,
+      cptCode: item.cptCode,
+      description: item.description,
+      amountCents: item.amountCents,
+      modifiers: item.modifiers,
+    },
+  });
+
+  revalidatePath(`/encounters/${encounterId}`);
+  revalidatePath("/billing");
 }
 
 export async function createAppointment(formData: FormData) {
@@ -214,6 +283,7 @@ export async function addCharge(encounterId: string, formData: FormData) {
       amountCents: Math.round(amount * 100),
       modifiers: modifiers || null,
       diagnosisPointers: diagnosisPointers || null,
+      placeOfService: String(formData.get("placeOfService") ?? "11") || "11",
     },
   });
 
@@ -275,12 +345,20 @@ export async function updateEncounterBilling(encounterId: string, formData: Form
     where: { id: encounterId, practiceId: user.practiceId },
   });
 
+  const billingProviderId = String(formData.get("billingProviderId") ?? "") || null;
+  if (billingProviderId) {
+    await prisma.billingProvider.findFirstOrThrow({
+      where: { id: billingProviderId, practiceId: user.practiceId },
+    });
+  }
+
   await prisma.encounter.update({
     where: { id: encounter.id },
     data: {
       patientStatus: String(formData.get("patientStatus") ?? "") || null,
       mdmLevel: String(formData.get("mdmLevel") ?? "") || null,
       hospice: formData.get("hospice") === "on",
+      billingProviderId,
     },
   });
 
@@ -410,18 +488,58 @@ export async function resubmitClaim(claimId: string) {
   revalidatePath("/billing");
 }
 
-export async function postPayment(claimId: string, formData: FormData) {
+export async function createDeposit(formData: FormData) {
+  const user = await requireUser(["ADMIN", "BILLER"]);
+  const payerType = String(formData.get("payerType") ?? "INSURANCE") === "PATIENT" ? "PATIENT" : "INSURANCE";
+  const payerName = required(formData, "payerName");
+  const paymentMethod = required(formData, "paymentMethod");
+  const checkNumber = String(formData.get("checkNumber") ?? "").trim() || null;
+  const amount = Number(required(formData, "amount"));
+  const note = String(formData.get("note") ?? "").trim() || null;
+  const totalCents = Math.round(amount * 100);
+
+  const deposit = await prisma.deposit.create({
+    data: {
+      practiceId: user.practiceId,
+      payerType,
+      payerName,
+      paymentMethod,
+      checkNumber,
+      totalCents,
+      unappliedCents: totalCents,
+      note,
+    },
+  });
+
+  await logAudit(user.practiceId, user.id, "CREATE_DEPOSIT", "Deposit", deposit.id, formatMoneyCentsForAudit(totalCents));
+
+  revalidatePath("/billing");
+}
+
+export async function applyDeposit(depositId: string, claimId: string, formData: FormData) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const amount = Number(required(formData, "amount"));
   const type = String(formData.get("type") ?? "PAYMENT") === "ADJUSTMENT" ? "ADJUSTMENT" : "PAYMENT";
-  const note = String(formData.get("note") ?? "").trim() || null;
   const amountCents = Math.round(amount * 100);
 
+  const deposit = await prisma.deposit.findFirstOrThrow({
+    where: { id: depositId, practiceId: user.practiceId },
+  });
   const claim = await prisma.claim.findFirstOrThrow({
     where: { id: claimId, charge: { practiceId: user.practiceId } },
   });
 
-  await prisma.payment.create({ data: { claimId: claim.id, amountCents, type, note } });
+  if (amountCents <= 0) throw new Error("Amount must be greater than zero");
+  if (amountCents > deposit.unappliedCents) throw new Error("Amount exceeds the deposit's unapplied balance");
+
+  await prisma.paymentApplication.create({
+    data: { depositId: deposit.id, claimId: claim.id, amountCents, type },
+  });
+
+  await prisma.deposit.update({
+    where: { id: deposit.id },
+    data: { unappliedCents: deposit.unappliedCents - amountCents },
+  });
 
   const paidCents = claim.paidCents + (type === "PAYMENT" ? amountCents : 0);
   const adjustedCents = claim.adjustedCents + (type === "ADJUSTMENT" ? amountCents : 0);
@@ -433,6 +551,7 @@ export async function postPayment(claimId: string, formData: FormData) {
       paidCents,
       adjustedCents,
       status: balanceCents <= 0 ? "PAID" : "PARTIAL",
+      balanceResponsibility: balanceCents > 0 && deposit.payerType === "INSURANCE" ? "PATIENT" : claim.balanceResponsibility,
     },
   });
 
@@ -445,6 +564,33 @@ export async function postPayment(claimId: string, formData: FormData) {
     formatMoneyCentsForAudit(amountCents)
   );
 
+  revalidatePath("/billing");
+}
+
+export async function setClaimStatus(claimId: string, status: string, formData?: FormData) {
+  const user = await requireUser(["ADMIN", "BILLER"]);
+  const claim = await prisma.claim.findFirstOrThrow({
+    where: { id: claimId, charge: { practiceId: user.practiceId } },
+  });
+  const statusNote = formData ? String(formData.get("statusNote") ?? "").trim() || null : claim.statusNote;
+
+  await prisma.claim.update({
+    where: { id: claim.id },
+    data: { status, statusNote },
+  });
+
+  await logAudit(user.practiceId, user.id, "SET_CLAIM_STATUS", "Claim", claimId, status);
+  revalidatePath("/billing");
+}
+
+export async function setBalanceResponsibility(claimId: string, balanceResponsibility: string) {
+  const user = await requireUser(["ADMIN", "BILLER"]);
+  await prisma.claim.updateMany({
+    where: { id: claimId, charge: { practiceId: user.practiceId } },
+    data: { balanceResponsibility },
+  });
+
+  await logAudit(user.practiceId, user.id, "SET_BALANCE_RESPONSIBILITY", "Claim", claimId, balanceResponsibility);
   revalidatePath("/billing");
 }
 
@@ -581,4 +727,54 @@ export async function cancelLabOrder(labOrderId: string, encounterId: string) {
     data: { status: "CANCELLED" },
   });
   revalidatePath(`/encounters/${encounterId}`);
+}
+
+export async function generateStatements(formData: FormData) {
+  const user = await requireUser(["ADMIN", "BILLER"]);
+  const minBalanceCents = Math.round(Number(formData.get("minBalance") ?? 0) * 100) || 0;
+
+  const claims = await prisma.claim.findMany({
+    where: {
+      balanceResponsibility: "PATIENT",
+      charge: { practiceId: user.practiceId },
+    },
+    include: { charge: { include: { encounter: { include: { patient: true } } } } },
+  });
+
+  const eligible = claims.filter((c) => c.billedCents - c.paidCents - c.adjustedCents > 0);
+  const byPatient = new Map<string, typeof eligible>();
+  for (const claim of eligible) {
+    // Combine dependents onto their guarantor's account, so a family gets one statement.
+    const billingAccountId = claim.charge.encounter.patient.guarantorPatientId ?? claim.charge.encounter.patientId;
+    const list = byPatient.get(billingAccountId) ?? [];
+    list.push(claim);
+    byPatient.set(billingAccountId, list);
+  }
+
+  let created = 0;
+  for (const [patientId, patientClaims] of byPatient) {
+    const totalCents = patientClaims.reduce(
+      (sum, c) => sum + (c.billedCents - c.paidCents - c.adjustedCents),
+      0
+    );
+    if (totalCents < minBalanceCents) continue;
+
+    await prisma.statement.create({
+      data: {
+        practiceId: user.practiceId,
+        patientId,
+        totalCents,
+        lines: {
+          create: patientClaims.map((c) => ({
+            claimId: c.id,
+            balanceCents: c.billedCents - c.paidCents - c.adjustedCents,
+          })),
+        },
+      },
+    });
+    created += 1;
+  }
+
+  await logAudit(user.practiceId, user.id, "GENERATE_STATEMENTS", "Statement", undefined, `${created} statement(s)`);
+  revalidatePath("/statements");
 }

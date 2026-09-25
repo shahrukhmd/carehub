@@ -12,7 +12,8 @@ function atHour(dayOffset: number, hour: number, minute = 0) {
 }
 
 async function main() {
-  await prisma.payment.deleteMany();
+  await prisma.paymentApplication.deleteMany();
+  await prisma.deposit.deleteMany();
   await prisma.claim.deleteMany();
   await prisma.debridement.deleteMany();
   await prisma.charge.deleteMany();
@@ -67,6 +68,34 @@ async function main() {
       npi: "1467892345",
       specialty: "Podiatry",
       phone: "555-0177",
+    },
+  });
+
+  const riversideBillingProvider = await prisma.billingProvider.create({
+    data: {
+      practiceId: riverside.id,
+      name: "Riverside Family Practice PLLC",
+      npi: "1699887766",
+      taxId: "22-1234567",
+      addressLine1: "18 Harbor Lane",
+      city: "Riverton",
+      state: "NJ",
+      zip: "08077",
+    },
+  });
+
+  await prisma.superbillTemplate.create({
+    data: {
+      practiceId: riverside.id,
+      name: "Family medicine — common visits",
+      items: {
+        create: [
+          { cptCode: "99213", description: "Office visit, established, low MDM", amountCents: 12500, order: 0 },
+          { cptCode: "99214", description: "Office visit, established, moderate MDM", amountCents: 18500, order: 1 },
+          { cptCode: "99396", description: "Preventive visit, established, 40-64y", amountCents: 21000, order: 2 },
+          { cptCode: "36415", description: "Venipuncture", amountCents: 1500, order: 3 },
+        ],
+      },
     },
   });
 
@@ -150,6 +179,17 @@ async function main() {
         zip: "08077",
         preferredLanguage: "English",
         referringPhysicianId: drFoster.id,
+        race: "WHITE",
+        ethnicity: "HISPANIC",
+        maritalStatus: "MARRIED",
+        employmentStatus: "FULL_TIME",
+        smokingStatus: "NEVER",
+        emergencyContactName: "Marco Vasquez",
+        emergencyContactPhone: "555-0143",
+        emergencyContactRelationship: "Spouse",
+        guarantorName: "Elena Vasquez",
+        guarantorRelationship: "Self",
+        guarantorPhone: "555-0142",
         insurances: {
           create: {
             payerId: horizonBcbs.id,
@@ -259,6 +299,63 @@ async function main() {
 
   const [elena, marcus, ruth, jamal] = patients;
 
+  const sofia = await prisma.patient.create({
+    data: {
+      practiceId: riverside.id,
+      mrn: "CH-100687",
+      firstName: "Sofia",
+      lastName: "Vasquez",
+      dob: new Date("2012-09-02"),
+      sex: "F",
+      city: "Riverton",
+      state: "NJ",
+      zip: "08077",
+      guarantorPatientId: elena.id,
+      guarantorRelationship: "Mother",
+      insurances: {
+        create: {
+          payerId: horizonBcbs.id,
+          memberId: "HBC-882910",
+          groupNumber: "GRP-441",
+          planName: "PPO Gold",
+          isPrimary: true,
+        },
+      },
+    },
+  });
+
+  const sofiaEncounter = await prisma.encounter.create({
+    data: {
+      practiceId: riverside.id,
+      patientId: sofia.id,
+      providerId: maya.id,
+      type: "OFFICE",
+      status: "SIGNED",
+      chiefComplaint: "Well-child check",
+      billingProviderId: riversideBillingProvider.id,
+    },
+  });
+  const sofiaCharge = await prisma.charge.create({
+    data: {
+      practiceId: riverside.id,
+      encounterId: sofiaEncounter.id,
+      cptCode: "99392",
+      description: "Preventive visit, established, 1-4y",
+      amountCents: 17500,
+    },
+  });
+  await prisma.claim.create({
+    data: {
+      chargeId: sofiaCharge.id,
+      payerName: "Horizon Blue Cross",
+      status: "PARTIAL",
+      billedCents: 17500,
+      paidCents: 14000,
+      submittedAt: new Date(),
+      balanceResponsibility: "PATIENT",
+    },
+  });
+
   const weekdays = [1, 2, 3, 4, 5];
   await prisma.providerAvailability.createMany({
     data: weekdays.flatMap((dayOfWeek) => [
@@ -348,6 +445,7 @@ async function main() {
         "BP 138/84, HR 72, BMI 29.4. Lungs clear. No LE edema. Foot exam intact.",
       assessment: "T2DM, improving. HTN, not at goal.",
       plan: "Repeat A1c. Increase lisinopril to 20 mg daily. Return in 3 months. Diabetic foot education.",
+      billingProviderId: riversideBillingProvider.id,
     },
   });
 
@@ -376,15 +474,33 @@ async function main() {
     },
   });
 
-  await prisma.claim.create({
+  const elenaClaim = await prisma.claim.create({
     data: {
       chargeId: charge.id,
       payerName: "Horizon Blue Cross",
-      status: "SUBMITTED",
+      status: "PARTIAL",
       billedCents: 18500,
-      paidCents: 0,
+      paidCents: 14000,
       submittedAt: new Date(),
+      balanceResponsibility: "PATIENT",
     },
+  });
+
+  const horizonDeposit = await prisma.deposit.create({
+    data: {
+      practiceId: riverside.id,
+      payerType: "INSURANCE",
+      payerName: "Horizon Blue Cross",
+      paymentMethod: "EFT",
+      checkNumber: "EFT-88213",
+      totalCents: 14000,
+      unappliedCents: 0,
+      note: "ERA batch 2026-09",
+    },
+  });
+
+  await prisma.paymentApplication.create({
+    data: { depositId: horizonDeposit.id, claimId: elenaClaim.id, amountCents: 14000, type: "PAYMENT" },
   });
 
   // Wound care demo: diabetic foot ulcer for Elena, tracked across three

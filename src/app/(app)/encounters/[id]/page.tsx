@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   addCharge,
+  addChargeFromTemplate,
   addDiagnosis,
   cancelLabOrder,
   discontinueMedication,
@@ -20,7 +21,13 @@ import { calcBmi, formatDate, formatMoney, patientName } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
 import { createWound } from "@/app/(app)/wounds/actions";
 import { etiologyLabel } from "@/lib/wound";
-import { diagnosisPointerLetter, mdmLevelLabel, parsePointerIds, patientStatusLabel } from "@/lib/superbill";
+import {
+  diagnosisPointerLetter,
+  mdmLevelLabel,
+  parsePointerIds,
+  patientStatusLabel,
+  placeOfServiceLabel,
+} from "@/lib/superbill";
 
 export default async function EncounterPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(["ADMIN", "CLINICIAN"]);
@@ -40,6 +47,7 @@ export default async function EncounterPage({ params }: { params: Promise<{ id: 
         },
       },
       provider: true,
+      billingProvider: true,
       charges: { include: { claim: true } },
       vitals: true,
       labOrders: { include: { result: true }, orderBy: { orderedAt: "desc" } },
@@ -48,6 +56,17 @@ export default async function EncounterPage({ params }: { params: Promise<{ id: 
   });
 
   if (!encounter) notFound();
+
+  const billingProviders = await prisma.billingProvider.findMany({
+    where: { practiceId: user.practiceId, active: true },
+    orderBy: { name: "asc" },
+  });
+
+  const superbillTemplates = await prisma.superbillTemplate.findMany({
+    where: { practiceId: user.practiceId, active: true },
+    include: { items: { orderBy: { order: "asc" } } },
+    orderBy: { name: "asc" },
+  });
 
   const bmi = calcBmi(encounter.vitals?.heightCm ?? null, encounter.vitals?.weightKg ?? null);
 
@@ -408,11 +427,43 @@ export default async function EncounterPage({ params }: { params: Promise<{ id: 
                 <input name="hospice" type="checkbox" style={{ width: "auto" }} defaultChecked={encounter.hospice} />
                 Hospice patient
               </label>
+              <label>
+                Billing provider
+                <select name="billingProviderId" defaultValue={encounter.billingProviderId ?? ""}>
+                  <option value="">—</option>
+                  {billingProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button className="btn secondary" type="submit" style={{ gridColumn: "1 / -1" }}>
                 Save billing details
               </button>
             </form>
           </section>
+
+          {superbillTemplates.length > 0 && (
+            <section className="panel">
+              <h2>Quick charges</h2>
+              <p className="muted">One-click add from a superbill template. Fee and modifiers are preset.</p>
+              {superbillTemplates.map((t) => (
+                <div key={t.id} style={{ marginBottom: "0.9rem" }}>
+                  <p className="muted">{t.name}</p>
+                  <div className="stack" style={{ gridAutoFlow: "column", justifyContent: "start", flexWrap: "wrap", gap: "0.4rem" }}>
+                    {t.items.map((item) => (
+                      <form key={item.id} action={addChargeFromTemplate.bind(null, encounter.id, item.id)}>
+                        <button className="btn ghost" type="submit">
+                          {item.cptCode} — {item.description} ({formatMoney(item.amountCents)})
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </section>
+          )}
 
           <section className="panel">
             <h2>Charges</h2>
@@ -423,6 +474,7 @@ export default async function EncounterPage({ params }: { params: Promise<{ id: 
                   <th>Description</th>
                   <th>Mod</th>
                   <th>Dx</th>
+                  <th>POS</th>
                   <th>Amount</th>
                 </tr>
               </thead>
@@ -441,6 +493,7 @@ export default async function EncounterPage({ params }: { params: Promise<{ id: 
                       <td>{c.description}</td>
                       <td>{c.modifiers ?? "—"}</td>
                       <td>{letters.length ? letters.join(", ") : "—"}</td>
+                      <td>{c.placeOfService}</td>
                       <td>{formatMoney(c.amountCents)}</td>
                     </tr>
                   );
@@ -459,6 +512,16 @@ export default async function EncounterPage({ params }: { params: Promise<{ id: 
               <label>
                 Amount (USD)
                 <input name="amount" type="number" step="0.01" required />
+              </label>
+              <label>
+                Place of service
+                <select name="placeOfService" defaultValue="11">
+                  {Object.entries(placeOfServiceLabel).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <div className="form-grid">
                 <label>

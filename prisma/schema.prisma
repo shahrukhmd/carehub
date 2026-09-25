@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -27,6 +27,10 @@ model Practice {
   payers       Payer[]
   referringPhysicians ReferringPhysician[]
   eligibilityChecks EligibilityCheck[]
+  billingProviders BillingProvider[]
+  deposits     Deposit[]
+  superbillTemplates SuperbillTemplate[]
+  statements   Statement[]
 }
 
 model Membership {
@@ -152,6 +156,20 @@ model Patient {
   preferredLanguage String?
   referringPhysicianId String?
   referringPhysician   ReferringPhysician? @relation(fields: [referringPhysicianId], references: [id])
+  race            String?
+  ethnicity       String?
+  maritalStatus   String?
+  employmentStatus String?
+  smokingStatus   String?
+  emergencyContactName String?
+  emergencyContactPhone String?
+  emergencyContactRelationship String?
+  guarantorName   String?
+  guarantorRelationship String?
+  guarantorPhone  String?
+  guarantorPatientId String?
+  guarantorPatient   Patient?  @relation("GuarantorAccount", fields: [guarantorPatientId], references: [id])
+  dependents      Patient[] @relation("GuarantorAccount")
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   insurances      Insurance[]
@@ -163,6 +181,7 @@ model Patient {
   labOrders       LabOrder[]
   wounds          Wound[]
   eligibilityChecks EligibilityCheck[]
+  statements      Statement[]
 
   @@unique([practiceId, mrn])
 }
@@ -194,6 +213,22 @@ model Payer {
   createdAt    DateTime    @default(now())
   insurances   Insurance[]
   eligibilityChecks EligibilityCheck[]
+}
+
+model BillingProvider {
+  id           String      @id @default(cuid())
+  practiceId   String
+  practice     Practice    @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name         String
+  npi          String?
+  taxId        String?
+  addressLine1 String?
+  city         String?
+  state        String?
+  zip          String?
+  active       Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  encounters   Encounter[]
 }
 
 model ReferringPhysician {
@@ -289,6 +324,8 @@ model Encounter {
   patientStatus String?
   mdmLevel      String?
   hospice       Boolean       @default(false)
+  billingProviderId String?
+  billingProvider   BillingProvider? @relation(fields: [billingProviderId], references: [id])
   charges       Charge[]
   medications   Medication[]
   vitals        Vitals?
@@ -361,6 +398,7 @@ model Charge {
   amountCents Int
   modifiers   String?
   diagnosisPointers String?
+  placeOfService String  @default("11")
   claim       Claim?
   debridement Debridement?
 }
@@ -378,20 +416,80 @@ model Claim {
   attempt       Int       @default(1)
   submittedAt   DateTime?
   createdAt     DateTime  @default(now())
-  payments      Payment[]
+  balanceResponsibility String @default("INSURANCE")
+  statusNote    String?
+  applications  PaymentApplication[]
+  statementLines StatementLine[]
 
   clearinghouseStatus   String?
   clearinghouseClaimId  String?
   rejectionReason       String?
 }
 
-model Payment {
+model SuperbillTemplate {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name       String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  items      SuperbillTemplateItem[]
+}
+
+model SuperbillTemplateItem {
+  id          String            @id @default(cuid())
+  templateId  String
+  template    SuperbillTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  cptCode     String
+  description String
+  modifiers   String?
+  amountCents Int
+  order       Int               @default(0)
+}
+
+model Statement {
+  id         String          @id @default(cuid())
+  practiceId String
+  practice   Practice        @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId  String
+  patient    Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  totalCents Int
+  createdAt  DateTime        @default(now())
+  lines      StatementLine[]
+}
+
+model StatementLine {
+  id           String    @id @default(cuid())
+  statementId  String
+  statement    Statement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  claimId      String
+  claim        Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  balanceCents Int
+}
+
+model Deposit {
+  id             String   @id @default(cuid())
+  practiceId     String
+  practice       Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  payerType      String
+  payerName      String
+  paymentMethod  String
+  checkNumber    String?
+  totalCents     Int
+  unappliedCents Int
+  note           String?
+  postedAt       DateTime @default(now())
+  applications   PaymentApplication[]
+}
+
+model PaymentApplication {
   id          String   @id @default(cuid())
+  depositId   String
+  deposit     Deposit  @relation(fields: [depositId], references: [id], onDelete: Cascade)
   claimId     String
   claim       Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
   amountCents Int
   type        String   @default("PAYMENT")
-  note        String?
   postedAt    DateTime @default(now())
 }
 

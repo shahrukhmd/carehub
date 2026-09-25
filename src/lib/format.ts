@@ -59,6 +59,73 @@ export const claimStatusLabel: Record<string, string> = {
   PARTIAL: "Partially paid",
   PAID: "Paid",
   EDI_REJECTED: "EDI rejected",
+  DELINQUENT: "Delinquent",
+  IN_COLLECTION: "In collection",
+  APPEAL: "Under appeal",
+};
+
+export const balanceResponsibilityLabel: Record<string, string> = {
+  INSURANCE: "Insurance",
+  PATIENT: "Patient",
+};
+
+export const depositPayerTypeLabel: Record<string, string> = {
+  INSURANCE: "Insurance",
+  PATIENT: "Patient",
+};
+
+export const raceLabel: Record<string, string> = {
+  AMERICAN_INDIAN: "American Indian / Alaska Native",
+  ASIAN: "Asian",
+  BLACK: "Black / African American",
+  PACIFIC_ISLANDER: "Native Hawaiian / Pacific Islander",
+  WHITE: "White",
+  OTHER: "Other",
+  DECLINED: "Declined to disclose",
+};
+
+export const ethnicityLabel: Record<string, string> = {
+  HISPANIC: "Hispanic or Latino",
+  NOT_HISPANIC: "Not Hispanic or Latino",
+  DECLINED: "Declined to disclose",
+};
+
+export const smokingStatusLabel: Record<string, string> = {
+  CURRENT_EVERY_DAY: "Current every-day smoker",
+  CURRENT_SOME_DAY: "Current some-day smoker",
+  FORMER: "Former smoker",
+  NEVER: "Never smoked",
+  UNKNOWN: "Unknown",
+};
+
+export const maritalStatusLabel: Record<string, string> = {
+  SINGLE: "Single",
+  MARRIED: "Married",
+  DIVORCED: "Divorced",
+  WIDOWED: "Widowed",
+  SEPARATED: "Separated",
+  DOMESTIC_PARTNER: "Domestic partner",
+  UNKNOWN: "Unknown",
+};
+
+export const employmentStatusLabel: Record<string, string> = {
+  FULL_TIME: "Full time employed",
+  PART_TIME: "Part time employed",
+  SELF_EMPLOYED: "Self-employed",
+  UNEMPLOYED: "Unemployed",
+  RETIRED: "Retired",
+  STUDENT: "Student",
+  UNKNOWN: "Unknown",
+};
+
+export const patientAccountStatusLabel: Record<string, string> = {
+  ACTIVE: "Active",
+  INACTIVE: "Inactive",
+  NOT_STARTED: "Not started",
+  PAYMENT_ARRANGEMENT: "Payment arrangement",
+  IN_COLLECTION: "In collection",
+  BAD_DEBT: "Bad debt",
+  DECEASED: "Deceased",
 };
 
 export const eligibilityStatusLabel: Record<string, string> = {

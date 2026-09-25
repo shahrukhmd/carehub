@@ -2,9 +2,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
-import { ageFromDob, calcBmi, formatDate, formatTime, patientName } from "@/lib/format";
+import {
+  ageFromDob,
+  calcBmi,
+  employmentStatusLabel,
+  ethnicityLabel,
+  formatDate,
+  formatTime,
+  maritalStatusLabel,
+  patientAccountStatusLabel,
+  patientName,
+  raceLabel,
+  smokingStatusLabel,
+} from "@/lib/format";
 import { requireUser } from "@/lib/auth";
 import { etiologyLabel } from "@/lib/wound";
+import { setGuarantorAccount, setPatientStatus } from "@/app/actions";
 
 export default async function PatientChartPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
@@ -32,10 +45,18 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
         orderBy: { createdAt: "desc" },
       },
       referringPhysician: true,
+      guarantorPatient: true,
+      dependents: true,
     },
   });
 
   if (!patient) notFound();
+
+  const otherPatients = await prisma.patient.findMany({
+    where: { practiceId: user.practiceId, id: { not: patient.id } },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    select: { id: true, firstName: true, lastName: true, mrn: true },
+  });
 
   return (
     <>
@@ -49,11 +70,29 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
             </span>
             <span>{patient.phone ?? "No phone"}</span>
             <span>{patient.insurances.find((i) => i.isPrimary)?.payer.name ?? "Self-pay"}</span>
+            <StatusBadge value={patient.status} />
           </p>
         </div>
-        <Link className="btn" href="/schedule">
-          Book visit
-        </Link>
+        <div className="stack" style={{ gridAutoFlow: "column", alignItems: "start", gap: "0.5rem" }}>
+          <form
+            action={setPatientStatus.bind(null, patient.id)}
+            style={{ display: "flex", flexDirection: "row", gap: "0.4rem" }}
+          >
+            <select name="status" defaultValue={patient.status}>
+              {Object.entries(patientAccountStatusLabel).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <button className="btn secondary" type="submit">
+              Update status
+            </button>
+          </form>
+          <Link className="btn" href="/schedule">
+            Book visit
+          </Link>
+        </div>
       </div>
 
       <div className="two-col">
@@ -173,6 +212,85 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
           </section>
         </div>
         <div className="stack">
+          <section className="panel">
+            <h2>Demographics</h2>
+            <p className="muted">
+              {patient.race ? raceLabel[patient.race] ?? patient.race : "Race not on file"} ·{" "}
+              {patient.ethnicity ? ethnicityLabel[patient.ethnicity] ?? patient.ethnicity : "Ethnicity not on file"}
+            </p>
+            <p className="muted">
+              {patient.maritalStatus ? maritalStatusLabel[patient.maritalStatus] ?? patient.maritalStatus : "Marital status not on file"}{" "}
+              ·{" "}
+              {patient.employmentStatus
+                ? employmentStatusLabel[patient.employmentStatus] ?? patient.employmentStatus
+                : "Employment not on file"}
+            </p>
+            <p className="muted">
+              Smoking: {patient.smokingStatus ? smokingStatusLabel[patient.smokingStatus] ?? patient.smokingStatus : "Not on file"}
+            </p>
+            {(patient.emergencyContactName || patient.guarantorName) && (
+              <>
+                {patient.emergencyContactName && (
+                  <p>
+                    <span className="muted">Emergency contact</span>
+                    <br />
+                    {patient.emergencyContactName}
+                    {patient.emergencyContactRelationship ? ` (${patient.emergencyContactRelationship})` : ""}
+                    {patient.emergencyContactPhone ? ` · ${patient.emergencyContactPhone}` : ""}
+                  </p>
+                )}
+                {patient.guarantorName && (
+                  <p>
+                    <span className="muted">Guarantor</span>
+                    <br />
+                    {patient.guarantorName}
+                    {patient.guarantorRelationship ? ` (${patient.guarantorRelationship})` : ""}
+                    {patient.guarantorPhone ? ` · ${patient.guarantorPhone}` : ""}
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+          <section className="panel">
+            <h2>Family / guarantor account</h2>
+            {patient.guarantorPatient ? (
+              <p>
+                Billed under{" "}
+                <Link href={`/patients/${patient.guarantorPatient.id}`}>{patientName(patient.guarantorPatient)}</Link>
+                &apos;s account. Statements combine everyone linked to that guarantor.
+              </p>
+            ) : (
+              <p className="muted">This patient is billed under their own account.</p>
+            )}
+            {patient.dependents.length > 0 && (
+              <>
+                <p className="muted">Dependents billed under this account:</p>
+                <ul>
+                  {patient.dependents.map((d) => (
+                    <li key={d.id}>
+                      <Link href={`/patients/${d.id}`}>{patientName(d)}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <form
+              action={setGuarantorAccount.bind(null, patient.id)}
+              style={{ display: "flex", flexDirection: "row", gap: "0.4rem", marginTop: "0.6rem" }}
+            >
+              <select name="guarantorPatientId" defaultValue={patient.guarantorPatientId ?? ""}>
+                <option value="">— Self (own account) —</option>
+                {otherPatients.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.lastName}, {p.firstName} ({p.mrn})
+                  </option>
+                ))}
+              </select>
+              <button className="btn secondary" type="submit">
+                Update
+              </button>
+            </form>
+          </section>
           <section className="panel">
             <h2>Coverage</h2>
             <p>
