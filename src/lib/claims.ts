@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { SIGNED_STATUSES } from "@/lib/visit-workflow";
 import { parsePointerIds } from "@/lib/superbill";
 import { DX_LETTERS, EDITABLE_CLAIM_STATUSES, MAX_CLAIM_DIAGNOSES } from "@/lib/claim-format";
+import { networkStatusForPayer } from "@/lib/credentialing";
+import { visitNumber } from "@/lib/practice-settings";
 
 export class ClaimError extends Error {}
 
@@ -51,6 +53,7 @@ export async function createClaimFromVisit(user: { id: string; practiceId: strin
   if (!e) throw new ClaimError("Visit not found");
   if (!SIGNED_STATUSES.includes(e.status)) throw new ClaimError("The visit must be signed before a claim is created.");
   if (e.charges.length === 0) throw new ClaimError("The visit has no charges on its superbill.");
+  const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId } });
 
   const active = e.claims.filter((c) => c.status !== "VOID");
   if (active.some((c) => c.payerRank === rank && c.frequencyCode !== "8")) {
@@ -120,7 +123,7 @@ export async function createClaimFromVisit(user: { id: string; practiceId: strin
       supervisingProviderId: e.supervisingProviderId,
       serviceLocationId: e.appointment?.locationId ?? null,
       priorAuthNumber: auth,
-      patientAccountNumber: e.patient.mrn,
+      patientAccountNumber: settings?.useVisitNumbers ? visitNumber(e.id) : e.patient.mrn,
       billedCents: lines.reduce((s, l) => s + l.chargeCents, 0),
       diagnoses: { create: dxs.map((d, i) => ({ sequence: i, icd10: d.icd10, description: d.description })) },
       lines: { create: lines },
@@ -184,10 +187,42 @@ export type ClaimWithParts = Prisma.ClaimGetPayload<{
 
 export type ClaimEdit = { severity: "error" | "warning"; field: string; message: string };
 
+// Facility setup rules that change how claim edits behave.
+export type ClaimRuleOptions = {
+  rulesEnabled?: boolean;
+  allowZeroCharge?: boolean;
+  credentialingProblem?: string | null;
+};
+
+export async function claimRuleOptions(
+  practiceId: string,
+  claim: { payerId: string | null; renderingProviderId: string | null; renderingProvider?: { name: string } | null; payerName?: string }
+): Promise<ClaimRuleOptions> {
+  const s = await prisma.practiceSettings.findUnique({ where: { practiceId } });
+  let credentialingProblem: string | null = null;
+  if (s?.holdClaimsForCredentialing && claim.payerId && claim.renderingProviderId) {
+    const network = await networkStatusForPayer(practiceId, claim.payerId);
+    const mine = network.find((n) => n.providerId === claim.renderingProviderId);
+    if (!mine || mine.network !== "IN_NETWORK") {
+      credentialingProblem = `Held for provider credentialing: ${claim.renderingProvider?.name ?? "the rendering provider"} is ${
+        mine?.network === "PENDING" ? "still being credentialed" : "not credentialed"
+      } with ${claim.payerName ?? "this payer"}.`;
+    }
+  }
+  return {
+    rulesEnabled: s?.enableClaimRules ?? true,
+    allowZeroCharge: s?.allowZeroChargeClaims ?? false,
+    credentialingProblem,
+  };
+}
+
+// Claim rules can be turned off in Facility setup; these structural problems still block submission.
+const ALWAYS_BLOCKING = new Set(["insurance", "lines", "diagnoses", "credentialing"]);
+
 const NPI = /^\d{10}$/;
 
 // Claim edits run before a claim can be submitted (the full scrubber builds on these).
-export function claimEdits(c: ClaimWithParts): ClaimEdit[] {
+export function claimEdits(c: ClaimWithParts, opts: ClaimRuleOptions = {}): ClaimEdit[] {
   const out: ClaimEdit[] = [];
   const err = (field: string, message: string) => out.push({ severity: "error", field, message });
   const warn = (field: string, message: string) => out.push({ severity: "warning", field, message });
@@ -216,7 +251,7 @@ export function claimEdits(c: ClaimWithParts): ClaimEdit[] {
   for (const l of c.lines) {
     const tag = `Line ${l.lineNumber}`;
     if (!/^[A-Z0-9]{5}$/.test(l.cptCode)) err(`line-${l.lineNumber}`, `${tag}: CPT/HCPCS code "${l.cptCode}" is not a valid 5-character code.`);
-    if (l.chargeCents <= 0) err(`line-${l.lineNumber}`, `${tag}: charge must be greater than zero.`);
+    if (l.chargeCents < 0 || (l.chargeCents === 0 && !opts.allowZeroCharge)) err(`line-${l.lineNumber}`, `${tag}: charge must be greater than zero.`);
     if (!(l.units > 0)) err(`line-${l.lineNumber}`, `${tag}: units must be greater than zero.`);
     const ptrs = l.pointers ? l.pointers.split(",") : [];
     if (ptrs.length === 0) err(`line-${l.lineNumber}`, `${tag}: diagnosis pointer is required (box 24E).`);
@@ -231,6 +266,10 @@ export function claimEdits(c: ClaimWithParts): ClaimEdit[] {
     err("frequency", "Corrected or void claims need the payer's original claim number (box 22).");
   }
   if (c.autoAccident && !c.autoAccidentState) err("conditions", "Auto accident needs the state (box 10b).");
+  if (opts.credentialingProblem) err("credentialing", opts.credentialingProblem);
+  if (opts.rulesEnabled === false) {
+    return out.map((e) => (e.severity === "error" && !ALWAYS_BLOCKING.has(e.field) ? { ...e, severity: "warning" as const } : e));
+  }
   return out;
 }
 

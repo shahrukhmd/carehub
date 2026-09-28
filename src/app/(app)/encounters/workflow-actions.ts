@@ -8,11 +8,13 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { parsePointerIds } from "@/lib/superbill";
 import { refreshVisitBillingStatus } from "@/lib/claims";
+import { workflowFinalizeGaps } from "@/lib/chart-setup";
 import {
   HOLD_STATUSES,
   PROVIDER_ATTESTATION,
   SUPERVISOR_ATTESTATION,
   canEditClinical,
+  builtinDoneMap,
   canHold,
   chartChecklist,
   gapsFor,
@@ -56,7 +58,13 @@ async function loadEncounter(user: User, id: string) {
       signatures: true,
       supervisingProvider: true,
       woundAssessments: { select: { woundId: true } },
-      patient: { include: { wounds: { where: { status: { not: "HEALED" } }, select: { id: true } } } },
+      appointment: { select: { visitType: true } },
+      patient: {
+        include: {
+          wounds: { where: { status: { not: "HEALED" } }, select: { id: true } },
+          _count: { select: { problems: true } },
+        },
+      },
     },
   });
   if (!encounter) fail("Encounter not found");
@@ -149,8 +157,14 @@ export async function submitToCds(encounterId: string) {
     const user = await requireUser(["ADMIN", "CLINICIAN"]);
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, ["IN_PROGRESS", "CDS_QUERY"]);
-    const gaps = gapsFor(checklistFor(e), "provider");
-    if (gaps.length) fail(`Complete before sending to CDS: ${gaps.join(", ")}`);
+    // The chart workflow decides which documents must be complete (Finalize visit admin).
+    const gaps = await workflowFinalizeGaps(
+      user.practiceId,
+      e,
+      builtinDoneMap(checklistFor(e), e.patient._count.problems),
+      e.patient.wounds.map((w) => w.id)
+    );
+    if (gaps.length) fail(`Complete before finalizing the visit: ${gaps.join(", ")}`);
 
     await transition(user, e, "READY_FOR_CDS", e.status === "CDS_QUERY" ? "Query answered, resubmitted to CDS" : "Documentation complete", {
       submittedToCdsAt: new Date(),

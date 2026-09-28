@@ -49,6 +49,8 @@ export const visitTypeLabel: Record<string, string> = {
   SICK: "Sick visit",
   WELL: "Wellness",
   TELE: "Telehealth",
+  WOUND_CARE: "Wound care visit",
+  NON_PROVIDER: "Non-provider treatment",
 };
 
 export const appointmentStatusLabel: Record<string, string> = {

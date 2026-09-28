@@ -14,6 +14,7 @@ const nav = [
   { href: "/statements", label: "Statements", roles: ["ADMIN", "BILLER"] },
   { href: "/directories", label: "Directories", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] },
   { href: "/staff", label: "Staff & roles", roles: ["ADMIN"] },
+  { href: "/settings/documentation", label: "Settings", roles: ["ADMIN"] },
   { href: "/audit", label: "Audit log", roles: ["ADMIN"] },
 ];
 

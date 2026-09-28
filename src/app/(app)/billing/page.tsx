@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { agingBucket, depositPayerTypeLabel, formatDate, formatMoney, patientName } from "@/lib/format";
 import { SIGNED_STATUSES, visitStatusLabel, visitStatusTone } from "@/lib/visit-workflow";
 import { claimEdits } from "@/lib/claims";
+import { getPracticeSettings } from "@/lib/chart-setup";
 import {
   EDITABLE_CLAIM_STATUSES,
   OPEN_AR_STATUSES,
@@ -231,6 +232,8 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
 // ---------------------------------------------------------------- Claims
 
 async function ClaimsTab({ practiceId, sp }: { practiceId: string; sp: Search }) {
+  const settings = await getPracticeSettings(practiceId);
+  const ruleOptions = { rulesEnabled: settings.enableClaimRules, allowZeroCharge: settings.allowZeroChargeClaims };
   const q = sp.q?.trim();
   const statusFilter: Prisma.ClaimWhereInput =
     sp.status === "UNSENT"
@@ -321,7 +324,7 @@ async function ClaimsTab({ practiceId, sp }: { practiceId: string; sp: Search })
           </thead>
           <tbody>
             {claims.map((c) => {
-              const edits = EDITABLE_CLAIM_STATUSES.includes(c.status) ? claimEdits(c) : [];
+              const edits = EDITABLE_CLAIM_STATUSES.includes(c.status) ? claimEdits(c, ruleOptions) : [];
               const errors = edits.filter((e) => e.severity === "error").length;
               const dos = c.lines.map((l) => l.dosFrom.getTime());
               const balance = c.billedCents - c.paidCents - c.adjustedCents;

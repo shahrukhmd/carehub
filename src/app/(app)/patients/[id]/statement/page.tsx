@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 import { visitBillingStatusLabel } from "@/lib/claim-format";
+import { getPracticeSettings } from "@/lib/chart-setup";
+import { addressLines, settingsAddress } from "@/lib/practice-settings";
 
 export default async function PatientStatementPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(["ADMIN", "BILLER", "FRONT_DESK"]);
@@ -21,6 +23,10 @@ export default async function PatientStatementPage({ params }: { params: Promise
   });
 
   if (!patient) notFound();
+  const settings = await getPracticeSettings(user.practiceId);
+  const s = settings as unknown as Record<string, unknown>;
+  const payee = settingsAddress(s, "payee");
+  const remit = settingsAddress(s, "remit") ?? payee;
 
   // One ledger row per visit: charges less what insurance paid and adjusted across its claims.
   const lines = patient.encounters
@@ -79,6 +85,33 @@ export default async function PatientStatementPage({ params }: { params: Promise
           <strong>{formatMoney(Math.max(totalDue, 0))}</strong>
         </div>
       </section>
+
+      {(payee || remit || settings.billingPhone) && (
+        <section className="panel st-remit">
+          {payee && (
+            <div>
+              <span className="muted">Make checks payable to</span>
+              {addressLines(payee).map((l) => (
+                <p key={l}>{l}</p>
+              ))}
+            </div>
+          )}
+          {remit && (
+            <div>
+              <span className="muted">Mail payments to</span>
+              {addressLines(remit).map((l) => (
+                <p key={l}>{l}</p>
+              ))}
+            </div>
+          )}
+          {settings.billingPhone && (
+            <div>
+              <span className="muted">Billing questions</span>
+              <p>{settings.billingPhone}</p>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="panel">
         <table>

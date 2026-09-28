@@ -387,8 +387,9 @@ export async function startEncounter(appointmentId: string) {
 const NOTE_FIELDS = ["chiefComplaint", "subjective", "objective", "assessment", "plan"] as const;
 
 function nextStepRedirect(encounterId: string, formData: FormData) {
-  const next = String(formData.get("next") ?? "");
-  if (/^[a-z]+$/.test(next)) redirect(`/encounters/${encounterId}?step=${next}`);
+  // "templateKey" or "templateKey.woundId" (per-wound documents).
+  const m = String(formData.get("next") ?? "").match(/^([a-z0-9_]+)(?:\.([a-z0-9]+))?$/);
+  if (m) redirect(`/encounters/${encounterId}?step=${m[1]}${m[2] ? `&wound=${m[2]}` : ""}`);
 }
 
 export async function saveEncounter(id: string, formData: FormData) {

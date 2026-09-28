@@ -46,6 +46,10 @@ model Practice {
   intakeCases  IntakeCase[]
   claims       Claim[]
   codes        PracticeCode[]
+  documentTemplates DocumentTemplate[]
+  chartWorkflows    ChartWorkflow[]
+  documentationViews DocumentationView[]
+  settings          PracticeSettings?
 }
 
 model Membership {
@@ -120,6 +124,9 @@ model User {
   // Provider signature on file (PNG data URL), stamped onto signed records.
   signatureImage           String?
   signatureUpdatedAt       DateTime?
+  documentsCompleted       EncounterDocument[]  @relation("DocumentCompletedBy")
+  documentsSigned          EncounterDocument[]  @relation("DocumentSignedBy")
+  attachmentsUploaded      EncounterAttachment[]
 }
 
 model ProviderAvailability {
@@ -594,6 +601,11 @@ model Encounter {
   // Practice Mate style visit billing status (OPEN, READY_FOR_CLAIM, CLAIM_CREATED_PRIMARY, ...).
   billingStatus       String    @default("OPEN")
   claims              Claim[]
+  // Chart workflow (template set) used to document this visit; falls back to the practice default.
+  workflowId          String?
+  workflow            ChartWorkflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  documents           EncounterDocument[]
+  attachments         EncounterAttachment[]
 }
 
 model EncounterDiagnosis {
@@ -1116,4 +1128,174 @@ model PracticeCode {
   createdAt   DateTime @default(now())
 
   @@unique([practiceId, type, code])
+}
+
+// ---- Chart templates & workflows (Documentation settings) ----
+
+// A chart document: either a built-in chart section (CC/HPI, vitals, wounds, superbill...) or a
+// designable form whose fields are defined in `fields` (JSON FieldDef[]).
+model DocumentTemplate {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  key         String
+  name        String
+  description String?
+  // DOCUMENTATION | PROCEDURE | PROGRESS | BILLING | ADDITIONAL
+  section     String   @default("ADDITIONAL")
+  // BUILTIN | FORM
+  kind        String   @default("FORM")
+  builtin     String?
+  // Completed once per open wound (e.g. treatment notes) instead of once per visit.
+  perWound    Boolean  @default(false)
+  fields      String   @default("[]")
+  standard    Boolean  @default(false)
+  signatureRequired Boolean @default(false)
+  critical    Boolean  @default(false)
+  inProgressNote Boolean @default(true)
+  noteOrder   Int      @default(100)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(100)
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  steps       ChartWorkflowStep[]
+  documents   EncounterDocument[]
+
+  @@unique([practiceId, key])
+}
+
+// Which documents a visit type charts, in what order, and which must be complete to finalize.
+model ChartWorkflow {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // Comma-separated appointment visit types that use this workflow.
+  visitTypes  String?
+  isDefault   Boolean  @default(false)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  steps       ChartWorkflowStep[]
+  encounters  Encounter[]
+}
+
+model ChartWorkflowStep {
+  id          String           @id @default(cuid())
+  workflowId  String
+  workflow    ChartWorkflow    @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sortOrder   Int              @default(0)
+  requiredToFinalize Boolean   @default(false)
+
+  @@unique([workflowId, templateId])
+}
+
+// A completed (or draft) form on a visit. woundKey is the wound id for per-wound forms, "" otherwise.
+model EncounterDocument {
+  id            String           @id @default(cuid())
+  encounterId   String
+  encounter     Encounter        @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  templateId    String
+  template      DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  woundKey      String           @default("")
+  data          String           @default("{}")
+  // DRAFT | COMPLETE
+  status        String           @default("DRAFT")
+  score         Int?
+  templateVersion Int            @default(1)
+  completedById String?
+  completedBy   User?            @relation("DocumentCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt   DateTime?
+  signedById    String?
+  signedBy      User?            @relation("DocumentSignedBy", fields: [signedById], references: [id], onDelete: SetNull)
+  signedName    String?
+  signedAt      DateTime?
+  signatureImage String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@unique([encounterId, templateId, woundKey])
+}
+
+// Scans and test result files attached to a visit.
+model EncounterAttachment {
+  id           String    @id @default(cuid())
+  encounterId  String
+  encounter    Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  // SCAN | TEST_RESULT | PHOTO | OTHER
+  category     String    @default("SCAN")
+  title        String
+  filePath     String
+  fileName     String
+  mimeType     String
+  uploadedById String?
+  uploadedBy   User?     @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime  @default(now())
+}
+
+// A printable combination of chart documents (e.g. "Progress Note + Physician Orders").
+model DocumentationView {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // JSON array of parts: "facesheet", "note", "wounds", "superbill", "signatures", "documents", or "doc:<templateKey>".
+  parts       String   @default("[]")
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+}
+
+// Facility setup - general settings (claim pay-to, statement addresses, billing rules, clearinghouse).
+model PracticeSettings {
+  id          String   @id @default(cuid())
+  practiceId  String   @unique
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  payToName     String?
+  payToAddress1 String?
+  payToAddress2 String?
+  payToCity     String?
+  payToState    String?
+  payToZip      String?
+  payeeName     String?
+  payeeAddress1 String?
+  payeeAddress2 String?
+  payeeCity     String?
+  payeeState    String?
+  payeeZip      String?
+  remitName     String?
+  remitAddress1 String?
+  remitAddress2 String?
+  remitCity     String?
+  remitState    String?
+  remitZip      String?
+  physicalName     String?
+  physicalAddress1 String?
+  physicalAddress2 String?
+  physicalCity     String?
+  physicalState    String?
+  physicalZip      String?
+  yearEndMonth     Int      @default(12)
+  // ACCOUNT (billing provider on the claim) | PRACTICE
+  taxIdSource      String   @default("ACCOUNT")
+  practiceTaxId    String?
+  useVisitNumbers  Boolean  @default(false)
+  cutoffDay        Int?
+  cutoffLastDay    Boolean  @default(false)
+  // SAME | FOLLOWING
+  cutoffMonth      String   @default("FOLLOWING")
+  billingPhone     String?
+  allowZeroChargeClaims Boolean @default(false)
+  includeEmergencyFlag  Boolean @default(false)
+  allowEdiVoid          Boolean @default(true)
+  enableClaimRules      Boolean @default(true)
+  suppressSecondaryEraAdjustments Boolean @default(false)
+  holdClaimsForCredentialing Boolean @default(false)
+  clearinghouse    String   @default("MOCK")
+  updatedAt        DateTime @updatedAt
 }

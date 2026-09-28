@@ -142,20 +142,21 @@ export const SUPERVISOR_ATTESTATION =
   "I have personally reviewed and established the assessment and plan of care for this visit. The visit was " +
   "conducted under my supervision and I was immediately available to provide direct supervision throughout.";
 
-// Charting one section at a time ("Save & next"), in documentation order.
-export const CHART_STEPS = [
-  { key: "cc", label: "Chief complaint / HPI" },
-  { key: "vitals", label: "Vital signs" },
-  { key: "wounds", label: "Wound assessments" },
-  { key: "exam", label: "Objective / physical exam" },
-  { key: "assessment", label: "Assessment & plan of care" },
-  { key: "meds", label: "Medications, orders & labs" },
-  { key: "superbill", label: "Superbill (Dx & CPT)" },
-  { key: "signatures", label: "Attestation & signatures" },
-] as const;
-
-export type ChartStep = (typeof CHART_STEPS)[number]["key"] | "all";
-
-export function isChartStep(v: string | undefined): v is ChartStep {
-  return v === "all" || CHART_STEPS.some((s) => s.key === v);
+// Whether each built-in chart section is complete (drives the document workflow rail and the finalize gate).
+export function builtinDoneMap(checklist: ChecklistItem[], problemCount: number): Record<string, boolean> {
+  const done = new Map(checklist.map((c) => [c.key, c.done]));
+  return {
+    cc: Boolean(done.get("cc")),
+    vitals: Boolean(done.get("vitals")),
+    wounds: Boolean(done.get("wounds")),
+    exam: Boolean(done.get("exam")),
+    assessment: Boolean(done.get("assessment")),
+    meds: true,
+    problems: problemCount > 0,
+    multiwound: true,
+    inactivewounds: true,
+    progress: true,
+    superbill: Boolean(done.get("dx") && done.get("superbill")),
+    signatures: Boolean(done.get("signatures")),
+  };
 }

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { claimEdits } from "@/lib/claims";
+import { claimEdits, claimRuleOptions } from "@/lib/claims";
 import { US_STATES, formatDate, formatMoney, patientName } from "@/lib/format";
 import { placeOfServiceLabel } from "@/lib/superbill";
 import {
@@ -88,7 +88,7 @@ export default async function ClaimPage({
   ]);
 
   const editable = EDITABLE_CLAIM_STATUSES.includes(claim.status);
-  const edits = claimEdits(claim);
+  const edits = claimEdits(claim, await claimRuleOptions(user.practiceId, claim));
   const errors = edits.filter((e) => e.severity === "error");
   const warnings = edits.filter((e) => e.severity === "warning");
   const balance = claim.billedCents - claim.paidCents - claim.adjustedCents;

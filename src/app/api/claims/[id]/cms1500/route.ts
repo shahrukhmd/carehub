@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { renderCms1500, type Cms1500Data } from "@/lib/cms1500-pdf";
 import { claimNumber } from "@/lib/claim-format";
+import { settingsAddress } from "@/lib/practice-settings";
 
 const TYPE_TO_BOX1: Record<string, string> = {
   MEDICARE: "MEDICARE",
@@ -47,6 +48,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     },
   });
   if (!claim) return new Response("Not found", { status: 404 });
+  const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId } });
+  // Facility setup: box 33 uses the claim pay-to address when one is set; box 25 can use the practice tax ID.
+  const payTo = settingsAddress(settings as unknown as Record<string, unknown>, "payTo");
 
   const { patient, insurance: ins, billingProvider: bp } = claim;
   const self = !ins || ins.relationshipToInsured === "18";
@@ -112,7 +116,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       from: l.dosFrom,
       to: l.dosTo,
       pos: l.placeOfService,
-      emg: l.emergency,
+      emg: Boolean(settings?.includeEmergencyFlag) && l.emergency,
       cpt: l.cptCode,
       modifiers: (l.modifiers ?? "").split(",").filter(Boolean),
       pointers: l.pointers,
@@ -121,7 +125,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       renderingNpi,
       ndc: l.ndcCode ? `${l.ndcCode} ${l.ndcUnit ?? ""}${l.ndcQuantity ?? ""}`.trim() : null,
     })),
-    taxId: bp?.taxId ?? "",
+    taxId: (settings?.taxIdSource === "PRACTICE" && settings.practiceTaxId) || bp?.taxId || "",
     patientAccount: claim.patientAccountNumber ?? patient.mrn,
     acceptAssignment: claim.acceptAssignment,
     totalCents: claim.billedCents,
@@ -137,13 +141,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           npi: facility.npi ?? "",
         }
       : { name: "", street: "", cityStateZip: "", npi: "" },
-    billing: {
-      name: bp?.name ?? "",
-      street: bp?.addressLine1 ?? "",
-      cityStateZip: cityStateZip(bp?.city, bp?.state, bp?.zip),
-      phone: bp?.phone ?? "",
-      npi: bp?.npi ?? "",
-    },
+    billing: payTo
+      ? {
+          name: payTo.name || bp?.name || "",
+          street: [payTo.line1, payTo.line2].filter(Boolean).join(" "),
+          cityStateZip: cityStateZip(payTo.city, payTo.state, payTo.zip),
+          phone: settings?.billingPhone ?? bp?.phone ?? "",
+          npi: bp?.npi ?? "",
+        }
+      : {
+          name: bp?.name ?? "",
+          street: bp?.addressLine1 ?? "",
+          cityStateZip: cityStateZip(bp?.city, bp?.state, bp?.zip),
+          phone: settings?.billingPhone ?? bp?.phone ?? "",
+          npi: bp?.npi ?? "",
+        },
   };
 
   const bytes = await renderCms1500(data, formImage);

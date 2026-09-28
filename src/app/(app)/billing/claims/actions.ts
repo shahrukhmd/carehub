@@ -10,6 +10,7 @@ import { getClearinghouseAdapter } from "@/lib/clearinghouse";
 import {
   ClaimError,
   claimEdits,
+  claimRuleOptions,
   createClaimFromVisit,
   loadClaimForEdits,
   logClaimEvent,
@@ -252,7 +253,7 @@ export async function saveClaim(claimId: string, fd: FormData) {
     // A clean claim is ready to submit; one with errors goes back to draft.
     const fresh = await loadClaimForEdits(claimId, user.practiceId);
     if (fresh && ["DRAFT", "READY"].includes(fresh.status)) {
-      const hasErrors = claimEdits(fresh).some((e) => e.severity === "error");
+      const hasErrors = claimEdits(fresh, await claimRuleOptions(user.practiceId, fresh)).some((e) => e.severity === "error");
       const next = hasErrors ? "DRAFT" : "READY";
       if (next !== fresh.status) {
         await prisma.claim.update({ where: { id: claimId }, data: { status: next } });
@@ -274,7 +275,7 @@ export async function submitClaim(claimId: string) {
     if (!["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status)) fail(`A ${claimStatusLabel[claim.status]?.toLowerCase()} claim can't be submitted.`);
     const encounter = await prisma.encounter.findUniqueOrThrow({ where: { id: claim.encounterId } });
     if (!SIGNED_STATUSES.includes(encounter.status)) fail("The visit isn't signed and ready for billing.");
-    const errors = claimEdits(claim).filter((e) => e.severity === "error");
+    const errors = claimEdits(claim, await claimRuleOptions(user.practiceId, claim)).filter((e) => e.severity === "error");
     if (errors.length) fail(`Fix ${errors.length} claim edit(s) first: ${errors.map((e) => e.message).join(" ")}`);
 
     const result = await getClearinghouseAdapter().submitClaim({
@@ -398,6 +399,10 @@ export async function correctClaim(claimId: string, frequency: "7" | "8") {
     });
     if (!c) fail("Claim not found");
     if (EDITABLE_CLAIM_STATUSES.includes(c.status) || c.status === "VOID") fail("Only a claim the payer has received can be corrected or voided.");
+    if (frequency === "8") {
+      const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId } });
+      if (settings && !settings.allowEdiVoid) fail("Sending void claims electronically is turned off in Facility setup → General settings.");
+    }
     if (c.paidCents || c.adjustedCents) fail("Payments are posted on this claim — reverse them before replacing it.");
     const { id: _id, createdAt: _c, updatedAt: _u, lines, diagnoses, ...rest } = c;
     void _id;
