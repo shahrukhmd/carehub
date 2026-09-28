@@ -75,7 +75,8 @@ export const mockClearinghouseAdapter: ClearinghouseAdapter = {
       return { status: "ERROR", rejectionReason: "No payer code on file for EDI routing." };
     }
 
-    const f = seededFraction(`${req.claimId}:${req.cptCode}`);
+    // Any change to codes or pointers gives a repaired claim a fresh outcome.
+    const f = seededFraction(`${req.claimId}:${req.diagnosisCodes.join(",")}:${req.lines.map((l) => `${l.cptCode}/${l.pointers}`).join("-")}`);
 
     if (f < 0.1) {
       return { status: "ERROR", rejectionReason: "Clearinghouse connection error. Retry submission." };
@@ -90,7 +91,7 @@ export const mockClearinghouseAdapter: ClearinghouseAdapter = {
     return {
       status: "ACCEPTED",
       clearinghouseClaimId: `CH-${req.claimId.slice(-8).toUpperCase()}`,
-      raw: `837 accepted for payer ${req.payerCode}, ${req.cptCode} $${(req.billedCents / 100).toFixed(2)}`,
+      raw: `837 accepted for payer ${req.payerCode}, ${req.lines.length} line(s) $${(req.billedCents / 100).toFixed(2)}`,
     };
   },
 };

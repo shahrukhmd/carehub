@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatTime, patientName, visitTypeLabel } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
+import { placeOfServiceLabel } from "@/lib/superbill";
 import { addDays, DAY_ABBR, parseDateParam, startOfDay, startOfWeek, toDateParam } from "@/lib/schedule";
 
 const VIEWS = ["day", "week", "list", "capacity"] as const;
@@ -18,6 +19,23 @@ type SearchParams = {
   locationId?: string;
   visitType?: string;
   showMissed?: string;
+  patientId?: string;
+  returnTo?: string;
+  bookWith?: string;
+  bookLocation?: string;
+  bookStart?: string;
+  bookType?: string;
+  conflicts?: string;
+  bookLen?: string;
+  bookStaff?: string;
+  bookSup?: string;
+  bookAuth?: string;
+  bookPos?: string;
+  bookRoom?: string;
+  bookNotes?: string;
+  bookRecur?: string;
+  bookRecurEnd?: string;
+  bookDays?: string;
 };
 
 export default async function SchedulePage({
@@ -25,7 +43,7 @@ export default async function SchedulePage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
   const sp = await searchParams;
   const view: View = (VIEWS as readonly string[]).includes(sp.view ?? "") ? (sp.view as View) : "week";
   const anchor = parseDateParam(sp.date);
@@ -38,6 +56,27 @@ export default async function SchedulePage({
       orderBy: { name: "asc" },
     }),
     prisma.location.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" } }),
+  ]);
+  const [clinicalStaff, supervisors, approvedAuths] = await Promise.all([
+    prisma.membership.findMany({
+      where: { practiceId: user.practiceId, role: { in: ["CLINICIAN", "FRONT_DESK"] }, user: { active: true } },
+      include: { user: true },
+      orderBy: { user: { name: "asc" } },
+    }),
+    prisma.renderingProvider.findMany({
+      where: { practiceId: user.practiceId, isSupervising: true, status: "ACTIVE" },
+      orderBy: { name: "asc" },
+    }),
+    // Approved prior auths from the Patient Gateway, to attach to the visit.
+    prisma.intakeCase.findMany({
+      where: {
+        practiceId: user.practiceId,
+        authStatus: "APPROVED",
+        ...(sp.patientId ? { patientId: sp.patientId } : {}),
+      },
+      include: { patient: true, payer: true },
+      orderBy: { authEndDate: "asc" },
+    }),
   ]);
 
   let rangeStart: Date;
@@ -376,11 +415,25 @@ export default async function SchedulePage({
           </section>
 
           <div className="stack">
-            <form className="panel stack" action={createAppointment}>
-              <h2>Book appointment</h2>
+            <form className="panel stack" action={createAppointment} id="book">
+              <h2>Schedule encounter</h2>
+              {sp.conflicts && (
+                <div className="gw-error" role="alert">
+                  <strong>This visit conflicts with the following:</strong>
+                  <ul>
+                    {sp.conflicts.split("\n").map((c) => (
+                      <li key={c}>{c}</li>
+                    ))}
+                  </ul>
+                  <label className="checkbox-inline">
+                    <input type="checkbox" name="acceptConflicts" /> Accept conflicts and book anyway
+                  </label>
+                </div>
+              )}
+              {sp.returnTo && <input type="hidden" name="returnTo" value={sp.returnTo} />}
               <label>
                 Patient
-                <select name="patientId" required>
+                <select name="patientId" required defaultValue={sp.patientId}>
                   {patients.map((p) => (
                     <option key={p.id} value={p.id}>
                       {patientName(p)} ({p.mrn})
@@ -388,46 +441,127 @@ export default async function SchedulePage({
                   ))}
                 </select>
               </label>
-              <label>
-                Provider
-                <select name="providerId" required>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
+              <div className="form-grid">
+                <label>
+                  Visit date &amp; time
+                  <input name="startsAt" type="datetime-local" required defaultValue={sp.bookStart} />
+                </label>
+                <label>
+                  Length (min)
+                  <input name="durationMinutes" type="number" min="5" max="480" step="5" defaultValue={sp.bookLen ?? "30"} />
+                </label>
+                <label>
+                  Physician
+                  <select name="providerId" required defaultValue={sp.bookWith}>
+                    {providers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Clinician
+                  <select name="clinicalStaffId" defaultValue={sp.bookStaff ?? ""}>
+                    <option value="">—</option>
+                    {clinicalStaff.map((m) => (
+                      <option key={m.userId} value={m.userId}>
+                        {m.user.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Supervising physician
+                  <select name="supervisingProviderId" defaultValue={sp.bookSup ?? ""}>
+                    <option value="">— Default from provider —</option>
+                    {supervisors.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Insurance auth
+                  <select name="intakeCaseId" defaultValue={sp.bookAuth ?? (sp.patientId && approvedAuths.length === 1 ? approvedAuths[0].id : "")}>
+                    <option value="">—</option>
+                    {approvedAuths.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {sp.patientId ? "" : `${patientName(c.patient)} · `}#{c.authNumber}
+                        {c.authEndDate ? ` thru ${formatDate(c.authEndDate)}` : ""}
+                        {c.authVisitsApproved ? ` · ${c.authVisitsApproved} visits` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Encounter type
+                  <select name="visitType" defaultValue={sp.bookType ?? "FOLLOW_UP"}>
+                    {Object.entries(visitTypeLabel).map(([v, l]) => (
+                      <option key={v} value={v}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Site of service
+                  <select name="placeOfService" defaultValue={sp.bookPos ?? ""}>
+                    <option value="">— From encounter type —</option>
+                    {Object.entries(placeOfServiceLabel).map(([v, l]) => (
+                      <option key={v} value={v}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Location
+                  <select name="locationId" required defaultValue={sp.bookLocation}>
+                    {locations.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Room
+                  <input name="room" placeholder="Room / bed" defaultValue={sp.bookRoom} />
+                </label>
+              </div>
+              <details className="vw-recurring" open={Boolean(sp.bookRecur && sp.bookRecur !== "NONE")}>
+                <summary>Recurring visit</summary>
+                <div className="form-grid">
+                  <label>
+                    Recurs
+                    <select name="recurrence" defaultValue={sp.bookRecur ?? "NONE"}>
+                      <option value="NONE">Does not repeat</option>
+                      <option value="WEEKLY">Weekly</option>
+                      <option value="BIWEEKLY">Every 2 weeks</option>
+                    </select>
+                  </label>
+                  <label>
+                    End date
+                    <input name="recurrenceEnd" type="date" defaultValue={sp.bookRecurEnd} />
+                  </label>
+                </div>
+                <div className="vw-weekdays">
+                  {DAY_ABBR.map((d, i) => (
+                    <label key={d} className="checkbox-inline">
+                      <input type="checkbox" name="weekdays" value={i} defaultChecked={(sp.bookDays ?? "").split(",").includes(String(i))} /> {d}
+                    </label>
                   ))}
-                </select>
-              </label>
+                </div>
+                <p className="muted">Days left blank repeat on the first visit&apos;s weekday. Up to 52 visits.</p>
+              </details>
               <label>
-                Location
-                <select name="locationId" required>
-                  {locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Start
-                <input name="startsAt" type="datetime-local" required />
-              </label>
-              <label>
-                Visit type
-                <select name="visitType" defaultValue="FOLLOW_UP">
-                  {Object.entries(visitTypeLabel).map(([v, l]) => (
-                    <option key={v} value={v}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Reason
-                <input name="reason" />
+                Visit notes
+                <input name="reason" defaultValue={sp.bookNotes} />
               </label>
               <button className="btn" type="submit">
-                Save to book
+                Create
               </button>
             </form>
 

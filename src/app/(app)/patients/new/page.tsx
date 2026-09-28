@@ -11,12 +11,12 @@ import {
 } from "@/lib/format";
 
 export default async function NewPatientPage() {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE"]);
 
   const [payers, physicians, patients] = await Promise.all([
     prisma.payer.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
-    prisma.referringPhysician.findMany({
-      where: { practiceId: user.practiceId, active: true },
+    prisma.renderingProvider.findMany({
+      where: { practiceId: user.practiceId, isReferring: true, status: "ACTIVE" },
       orderBy: { name: "asc" },
     }),
     prisma.patient.findMany({

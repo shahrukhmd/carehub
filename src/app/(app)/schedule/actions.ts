@@ -37,7 +37,7 @@ export async function deleteReservedTime(id: string) {
 }
 
 export async function checkEligibility(appointmentId: string) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER"]);
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "SCHEDULER", "VERIFICATION"]);
   const appt = await prisma.appointment.findFirstOrThrow({
     where: { id: appointmentId, practiceId: user.practiceId },
   });

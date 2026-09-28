@@ -23,8 +23,9 @@ export interface ClaimSubmissionRequest {
   payerId: string;
   payerCode: string | null;
   billedCents: number;
-  cptCode: string;
+  frequencyCode: string;
   diagnosisCodes: string[];
+  lines: { cptCode: string; chargeCents: number; units: number; pointers: string }[];
 }
 
 export interface ClaimSubmissionResult {

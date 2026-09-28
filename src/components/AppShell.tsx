@@ -6,13 +6,13 @@ import { switchPractice } from "@/app/switch-practice/actions";
 import { roleLabel } from "@/lib/format";
 
 const nav = [
-  { href: "/", label: "Command center", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER"] },
-  { href: "/schedule", label: "Schedule", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN"] },
-  { href: "/patients", label: "Patients", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN"] },
-  { href: "/encounters", label: "Charting", roles: ["ADMIN", "CLINICIAN"] },
+  { href: "/credentialing", label: "Credentialing", roles: ["ADMIN", "CREDENTIALING"] },
+  { href: "/", label: "Patient Gateway", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] },
+  { href: "/schedule", label: "Schedule", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
+  { href: "/encounters", label: "Visit worklist", roles: ["ADMIN", "CLINICIAN", "CDS", "BILLER", "FRONT_DESK", "SCHEDULER"] },
   { href: "/billing", label: "Revenue cycle", roles: ["ADMIN", "BILLER"] },
   { href: "/statements", label: "Statements", roles: ["ADMIN", "BILLER"] },
-  { href: "/directories", label: "Directories", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN"] },
+  { href: "/directories", label: "Directories", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] },
   { href: "/staff", label: "Staff & roles", roles: ["ADMIN"] },
   { href: "/audit", label: "Audit log", roles: ["ADMIN"] },
 ];
@@ -29,9 +29,11 @@ function initials(name: string) {
 export function AppShell({
   children,
   user,
+  credentialingAlertCount = 0,
 }: {
   children: ReactNode;
   user: User & { practice: Practice; memberships: (Membership & { practice: Practice })[] };
+  credentialingAlertCount?: number;
 }) {
   const items = nav.filter((item) => item.roles.includes(user.role));
 
@@ -49,6 +51,11 @@ export function AppShell({
           {items.map((item) => (
             <Link key={item.href} href={item.href}>
               {item.label}
+              {item.href === "/credentialing" && credentialingAlertCount > 0 && (
+                <span className="nav-badge" title="Credentialing items need attention">
+                  {credentialingAlertCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
@@ -60,12 +67,12 @@ export function AppShell({
         <header className="topbar">
           <div>
             <p className="clinic-name">{user.practice.name}</p>
-            <p className="clinic-meta">Demo tenant</p>
+            <p className="clinic-meta">{user.practice.state ? `Facility · ${user.practice.state}` : "Facility"}</p>
           </div>
           <div className="topbar-right">
             {user.memberships.length > 1 && (
               <form className="practice-switch" action={switchPractice}>
-                <select name="practiceId" defaultValue={user.practiceId}>
+                <select name="practiceId" defaultValue={user.practiceId} aria-label="Facility">
                   {user.memberships.map((m) => (
                     <option key={m.practiceId} value={m.practiceId}>
                       {m.practice.name}
@@ -77,7 +84,17 @@ export function AppShell({
                 </button>
               </form>
             )}
+            {user.isMaster && (
+              <span className="pill pill-master" title="Consolidated view across all your practices">
+                Master
+              </span>
+            )}
             <span className="pill">{roleLabel[user.role] ?? user.role}</span>
+            {["ADMIN", "CLINICIAN"].includes(user.role) && (
+              <Link className="btn ghost" href="/settings/signature">
+                My signature
+              </Link>
+            )}
             <span className="avatar" title={user.name}>
               {initials(user.name)}
             </span>

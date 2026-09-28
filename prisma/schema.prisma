@@ -7,10 +7,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A client (e.g. Personic Health) that may run several practices under different
+// business names / Tax IDs, typically one per state.
+model Organization {
+  id        String     @id @default(cuid())
+  name      String
+  createdAt DateTime   @default(now())
+  practices Practice[]
+}
+
 model Practice {
   id           String        @id @default(cuid())
   name         String
   slug         String        @unique
+  state        String?
+  organizationId String?
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   createdAt    DateTime      @default(now())
   locations    Location[]
   users        User[]
@@ -25,12 +37,15 @@ model Practice {
   availability ProviderAvailability[]
   reservedTimes ReservedTime[]
   payers       Payer[]
-  referringPhysicians ReferringPhysician[]
   eligibilityChecks EligibilityCheck[]
   billingProviders BillingProvider[]
   deposits     Deposit[]
   superbillTemplates SuperbillTemplate[]
   statements   Statement[]
+  renderingProviders RenderingProvider[]
+  intakeCases  IntakeCase[]
+  claims       Claim[]
+  codes        PracticeCode[]
 }
 
 model Membership {
@@ -59,6 +74,8 @@ model Location {
   appointments Appointment[]
   availability ProviderAvailability[]
   reservedTimes ReservedTime[]
+  npi          String?
+  claims       Claim[]
 }
 
 model User {
@@ -66,6 +83,9 @@ model User {
   practiceId  String
   practice    Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   email       String        @unique
+  username    String?       @unique
+  // Master login: consolidated cross-practice views across every practice the user belongs to.
+  isMaster    Boolean       @default(false)
   name        String
   role        String        @default("CLINICIAN")
   passwordHash String
@@ -84,6 +104,22 @@ model User {
   debridements     Debridement[]     @relation("DebridementPerformer")
   availability     ProviderAvailability[] @relation("ProviderAvailability")
   reservedTimes    ReservedTime[]         @relation("ProviderReservedTime")
+  renderingProvider        RenderingProvider?
+  enrollmentAssignments    ProviderEnrollment[] @relation("EnrollmentAssignee")
+  enrollmentActivities     EnrollmentActivity[]
+  documentsUploaded        ProviderDocument[]   @relation("DocumentUploader")
+  verificationChecks       PrimarySourceCheck[]
+  intakeCasesOwned         IntakeCase[]         @relation("IntakeOwner")
+  intakeActivities         IntakeActivity[]
+  encountersAsStaff        Encounter[]          @relation("EncounterClinicalStaff")
+  encountersCoded          Encounter[]          @relation("EncounterCoder")
+  appointmentsAsStaff      Appointment[]        @relation("AppointmentClinicalStaff")
+  encounterSignatures      EncounterSignature[]
+  encounterEvents          EncounterEvent[]
+  claimEvents              ClaimEvent[]
+  // Provider signature on file (PNG data URL), stamped onto signed records.
+  signatureImage           String?
+  signatureUpdatedAt       DateTime?
 }
 
 model ProviderAvailability {
@@ -155,7 +191,7 @@ model Patient {
   status          String        @default("ACTIVE")
   preferredLanguage String?
   referringPhysicianId String?
-  referringPhysician   ReferringPhysician? @relation(fields: [referringPhysicianId], references: [id])
+  referringPhysician   RenderingProvider? @relation("ReferringProvider", fields: [referringPhysicianId], references: [id], onDelete: SetNull)
   race            String?
   ethnicity       String?
   maritalStatus   String?
@@ -182,8 +218,10 @@ model Patient {
   wounds          Wound[]
   eligibilityChecks EligibilityCheck[]
   statements      Statement[]
+  intakeCases     IntakeCase[]
 
   @@unique([practiceId, mrn])
+  claims          Claim[]
 }
 
 model Insurance {
@@ -196,6 +234,22 @@ model Insurance {
   groupNumber String?
   planName   String?
   isPrimary  Boolean  @default(true)
+  // PRIMARY | SECONDARY | TERTIARY
+  rank       String   @default("PRIMARY")
+  // X12 individual relationship code: 18 self, 01 spouse, 19 child, G8 other
+  relationshipToInsured String @default("18")
+  insuredFirstName  String?
+  insuredLastName   String?
+  insuredDob        DateTime?
+  insuredSex        String?
+  insuredAddressLine1 String?
+  insuredCity       String?
+  insuredState      String?
+  insuredZip        String?
+  effectiveDate     DateTime?
+  terminationDate   DateTime?
+  active     Boolean  @default(true)
+  claims     Claim[]
 }
 
 model Payer {
@@ -211,8 +265,36 @@ model Payer {
   zip          String?
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now())
+  portalName   String?
+  parentPayerId String?
+  parentPayer  Payer?      @relation("PayerFollows", fields: [parentPayerId], references: [id])
+  childPayers  Payer[]     @relation("PayerFollows")
+  // Unified "Add Insurance" fields. payerCode doubles as the EDI (claims) payer ID.
+  insuranceType         String?
+  eraPayerId            String?
+  eligibilityPayerId    String?
+  alternatePayerId      String?
+  alternatePayer        Payer?  @relation("AlternatePayer", fields: [alternatePayerId], references: [id])
+  alternateFor          Payer[] @relation("AlternatePayer")
+  addressLine2          String?
+  fax                   String?
+  contactFirstName      String?
+  contactLastName       String?
+  contactPhone          String?
+  contactEmail          String?
+  facilityBilling       Boolean @default(false)
+  useGroupNpi           Boolean @default(false)
+  requiresVisitReview   Boolean @default(false)
+  timelyFilingLimit     Int?
+  timelyFilingUnit      String  @default("DAYS")
+  timelyFilingAlertDays Int?
+  reimbursementRate     Float?
+  notes                 String?
   insurances   Insurance[]
   eligibilityChecks EligibilityCheck[]
+  groupEnrollments GroupPayerEnrollment[]
+  intakeCases  IntakeCase[]
+  claims       Claim[]
 }
 
 model BillingProvider {
@@ -229,24 +311,171 @@ model BillingProvider {
   active       Boolean     @default(true)
   createdAt    DateTime    @default(now())
   encounters   Encounter[]
+  payerEnrollments GroupPayerEnrollment[]
+  taxonomy     String?
+  phone        String?
+  claims       Claim[]
 }
 
-model ReferringPhysician {
-  id           String   @id @default(cuid())
-  practiceId   String
-  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
-  name         String
-  npi          String?
-  specialty    String?
-  phone        String?
-  fax          String?
-  addressLine1 String?
-  city         String?
-  state        String?
-  zip          String?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  patients     Patient[]
+// Group-level enrollment: one group (billing entity) x one payer line.
+model GroupPayerEnrollment {
+  id                String          @id @default(cuid())
+  billingProviderId String
+  billingProvider   BillingProvider @relation(fields: [billingProviderId], references: [id], onDelete: Cascade)
+  payerId           String
+  payer             Payer           @relation(fields: [payerId], references: [id], onDelete: Cascade)
+  planSegment       String          @default("COMMERCIAL")
+  planType          String?
+  groupStatus       String          @default("NOT_STARTED")
+  ediStatus         String          @default("NOT_STARTED")
+  eftStatus         String          @default("NOT_STARTED")
+  effectiveDate     DateTime?
+  payerGroupId      String?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  providerEnrollments ProviderEnrollment[]
+
+  @@unique([billingProviderId, payerId, planSegment])
+}
+
+// One record per provider, carrying any mix of roles (referring, clinician,
+// rendering, supervising). Only rendering providers are credentialed with payers.
+model RenderingProvider {
+  id                    String    @id @default(cuid())
+  practiceId            String
+  practice              Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId                String?   @unique
+  user                  User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Display name, kept as "Last, First Middle" from the name parts below.
+  name                  String
+  title                 String?
+  firstName             String?
+  middleName            String?
+  lastName              String?
+  suffix                String?
+  isReferring           Boolean   @default(false)
+  isClinician           Boolean   @default(false)
+  isRendering           Boolean   @default(false)
+  isSupervising         Boolean   @default(false)
+  tin                   String?
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  state                 String?
+  zip                   String?
+  phone                 String?
+  fax                   String?
+  pager                 String?
+  email                 String?
+  signatureOnFile       Boolean   @default(false)
+  primarySupervising    Boolean   @default(false)
+  groupName             String?
+  acceptsAssignment     Boolean   @default(false)
+  requiresSupervision   Boolean   @default(false)
+  deaNumber             String?
+  ePrescribe            Boolean   @default(false)
+  interfaceId           String?
+  referredPatients      Patient[] @relation("ReferringProvider")
+  credential            String?
+  npi                   String?
+  taxonomy              String?
+  specialty             String?
+  licenseNumber         String?
+  licenseState          String?
+  caqhId                String?
+  status                String    @default("ACTIVE")
+  termDate              DateTime?
+  supervisingProviderId String?
+  supervisingProvider   RenderingProvider?  @relation("Supervision", fields: [supervisingProviderId], references: [id])
+  supervisees           RenderingProvider[] @relation("Supervision")
+  createdAt             DateTime  @default(now())
+  enrollments           ProviderEnrollment[]
+  documents             ProviderDocument[]
+  verificationChecks    PrimarySourceCheck[]
+  intakeAssignments     IntakeCase[]         @relation("IntakeProvider")
+  supervisedEncounters  Encounter[]          @relation("EncounterSupervisor")
+  supervisedAppointments Appointment[]       @relation("AppointmentSupervisor")
+  claimsRendering       Claim[]              @relation("ClaimRendering")
+  claimsReferring       Claim[]              @relation("ClaimReferring")
+  claimsSupervising     Claim[]              @relation("ClaimSupervising")
+  claimsOrdering        Claim[]              @relation("ClaimOrdering")
+}
+
+// The unit of credentialing work: one provider x one group-payer line (x state).
+model ProviderEnrollment {
+  id                     String               @id @default(cuid())
+  renderingProviderId    String
+  renderingProvider      RenderingProvider    @relation(fields: [renderingProviderId], references: [id], onDelete: Cascade)
+  groupPayerEnrollmentId String
+  groupPayerEnrollment   GroupPayerEnrollment @relation(fields: [groupPayerEnrollmentId], references: [id], onDelete: Cascade)
+  state                  String?
+  planTypes              String?
+  status                 String               @default("NOT_STARTED")
+  priority               String               @default("MEDIUM")
+  assignedToId           String?
+  assignedTo             User?                @relation("EnrollmentAssignee", fields: [assignedToId], references: [id])
+  submittedDate          DateTime?
+  effectiveDate          DateTime?
+  termDate               DateTime?
+  revalidationDate       DateTime?
+  followUpDate           DateTime?
+  payerProviderId        String?
+  blockingReason         String?
+  nextAction             String?
+  approvalLetterPath     String?
+  approvalLetterName     String?
+  notes                  String?
+  statusChangedAt        DateTime             @default(now())
+  lastActivityAt         DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  activities             EnrollmentActivity[]
+
+  @@unique([renderingProviderId, groupPayerEnrollmentId])
+}
+
+model EnrollmentActivity {
+  id              String             @id @default(cuid())
+  enrollmentId    String
+  enrollment      ProviderEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  occurredAt      DateTime           @default(now())
+  channel         String
+  referenceNumber String?
+  repName         String?
+  note            String
+  loggedById      String?
+  loggedBy        User?              @relation(fields: [loggedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime           @default(now())
+}
+
+model ProviderDocument {
+  id                  String            @id @default(cuid())
+  renderingProviderId String
+  renderingProvider   RenderingProvider @relation(fields: [renderingProviderId], references: [id], onDelete: Cascade)
+  type                String
+  fileName            String
+  filePath            String
+  mimeType            String
+  issueDate           DateTime?
+  expiryDate          DateTime?
+  supersededAt        DateTime?
+  uploadedById        String?
+  uploadedBy          User?             @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt           DateTime          @default(now())
+}
+
+// Primary source verification / exclusion screening audit trail.
+model PrimarySourceCheck {
+  id                  String            @id @default(cuid())
+  renderingProviderId String
+  renderingProvider   RenderingProvider @relation(fields: [renderingProviderId], references: [id], onDelete: Cascade)
+  source              String
+  result              String
+  notes               String?
+  checkedAt           DateTime          @default(now())
+  checkedById         String?
+  checkedBy           User?             @relation(fields: [checkedById], references: [id], onDelete: SetNull)
 }
 
 model Allergy {
@@ -301,6 +530,16 @@ model Appointment {
   createdAt   DateTime   @default(now())
   encounter   Encounter?
   eligibilityChecks EligibilityCheck[]
+  placeOfService        String?
+  room                  String?
+  clinicalStaffId       String?
+  clinicalStaff         User?     @relation("AppointmentClinicalStaff", fields: [clinicalStaffId], references: [id], onDelete: SetNull)
+  supervisingProviderId String?
+  supervisingProvider   RenderingProvider? @relation("AppointmentSupervisor", fields: [supervisingProviderId], references: [id], onDelete: SetNull)
+  intakeCaseId          String?
+  intakeCase            IntakeCase? @relation(fields: [intakeCaseId], references: [id], onDelete: SetNull)
+  seriesId              String?
+  conflictNote          String?
 }
 
 model Encounter {
@@ -315,6 +554,8 @@ model Encounter {
   appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
   date          DateTime      @default(now())
   type          String        @default("OFFICE")
+  // Visit workflow: IN_PROGRESS -> READY_FOR_CDS (or CDS_QUERY) -> READY_FOR_SIGNATURE -> READY_FOR_BILLING -> BILLED,
+  // plus holds BILLING_HOLD / HOLD_FOR_AUDIT / DO_NOT_BILL.
   status        String        @default("IN_PROGRESS")
   chiefComplaint String?
   subjective    String?
@@ -334,6 +575,25 @@ model Encounter {
   diagnoses     EncounterDiagnosis[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  statusChangedAt     DateTime  @default(now())
+  placeOfService      String?
+  clinicalStaffId     String?
+  clinicalStaff       User?     @relation("EncounterClinicalStaff", fields: [clinicalStaffId], references: [id], onDelete: SetNull)
+  supervisingProviderId String?
+  supervisingProvider RenderingProvider? @relation("EncounterSupervisor", fields: [supervisingProviderId], references: [id], onDelete: SetNull)
+  submittedToCdsAt    DateTime?
+  cdsQueryNote        String?
+  codedById           String?
+  codedBy             User?     @relation("EncounterCoder", fields: [codedById], references: [id], onDelete: SetNull)
+  codedAt             DateTime?
+  finalizedAt         DateTime?
+  holdReason          String?
+  holdFromStatus      String?
+  signatures          EncounterSignature[]
+  events              EncounterEvent[]
+  // Practice Mate style visit billing status (OPEN, READY_FOR_CLAIM, CLAIM_CREATED_PRIMARY, ...).
+  billingStatus       String    @default("OPEN")
+  claims              Claim[]
 }
 
 model EncounterDiagnosis {
@@ -399,31 +659,89 @@ model Charge {
   modifiers   String?
   diagnosisPointers String?
   placeOfService String  @default("11")
-  claim       Claim?
+  claimLines  ClaimLine[]
   debridement Debridement?
 }
 
+// One claim per visit and payer (primary / secondary / tertiary), carrying every CMS-1500 / 837P field.
 model Claim {
   id            String    @id @default(cuid())
-  chargeId      String    @unique
-  charge        Charge    @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  practiceId    String
+  practice      Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  encounterId   String
+  encounter     Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  payerRank     String    @default("PRIMARY")
+  insuranceId   String?
+  insurance     Insurance? @relation(fields: [insuranceId], references: [id], onDelete: SetNull)
+  payerId       String?
+  payer         Payer?    @relation(fields: [payerId], references: [id], onDelete: SetNull)
   payerName     String
+  formType      String    @default("CMS1500")
+  // 1 original, 7 replacement/corrected, 8 void (CLM05-3 / box 22)
+  frequencyCode String    @default("1")
+  originalReference String?
+  replacesClaimId String?
   status        String    @default("DRAFT")
-  billedCents   Int
+
+  placeOfService        String?
+  billingProviderId     String?
+  billingProvider       BillingProvider?   @relation(fields: [billingProviderId], references: [id], onDelete: SetNull)
+  renderingProviderId   String?
+  renderingProvider     RenderingProvider? @relation("ClaimRendering", fields: [renderingProviderId], references: [id], onDelete: SetNull)
+  referringProviderId   String?
+  referringProvider     RenderingProvider? @relation("ClaimReferring", fields: [referringProviderId], references: [id], onDelete: SetNull)
+  supervisingProviderId String?
+  supervisingProvider   RenderingProvider? @relation("ClaimSupervising", fields: [supervisingProviderId], references: [id], onDelete: SetNull)
+  orderingProviderId    String?
+  orderingProvider      RenderingProvider? @relation("ClaimOrdering", fields: [orderingProviderId], references: [id], onDelete: SetNull)
+  serviceLocationId     String?
+  serviceLocation       Location?          @relation(fields: [serviceLocationId], references: [id], onDelete: SetNull)
+
+  priorAuthNumber       String?
+  referralNumber        String?
+  patientAccountNumber  String?
+  acceptAssignment      Boolean   @default(true)
+  employmentRelated     Boolean   @default(false)
+  autoAccident          Boolean   @default(false)
+  autoAccidentState     String?
+  otherAccident         Boolean   @default(false)
+  onsetDate             DateTime?
+  initialTreatmentDate  DateTime?
+  unableToWorkFrom      DateTime?
+  unableToWorkTo        DateTime?
+  hospitalFrom          DateTime?
+  hospitalTo            DateTime?
+  claimNote             String?
+  outsideLab            Boolean   @default(false)
+  outsideLabChargesCents Int?
+  cliaNumber            String?
+  delayReasonCode       String?
+
+  billedCents   Int       @default(0)
   paidCents     Int       @default(0)
   adjustedCents Int       @default(0)
+  balanceResponsibility String @default("INSURANCE")
   denialReason  String?
+  statusNote    String?
   attempt       Int       @default(1)
   submittedAt   DateTime?
   createdAt     DateTime  @default(now())
-  balanceResponsibility String @default("INSURANCE")
-  statusNote    String?
-  applications  PaymentApplication[]
-  statementLines StatementLine[]
+  updatedAt     DateTime  @updatedAt
 
   clearinghouseStatus   String?
   clearinghouseClaimId  String?
   rejectionReason       String?
+
+  lines          ClaimLine[]
+  diagnoses      ClaimDiagnosis[]
+  events         ClaimEvent[]
+  applications   PaymentApplication[]
+  statementLines StatementLine[]
+
+  @@index([practiceId, status])
+  @@index([encounterId])
 }
 
 model SuperbillTemplate {
@@ -593,4 +911,209 @@ model EligibilityCheck {
   outOfPocketRemainingCents Int?
   payerMessage  String?
   checkedAt     DateTime     @default(now())
+}
+
+// Patient Gateway: the pre-scheduling case every new referral moves through.
+// Team 1 (data entry) -> Team 2 (verification: EVBV, prior auth, PCC referral) -> Team 3 (scheduling).
+model IntakeCase {
+  id                    String    @id @default(cuid())
+  practiceId            String
+  practice              Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId             String
+  patient               Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // DATA_ENTRY | VERIFICATION | AUTH_PENDING | PCC_REFERRAL | SCHEDULING | SCHEDULED | CLOSED
+  stage                 String    @default("DATA_ENTRY")
+  priority              String    @default("NORMAL")
+  ownerId               String?
+  owner                 User?     @relation("IntakeOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  holdReason            String?
+  stageChangedAt        DateTime  @default(now())
+
+  // Team 1: referral source
+  referralDate          DateTime?
+  referralSourceType    String?
+  referralSourceName    String?
+  referralContactName   String?
+  referralContactPhone  String?
+  referralContactFax    String?
+  servicesRequested     String?
+  referralNotes         String?
+  dataEntryCompletedAt  DateTime?
+
+  // Team 2: eligibility & benefits
+  payerId               String?
+  payer                 Payer?    @relation(fields: [payerId], references: [id], onDelete: SetNull)
+  planSegment           String?
+  memberId              String?
+  eligibilityStatus     String    @default("PENDING")
+  coverageEffectiveDate DateTime?
+  coverageTermDate      DateTime?
+  copayCents            Int?
+  deductibleCents       Int?
+  deductibleMetCents    Int?
+  coinsurancePercent    Int?
+  outOfPocketRemainingCents Int?
+  verifiedAt            DateTime?
+  verifiedWith          String?
+  verificationReference String?
+  benefitsNotes         String?
+  // Prior authorization
+  authRequired          String    @default("UNKNOWN")
+  authStatus            String    @default("NOT_REQUIRED")
+  authNumber            String?
+  authSubmittedAt       DateTime?
+  authDecisionAt        DateTime?
+  authStartDate         DateTime?
+  authEndDate           DateTime?
+  authVisitsApproved    Int?
+  authNotes             String?
+  // Referral from the PCP, worked by the PCC team
+  referralRequired      String    @default("UNKNOWN")
+  referralStatus        String    @default("NOT_REQUIRED")
+  referralNumber        String?
+  pccSentAt             DateTime?
+  pccNotes              String?
+  // Rendering provider who will see the patient; drives the credentialing check.
+  assignedProviderId    String?
+  assignedProvider      RenderingProvider? @relation("IntakeProvider", fields: [assignedProviderId], references: [id], onDelete: SetNull)
+  networkOverrideNote   String?
+  approvedForServiceAt  DateTime?
+
+  // Team 3: scheduling
+  consentTreatment      Boolean   @default(false)
+  consentHipaa          Boolean   @default(false)
+  consentFinancial      Boolean   @default(false)
+  consentAssignment     Boolean   @default(false)
+  consentsCompletedAt   DateTime?
+  pcpName               String?
+  pcpPhone              String?
+  pcpFax                String?
+  referralAppStatus     String    @default("NOT_STARTED")
+  scheduledAt           DateTime?
+  // FOLLOW_UP | ACTIVE | INACTIVE | LIMITED
+  careStatus            String?
+  providerBrief         String?
+  closedReason          String?
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  activities            IntakeActivity[]
+
+  @@index([practiceId, stage])
+  appointments          Appointment[]
+}
+
+model IntakeActivity {
+  id         String     @id @default(cuid())
+  caseId     String
+  case       IntakeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  stage      String
+  action     String
+  note       String?
+  createdAt  DateTime   @default(now())
+}
+
+// A provider's attestation and signature on a visit. The rendering provider always signs; a supervising
+// physician co-signs when the visit was performed under supervision.
+model EncounterSignature {
+  id          String    @id @default(cuid())
+  encounterId String
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  role        String    // PROVIDER | SUPERVISOR
+  signedName  String
+  attestation String
+  signedAt    DateTime  @default(now())
+
+  @@unique([encounterId, role])
+  // Snapshot of the signer's signature image at the moment of signing.
+  signatureImage String?
+}
+
+// Status history of a visit as it moves between the provider, CDS and billing.
+model EncounterEvent {
+  id          String    @id @default(cuid())
+  encounterId String
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  fromStatus  String?
+  toStatus    String
+  note        String?
+  createdAt   DateTime  @default(now())
+}
+
+// Service line (box 24) — copied from the visit's charges when the claim is created, then edited on the claim.
+model ClaimLine {
+  id           String   @id @default(cuid())
+  claimId      String
+  claim        Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  chargeId     String?
+  charge       Charge?  @relation(fields: [chargeId], references: [id], onDelete: SetNull)
+  lineNumber   Int
+  dosFrom      DateTime
+  dosTo        DateTime
+  placeOfService String
+  emergency    Boolean  @default(false)
+  cptCode      String
+  modifiers    String?
+  // Diagnosis pointer letters, e.g. "A,B" (box 24E)
+  pointers     String
+  units        Float    @default(1)
+  chargeCents  Int
+  ndcCode      String?
+  ndcQuantity  Float?
+  ndcUnit      String?
+  lineNote     String?
+  paidCents    Int      @default(0)
+  adjustedCents Int     @default(0)
+}
+
+// Box 21 diagnosis codes A–L, in order.
+model ClaimDiagnosis {
+  id          String @id @default(cuid())
+  claimId     String
+  claim       Claim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  sequence    Int
+  icd10       String
+  description String?
+
+  @@unique([claimId, sequence])
+}
+
+// Claim change log: field edits, status changes, submissions.
+model ClaimEvent {
+  id        String   @id @default(cuid())
+  claimId   String
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  field     String?
+  oldValue  String?
+  newValue  String?
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+// Practice code lists for the superbill: ICD-10 favorites and CPT/HCPCS codes with fees.
+model PracticeCode {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // ICD10 | CPT
+  type        String
+  code        String
+  description String
+  category    String?
+  feeCents    Int?
+  modifiers   String?
+  favorite    Boolean  @default(true)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([practiceId, type, code])
 }

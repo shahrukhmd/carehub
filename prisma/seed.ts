@@ -1,8 +1,278 @@
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
+import { seedGateway } from "./seed-gateway";
+import { seedVisits } from "./seed-visits";
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD_HASH = hashPassword("carehub123");
+
+function daysFromNow(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+// Minimal one-page PDF so seeded document links open something real.
+function placeholderPdf(title: string) {
+  const text = title.replace(/[()\\]/g, "");
+  const stream = `BT /F1 18 Tf 72 720 Td (${text}) Tj 0 -28 Td /F1 11 Tf (CareHub demo placeholder - not a real credential) Tj ET`;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((obj, i) => {
+    offsets.push(body.length);
+    body += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  body += offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return body;
+}
+
+async function seedCredentialing(ctx: {
+  practiceId: string;
+  groupId: string;
+  payers: { horizonBcbs: { id: string }; medicare: { id: string }; aetna: { id: string } };
+  maya: { id: string };
+  james: { id: string };
+  lead: { id: string };
+}) {
+  const { practiceId, groupId, payers, lead } = ctx;
+
+  const [horizonLine, medicareLine, aetnaLine] = await Promise.all([
+    prisma.groupPayerEnrollment.create({
+      data: {
+        billingProviderId: groupId,
+        payerId: payers.horizonBcbs.id,
+        planType: "Commercial PPO, HMO, EPO",
+        groupStatus: "APPROVED",
+        ediStatus: "APPROVED",
+        eftStatus: "APPROVED",
+        effectiveDate: new Date("2024-01-01"),
+        payerGroupId: "HBC-GRP-77120",
+      },
+    }),
+    prisma.groupPayerEnrollment.create({
+      data: {
+        billingProviderId: groupId,
+        payerId: payers.medicare.id,
+        planSegment: "MEDICARE",
+        planType: "Medicare",
+        groupStatus: "APPROVED",
+        ediStatus: "APPROVED",
+        eftStatus: "APPROVED",
+        effectiveDate: new Date("2023-07-01"),
+        payerGroupId: "PTAN-G-448812",
+      },
+    }),
+    prisma.groupPayerEnrollment.create({
+      data: {
+        billingProviderId: groupId,
+        payerId: payers.aetna.id,
+        planType: "Commercial, Medicare Advantage",
+        groupStatus: "IN_PROCESS",
+        ediStatus: "IN_PROCESS",
+        eftStatus: "NOT_STARTED",
+      },
+    }),
+  ]);
+
+  const mayaProvider = await prisma.renderingProvider.create({
+    data: {
+      practiceId,
+      userId: ctx.maya.id,
+      name: "Chen, Maya",
+      firstName: "Maya",
+      lastName: "Chen",
+      isClinician: true,
+      isRendering: true,
+      isSupervising: true,
+      primarySupervising: true,
+      credential: "MD",
+      npi: "1234567890",
+      taxonomy: "Family Medicine",
+      specialty: "Family Medicine",
+      licenseNumber: "25MA04423100",
+      licenseState: "NJ",
+      caqhId: "16230098",
+    },
+  });
+  const jamesProvider = await prisma.renderingProvider.create({
+    data: {
+      practiceId,
+      userId: ctx.james.id,
+      name: "Okonkwo, James",
+      firstName: "James",
+      lastName: "Okonkwo",
+      isClinician: true,
+      isRendering: true,
+      requiresSupervision: true,
+      credential: "PA",
+      npi: "1987654321",
+      taxonomy: "Physician Assistant, Medical",
+      specialty: "Internal Medicine",
+      licenseNumber: "25MP00918800",
+      licenseState: "NJ",
+      caqhId: "16230177",
+    },
+  });
+  const lauraProvider = await prisma.renderingProvider.create({
+    data: {
+      practiceId,
+      name: "Cole, Laura",
+      firstName: "Laura",
+      lastName: "Cole",
+      isRendering: true,
+      requiresSupervision: true,
+      credential: "NP",
+      npi: "1558890123",
+      taxonomy: "Nurse Practitioner, Family",
+      specialty: "Wound care",
+      licenseNumber: "26NJ00551200",
+      licenseState: "NJ",
+      caqhId: "16230251",
+      supervisingProviderId: mayaProvider.id,
+    },
+  });
+
+  type Row = {
+    provider: string;
+    line: string;
+    status: string;
+    priority?: string;
+    submitted?: number;
+    effective?: Date;
+    revalidation?: number;
+    followUp?: number;
+    lastActivity?: number;
+    statusChanged?: number;
+    payerProviderId?: string;
+    blockingReason?: string;
+    nextAction?: string;
+    planTypes?: string;
+    activities?: { days: number; channel: string; ref?: string; rep?: string; note: string }[];
+  };
+  const rows: Row[] = [
+    {
+      provider: mayaProvider.id, line: horizonLine.id, status: "APPROVED", effective: new Date("2024-03-01"),
+      revalidation: 60, payerProviderId: "5986239", planTypes: "Commercial PPO, HMO, EPO", statusChanged: -540,
+      activities: [{ days: -540, channel: "EMAIL", note: "Welcome letter received; provider ID 5986239 effective 03/01/2024." }],
+    },
+    {
+      provider: mayaProvider.id, line: medicareLine.id, status: "APPROVED", effective: new Date("2023-07-01"),
+      revalidation: 900, payerProviderId: "PTAN 005799900", statusChanged: -800,
+    },
+    {
+      provider: mayaProvider.id, line: aetnaLine.id, status: "SUBMITTED", priority: "HIGH", submitted: -24,
+      followUp: -2, lastActivity: -18, statusChanged: -24,
+      activities: [{ days: -18, channel: "PORTAL", ref: "CR-100000609745", note: "Application submitted via Availity; confirmation received." }],
+    },
+    {
+      provider: jamesProvider.id, line: horizonLine.id, status: "PAYER_FOLLOW_UP", submitted: -40, followUp: 3,
+      lastActivity: -4, statusChanged: -12,
+      activities: [
+        { days: -12, channel: "PHONE", ref: "PR-8243200", rep: "Kim", note: "Rep confirmed application in review; call back in 2 weeks." },
+        { days: -4, channel: "CHAT", ref: "PR-8243200", rep: "Marcus", note: "Still pending medical director sign-off." },
+      ],
+    },
+    {
+      provider: jamesProvider.id, line: medicareLine.id, status: "BLOCKED", priority: "HIGH", submitted: -30,
+      lastActivity: -20, statusChanged: -20, blockingReason: "DEA certificate required",
+      nextAction: "Collect renewed DEA from provider and resubmit CMS-855I",
+    },
+    { provider: jamesProvider.id, line: aetnaLine.id, status: "PANEL_CLOSED", statusChanged: -60,
+      activities: [{ days: -60, channel: "PHONE", rep: "Dana", note: "Panel closed for PA in this county; re-check in 6 months." }] },
+    {
+      provider: lauraProvider.id, line: horizonLine.id, status: "BLOCKED", submitted: -35, lastActivity: -9,
+      statusChanged: -9, blockingReason: "Supervising physician needs to be added to the license",
+      nextAction: "Board of Nursing update for collaborating agreement with Dr. Chen",
+    },
+    { provider: lauraProvider.id, line: medicareLine.id, status: "SUBMITTED", submitted: -6, lastActivity: -6, statusChanged: -6,
+      activities: [{ days: -6, channel: "MAIL", note: "CMS-855I and 855R mailed to Novitas." }] },
+    { provider: lauraProvider.id, line: aetnaLine.id, status: "NOT_STARTED", statusChanged: -2 },
+  ];
+
+  const linePlanTypes = new Map([horizonLine, medicareLine, aetnaLine].map((l) => [l.id, l.planType]));
+  for (const r of rows) {
+    await prisma.providerEnrollment.create({
+      data: {
+        renderingProviderId: r.provider,
+        groupPayerEnrollmentId: r.line,
+        state: "NJ",
+        planTypes: r.planTypes ?? linePlanTypes.get(r.line) ?? null,
+        status: r.status,
+        priority: r.priority ?? "MEDIUM",
+        assignedToId: lead.id,
+        submittedDate: r.submitted !== undefined ? daysFromNow(r.submitted) : null,
+        effectiveDate: r.effective ?? null,
+        revalidationDate: r.revalidation !== undefined ? daysFromNow(r.revalidation) : null,
+        followUpDate: r.followUp !== undefined ? daysFromNow(r.followUp) : null,
+        lastActivityAt: r.lastActivity !== undefined ? daysFromNow(r.lastActivity) : null,
+        statusChangedAt: daysFromNow(r.statusChanged ?? 0),
+        payerProviderId: r.payerProviderId ?? null,
+        blockingReason: r.blockingReason ?? null,
+        nextAction: r.nextAction ?? null,
+        activities: {
+          create: (r.activities ?? []).map((a) => ({
+            occurredAt: daysFromNow(a.days),
+            channel: a.channel,
+            referenceNumber: a.ref ?? null,
+            repName: a.rep ?? null,
+            note: a.note,
+            loggedById: lead.id,
+          })),
+        },
+      },
+    });
+  }
+
+  const uploadDir = path.resolve(__dirname, "..", "uploads", practiceId);
+  await mkdir(uploadDir, { recursive: true });
+  const docs = [
+    { provider: mayaProvider.id, type: "STATE_LICENSE", name: "Chen_NJ_License.pdf", issue: -700, expiry: 25 },
+    { provider: mayaProvider.id, type: "DEA", name: "Chen_DEA.pdf", issue: -300, expiry: 420 },
+    { provider: mayaProvider.id, type: "CAQH_ATTESTATION", name: "Chen_CAQH_Attestation.pdf", issue: -110, expiry: 10 },
+    { provider: mayaProvider.id, type: "MALPRACTICE_COI", name: "Chen_COI_2026.pdf", issue: -200, expiry: 165 },
+    { provider: jamesProvider.id, type: "STATE_LICENSE", name: "Okonkwo_NJ_License.pdf", issue: -400, expiry: 330 },
+    { provider: lauraProvider.id, type: "SUPERVISION_AGREEMENT", name: "Cole_Collaborating_Agreement.pdf", issue: -40 },
+    { provider: lauraProvider.id, type: "STATE_LICENSE", name: "Cole_NJ_License.pdf", issue: -500, expiry: 75 },
+  ];
+  for (const d of docs) {
+    const stored = `seed-${d.name.toLowerCase().replace(/[^a-z0-9.]/g, "-")}`;
+    await writeFile(path.join(uploadDir, stored), placeholderPdf(d.name.replace(".pdf", "")));
+    await prisma.providerDocument.create({
+      data: {
+        renderingProviderId: d.provider,
+        type: d.type,
+        fileName: d.name,
+        filePath: `${practiceId}/${stored}`,
+        mimeType: "application/pdf",
+        issueDate: daysFromNow(d.issue),
+        expiryDate: d.expiry !== undefined ? daysFromNow(d.expiry) : null,
+        uploadedById: lead.id,
+      },
+    });
+  }
+
+  await prisma.primarySourceCheck.createMany({
+    data: [
+      { renderingProviderId: mayaProvider.id, source: "NPPES", result: "CLEAR", checkedAt: daysFromNow(-10), checkedById: lead.id, notes: "Name, taxonomy and location match NPPES." },
+      { renderingProviderId: mayaProvider.id, source: "OIG_LEIE", result: "CLEAR", checkedAt: daysFromNow(-10), checkedById: lead.id },
+      { renderingProviderId: mayaProvider.id, source: "SAM", result: "CLEAR", checkedAt: daysFromNow(-10), checkedById: lead.id },
+      { renderingProviderId: jamesProvider.id, source: "OIG_LEIE", result: "CLEAR", checkedAt: daysFromNow(-45), checkedById: lead.id },
+    ],
+  });
+}
 
 function atHour(dayOffset: number, hour: number, minute = 0) {
   const d = new Date();
@@ -12,6 +282,8 @@ function atHour(dayOffset: number, hour: number, minute = 0) {
 }
 
 async function main() {
+  // Uploaded files belong to the rows wiped below, so clear them together.
+  await rm(path.resolve(__dirname, "..", "uploads"), { recursive: true, force: true });
   await prisma.paymentApplication.deleteMany();
   await prisma.deposit.deleteMany();
   await prisma.claim.deleteMany();
@@ -36,10 +308,13 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.location.deleteMany();
   await prisma.practice.deleteMany();
+  await prisma.organization.deleteMany();
+
+  const demoOrg = await prisma.organization.create({ data: { name: "CareHub Demo Clinics" } });
 
   // --- Practice 1: Riverside Family Practice ---
   const riverside = await prisma.practice.create({
-    data: { name: "Riverside Family Practice", slug: "riverside" },
+    data: { name: "Riverside Family Practice", slug: "riverside", state: "NJ", organizationId: demoOrg.id },
   });
 
   const riversideMain = await prisma.location.create({
@@ -61,10 +336,15 @@ async function main() {
     prisma.payer.create({ data: { practiceId: riverside.id, name: "Independence Blue Cross", payerCode: "IBX01" } }),
   ]);
 
-  const drFoster = await prisma.referringPhysician.create({
+  const drFoster = await prisma.renderingProvider.create({
     data: {
       practiceId: riverside.id,
-      name: "Dr. Karen Foster",
+      name: "Foster, Karen",
+      title: "DR",
+      firstName: "Karen",
+      lastName: "Foster",
+      credential: "DPM",
+      isReferring: true,
       npi: "1467892345",
       specialty: "Podiatry",
       phone: "555-0177",
@@ -142,6 +422,16 @@ async function main() {
     }),
   ]);
 
+  const credentialingLead = await prisma.user.create({
+    data: {
+      practiceId: riverside.id,
+      name: "Nina Torres",
+      email: "nina.torres@carehub.local",
+      role: "CREDENTIALING",
+      passwordHash: DEMO_PASSWORD_HASH,
+    },
+  });
+
   const admin = await prisma.user.create({
     data: {
       practiceId: riverside.id,
@@ -159,7 +449,17 @@ async function main() {
       { userId: priya.id, practiceId: riverside.id, role: "FRONT_DESK" },
       { userId: alex.id, practiceId: riverside.id, role: "BILLER" },
       { userId: admin.id, practiceId: riverside.id, role: "ADMIN" },
+      { userId: credentialingLead.id, practiceId: riverside.id, role: "CREDENTIALING" },
     ],
+  });
+
+  await seedCredentialing({
+    practiceId: riverside.id,
+    groupId: riversideBillingProvider.id,
+    payers: { horizonBcbs, medicare, aetna },
+    maya,
+    james,
+    lead: credentialingLead,
   });
 
   const patients = await Promise.all([
@@ -330,7 +630,8 @@ async function main() {
       patientId: sofia.id,
       providerId: maya.id,
       type: "OFFICE",
-      status: "SIGNED",
+      status: "READY_FOR_BILLING",
+      billingStatus: "PATIENT_RESPONSIBILITY",
       chiefComplaint: "Well-child check",
       billingProviderId: riversideBillingProvider.id,
     },
@@ -346,13 +647,26 @@ async function main() {
   });
   await prisma.claim.create({
     data: {
-      chargeId: sofiaCharge.id,
+      practiceId: riverside.id,
+      encounterId: sofiaEncounter.id,
+      patientId: sofia.id,
       payerName: "Horizon Blue Cross",
+      payerId: horizonBcbs.id,
+      insuranceId: (await prisma.insurance.findFirstOrThrow({ where: { patientId: sofia.id } })).id,
+      billingProviderId: riversideBillingProvider.id,
+      patientAccountNumber: sofia.mrn,
+      placeOfService: "11",
       status: "PARTIAL",
       billedCents: 17500,
       paidCents: 14000,
       submittedAt: new Date(),
       balanceResponsibility: "PATIENT",
+      diagnoses: { create: [{ sequence: 0, icd10: "Z00.129", description: "Routine child health exam without abnormal findings" }] },
+      lines: {
+        create: [
+          { chargeId: sofiaCharge.id, lineNumber: 1, dosFrom: sofiaEncounter.date, dosTo: sofiaEncounter.date, placeOfService: "11", cptCode: "99392", pointers: "A", chargeCents: 17500 },
+        ],
+      },
     },
   });
 
@@ -476,13 +790,30 @@ async function main() {
 
   const elenaClaim = await prisma.claim.create({
     data: {
-      chargeId: charge.id,
+      practiceId: riverside.id,
+      encounterId: encounter.id,
+      patientId: encounter.patientId,
       payerName: "Horizon Blue Cross",
+      payerId: horizonBcbs.id,
+      insuranceId: (await prisma.insurance.findFirstOrThrow({ where: { patientId: encounter.patientId } })).id,
+      billingProviderId: riversideBillingProvider.id,
+      placeOfService: "11",
       status: "PARTIAL",
       billedCents: 18500,
       paidCents: 14000,
       submittedAt: new Date(),
       balanceResponsibility: "PATIENT",
+      diagnoses: {
+        create: [
+          { sequence: 0, icd10: "E11.9", description: "Type 2 diabetes mellitus" },
+          { sequence: 1, icd10: "I10", description: "Essential hypertension" },
+        ],
+      },
+      lines: {
+        create: [
+          { chargeId: charge.id, lineNumber: 1, dosFrom: encounter.date, dosTo: encounter.date, placeOfService: "11", cptCode: "99214", modifiers: "25", pointers: "A", chargeCents: 18500 },
+        ],
+      },
     },
   });
 
@@ -616,7 +947,7 @@ async function main() {
 
   // --- Practice 2: Lakeside Pediatrics (proves tenant isolation) ---
   const lakeside = await prisma.practice.create({
-    data: { name: "Lakeside Pediatrics", slug: "lakeside" },
+    data: { name: "Lakeside Pediatrics", slug: "lakeside", state: "PA", organizationId: demoOrg.id },
   });
 
   const lakesideMain = await prisma.location.create({
@@ -705,6 +1036,9 @@ async function main() {
     },
   });
 
+  await seedGateway(prisma, riverside.id, DEMO_PASSWORD_HASH);
+  await seedVisits(prisma, riverside.id, DEMO_PASSWORD_HASH);
+
   console.log("Seeded 2 demo practices.");
   console.log({
     riverside: {
@@ -712,6 +1046,8 @@ async function main() {
       providers: [maya.email, james.email],
       frontDesk: priya.email,
       biller: alex.email,
+      gateway: ["grace.kim@carehub.local (data entry)", "victor.hale@carehub.local (verification)", "sam.ortiz@carehub.local (scheduling)"],
+      cds: "carmen.diaz@carehub.local",
     },
     lakeside: {
       admin: "admin@lakeside.local",

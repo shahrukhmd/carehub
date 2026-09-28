@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { ENCOUNTER_VIEW_ROLES, canEditClinical, visitStatusLabel } from "@/lib/visit-workflow";
 import { saveWoundAssessment, updateWoundStatus } from "@/app/(app)/wounds/actions";
 import { WoundTrendChart } from "@/components/WoundTrendChart";
 import { StatusBadge } from "@/components/StatusBadge";
@@ -22,7 +23,7 @@ export default async function WoundPage({
 }: {
   params: Promise<{ id: string; woundId: string }>;
 }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const { id: encounterId, woundId } = await params;
 
   const encounter = await prisma.encounter.findFirst({
@@ -30,6 +31,7 @@ export default async function WoundPage({
     include: { patient: true },
   });
   if (!encounter) notFound();
+  const editable = canEditClinical(encounter.status, user.role);
 
   const wound = await prisma.wound.findFirst({
     where: { id: woundId, practiceId: user.practiceId, patientId: encounter.patientId },
@@ -65,7 +67,10 @@ export default async function WoundPage({
             {wound.onsetDate && <span>Onset {formatDate(wound.onsetDate)}</span>}
           </p>
         </div>
-        <div className="stack" style={{ gridAutoFlow: "column", gap: "0.5rem" }}>
+        <fieldset className="stack gw-fieldset" style={{ gridAutoFlow: "column", gap: "0.5rem" }} disabled={!editable}>
+          <Link className="btn ghost" href={`/encounters/${encounterId}#wounds`}>
+            « Back to chart
+          </Link>
           {wound.status !== "HEALED" && (
             <form action={updateWoundStatus.bind(null, wound.id, encounterId, "HEALED")}>
               <button className="btn secondary" type="submit">
@@ -87,7 +92,7 @@ export default async function WoundPage({
               </button>
             </form>
           )}
-        </div>
+        </fieldset>
       </div>
 
       <div className="two-col">
@@ -139,6 +144,8 @@ export default async function WoundPage({
           )}
         </div>
 
+        {!editable && <p className="muted">This chart is {visitStatusLabel[encounter.status] ?? encounter.status} — wound documentation is read-only.</p>}
+        <fieldset className="gw-fieldset" disabled={!editable}>
         <form className="panel stack" action={saveWoundAssessment.bind(null, wound.id, encounterId)}>
           <h2>New assessment</h2>
 
@@ -334,6 +341,7 @@ export default async function WoundPage({
             Save assessment
           </button>
         </form>
+        </fieldset>
       </div>
     </>
   );

@@ -1,112 +1,97 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
-import { StatusBadge } from "@/components/StatusBadge";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { formatMoney, formatTime, patientName } from "@/lib/format";
+import { prisma } from "@/lib/prisma";
+import {
+  GATEWAY_ROLES,
+  OPEN_INTAKE_STAGES,
+  canWorkTeam,
+  defaultTeamForRole,
+  intakeStageLabel,
+  teamLabel,
+  teamStages,
+  type GatewayTeam,
+} from "@/lib/gateway";
+import { BoardTab, RegistryTab, TeamQueueTab, TodayTab, type GatewaySearch } from "./gateway/views";
 
-export default async function DashboardPage() {
+const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
+  { key: "data-entry", team: "DATA_ENTRY" },
+  { key: "verification", team: "VERIFICATION" },
+  { key: "scheduling", team: "SCHEDULING" },
+];
+
+export default async function PatientGatewayPage({ searchParams }: { searchParams: Promise<GatewaySearch> }) {
   const user = await requireUser();
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  // Billing and credentialing staff work outside the gateway; send them to their own home.
+  if (!GATEWAY_ROLES.includes(user.role)) redirect(user.role === "CREDENTIALING" ? "/credentialing" : user.role === "CDS" ? "/encounters" : "/billing");
 
-  const [todayAppts, patientCount, openCharts, claims] = await Promise.all([
-    prisma.appointment.findMany({
-      where: { practiceId: user.practiceId, startsAt: { gte: start, lt: end } },
-      include: { patient: true, provider: true },
-      orderBy: { startsAt: "asc" },
-    }),
-    prisma.patient.count({ where: { practiceId: user.practiceId } }),
-    prisma.encounter.count({ where: { practiceId: user.practiceId, status: { not: "SIGNED" } } }),
-    prisma.claim.findMany({ where: { charge: { practiceId: user.practiceId } } }),
-  ]);
+  const sp = await searchParams;
+  const ownTeam = defaultTeamForRole(user.role);
+  const defaultTab = ownTeam
+    ? TEAM_TABS.find((t) => t.team === ownTeam)!.key
+    : user.role === "CLINICIAN"
+      ? "today"
+      : "board";
+  const tab = sp.tab ?? defaultTab;
 
-  const billed = claims.reduce((s, c) => s + c.billedCents, 0);
-  const paid = claims.reduce((s, c) => s + c.paidCents, 0);
-  const aging = claims.filter((c) => c.status === "SUBMITTED").length;
+  const counts = await prisma.intakeCase.groupBy({
+    by: ["stage"],
+    where: { practiceId: user.practiceId },
+    _count: { _all: true },
+  });
+  const countFor = (stage: string) => counts.find((c) => c.stage === stage)?._count._all ?? 0;
+  const teamCount = (team: GatewayTeam) =>
+    teamStages[team].filter((s) => s !== "SCHEDULED").reduce((n, s) => n + countFor(s), 0);
+
+  const tabs = [
+    ...TEAM_TABS.map((t) => ({ key: t.key, label: `${teamLabel[t.team]} (${teamCount(t.team)})` })),
+    { key: "board", label: "Pipeline board" },
+    { key: "registry", label: "Patient registry" },
+    { key: "today", label: "Today" },
+  ];
 
   return (
     <>
       <div className="page-head">
         <div>
-          <p className="muted">Today</p>
-          <h1>Command center</h1>
+          <p className="muted">Pre-scheduling console · Data entry → Verification → Scheduling</p>
+          <h1>Patient Gateway</h1>
         </div>
-        <Link className="btn" href="/patients/new">
-          Register patient
-        </Link>
+        {canWorkTeam(user.role, "DATA_ENTRY") && (
+          <Link className="btn" href="/patients/new">
+            + Register patient
+          </Link>
+        )}
       </div>
 
-      <section className="grid-stats">
-        <div className="stat">
-          <span>Today&apos;s visits</span>
-          <strong>{todayAppts.length}</strong>
-        </div>
-        <div className="stat">
-          <span>Active patients</span>
-          <strong>{patientCount}</strong>
-        </div>
-        <div className="stat">
-          <span>Unsigned charts</span>
-          <strong>{openCharts}</strong>
-        </div>
-        <div className="stat">
-          <span>AR (billed / paid)</span>
-          <strong>
-            {formatMoney(billed)} / {formatMoney(paid)}
-          </strong>
-        </div>
+      <section className="gw-pipeline" aria-label="Cases by stage">
+        {[...OPEN_INTAKE_STAGES, "SCHEDULED"].map((stage, i) => (
+          <Link
+            key={stage}
+            href={`/?tab=registry&stage=${stage}`}
+            className={`gw-pipe-step gw-stage-${stage.toLowerCase()}`}
+          >
+            <span className="gw-pipe-num">{i + 1}</span>
+            <span>{intakeStageLabel[stage]}</span>
+            <strong>{countFor(stage)}</strong>
+          </Link>
+        ))}
       </section>
 
-      <div className="two-col">
-        <section className="panel">
-          <h2>Front-desk board</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Patient</th>
-                <th>Provider</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {todayAppts.map((appt) => (
-                <tr key={appt.id}>
-                  <td>{formatTime(appt.startsAt)}</td>
-                  <td>
-                    <Link href={`/patients/${appt.patientId}`}>{patientName(appt.patient)}</Link>
-                    <div className="muted">{appt.reason}</div>
-                  </td>
-                  <td>{appt.provider.name}</td>
-                  <td>
-                    <StatusBadge value={appt.status} />
-                  </td>
-                </tr>
-              ))}
-              {todayAppts.length === 0 && (
-                <tr>
-                  <td colSpan={4}>No visits on the board. Book from Schedule.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
-        <section className="panel">
-          <h2>Work queues</h2>
-          <p>
-            <Link href="/encounters">{openCharts} charts waiting to sign</Link>
-          </p>
-          <p>
-            <Link href="/billing">{aging} claims in submitted / not paid</Link>
-          </p>
-          <p className="muted">
-            CareHub ties registration, the appointment book, the encounter, and the claim on one patient record so front
-            office, clinicians, and billing share the same source of truth.
-          </p>
-        </section>
-      </div>
+      <nav className="view-tabs" style={{ margin: "0.9rem 0", width: "fit-content", flexWrap: "wrap" }}>
+        {tabs.map((t) => (
+          <Link key={t.key} href={`/?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+
+      {TEAM_TABS.filter((t) => t.key === tab).map((t) => (
+        <TeamQueueTab key={t.key} team={t.team} tabKey={t.key} user={user} sp={sp} />
+      ))}
+      {tab === "board" && <BoardTab user={user} />}
+      {tab === "registry" && <RegistryTab user={user} sp={sp} />}
+      {tab === "today" && <TodayTab user={user} />}
     </>
   );
 }

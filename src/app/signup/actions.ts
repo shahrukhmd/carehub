@@ -42,10 +42,13 @@ export async function signup(formData: FormData) {
   }
 
   const { practice, admin } = await prisma.$transaction(async (tx) => {
+    const organization = await tx.organization.create({ data: { name: practiceName } });
     const practice = await tx.practice.create({
       data: {
         name: practiceName,
         slug,
+        state,
+        organizationId: organization.id,
         locations: { create: { name: locationName, city, state } },
       },
     });

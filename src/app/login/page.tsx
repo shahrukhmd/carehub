@@ -25,14 +25,14 @@ export default async function LoginPage({
         </div>
 
         <form className="panel stack" action={login}>
-          {error && <p className="login-error">Incorrect email or password.</p>}
+          {error && <p className="login-error">Incorrect username or password.</p>}
           <label>
-            Email
-            <input name="email" type="email" required autoFocus />
+            Username or email
+            <input name="username" autoComplete="username" required autoFocus />
           </label>
           <label>
             Password
-            <input name="password" type="password" required />
+            <input name="password" type="password" autoComplete="current-password" required />
           </label>
           <button className="btn" type="submit">
             Sign in

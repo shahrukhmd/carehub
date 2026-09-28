@@ -11,7 +11,7 @@ import {
   updateStaffRole,
 } from "./actions";
 
-const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER"];
+const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"];
 
 export default async function StaffPage() {
   const me = await requireUser(["ADMIN"]);

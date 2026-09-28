@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { assertChartEditable } from "@/lib/visit-guard";
 import { logAudit } from "@/lib/audit";
 import {
   type BwatItems,
@@ -43,6 +44,7 @@ async function photoToDataUrl(formData: FormData): Promise<string | null> {
 
 export async function createWound(patientId: string, encounterId: string, formData: FormData) {
   const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  await assertChartEditable(encounterId, user, "clinical");
   await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, patientId, practiceId: user.practiceId },
   });
@@ -72,6 +74,7 @@ export async function createWound(patientId: string, encounterId: string, formDa
 
 export async function updateWoundStatus(woundId: string, encounterId: string, status: string) {
   const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  await assertChartEditable(encounterId, user, "clinical");
   const wound = await prisma.wound.findFirstOrThrow({
     where: { id: woundId, practiceId: user.practiceId },
   });
@@ -89,6 +92,7 @@ export async function updateWoundStatus(woundId: string, encounterId: string, st
 
 export async function saveWoundAssessment(woundId: string, encounterId: string, formData: FormData) {
   const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  await assertChartEditable(encounterId, user, "clinical");
   const wound = await prisma.wound.findFirstOrThrow({
     where: { id: woundId, practiceId: user.practiceId },
   });

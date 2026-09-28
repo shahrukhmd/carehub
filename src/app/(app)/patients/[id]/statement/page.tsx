@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
+import { visitBillingStatusLabel } from "@/lib/claim-format";
 
 export default async function PatientStatementPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(["ADMIN", "BILLER", "FRONT_DESK"]);
@@ -13,7 +14,7 @@ export default async function PatientStatementPage({ params }: { params: Promise
     include: {
       insurances: { include: { payer: true } },
       encounters: {
-        include: { charges: { include: { claim: true } } },
+        include: { charges: true, claims: { where: { status: { not: "VOID" } } } },
         orderBy: { date: "desc" },
       },
     },
@@ -21,19 +22,28 @@ export default async function PatientStatementPage({ params }: { params: Promise
 
   if (!patient) notFound();
 
-  const lines = patient.encounters.flatMap((e) =>
-    e.charges.map((c) => ({
-      date: e.date,
-      cptCode: c.cptCode,
-      description: c.description,
-      billedCents: c.amountCents,
-      claim: c.claim,
-    }))
-  );
+  // One ledger row per visit: charges less what insurance paid and adjusted across its claims.
+  const lines = patient.encounters
+    .filter((e) => e.charges.length > 0)
+    .map((e) => {
+      const billedCents = e.charges.reduce((s, c) => s + c.amountCents, 0);
+      const paidCents = e.claims.reduce((s, c) => s + c.paidCents, 0);
+      const adjustedCents = e.claims.reduce((s, c) => s + c.adjustedCents, 0);
+      return {
+        id: e.id,
+        date: e.date,
+        cptCode: e.charges.map((c) => c.cptCode).join(", "),
+        description: e.charges.map((c) => c.description).join("; "),
+        billedCents,
+        paidCents,
+        adjustedCents,
+        status: visitBillingStatusLabel[e.billingStatus] ?? e.billingStatus,
+      };
+    });
 
   const totalBilled = lines.reduce((s, l) => s + l.billedCents, 0);
-  const totalPaid = lines.reduce((s, l) => s + (l.claim?.paidCents ?? 0), 0);
-  const totalAdjusted = lines.reduce((s, l) => s + (l.claim?.adjustedCents ?? 0), 0);
+  const totalPaid = lines.reduce((s, l) => s + l.paidCents, 0);
+  const totalAdjusted = lines.reduce((s, l) => s + l.adjustedCents, 0);
   const totalDue = totalBilled - totalPaid - totalAdjusted;
 
   return (
@@ -46,7 +56,7 @@ export default async function PatientStatementPage({ params }: { params: Promise
           </h1>
           <p className="chart-meta">
             <span>{patient.mrn}</span>
-            <span>{patient.insurances.find((i) => i.isPrimary)?.payer.name ?? "Self-pay"}</span>
+            <span>{patient.insurances.find((i) => i.rank === "PRIMARY")?.payer.name ?? "Self-pay"}</span>
           </p>
         </div>
       </div>
@@ -83,20 +93,16 @@ export default async function PatientStatementPage({ params }: { params: Promise
             </tr>
           </thead>
           <tbody>
-            {lines.map((l, i) => {
-              const claim = l.claim;
-              const balance = claim ? claim.billedCents - claim.paidCents - claim.adjustedCents : l.billedCents;
-              return (
-                <tr key={i}>
-                  <td>{formatDate(l.date)}</td>
-                  <td>{l.cptCode}</td>
-                  <td>{l.description}</td>
-                  <td>{formatMoney(l.billedCents)}</td>
-                  <td>{claim ? claim.status : "Not billed"}</td>
-                  <td>{formatMoney(Math.max(balance, 0))}</td>
-                </tr>
-              );
-            })}
+            {lines.map((l) => (
+              <tr key={l.id}>
+                <td>{formatDate(l.date)}</td>
+                <td>{l.cptCode}</td>
+                <td>{l.description}</td>
+                <td>{formatMoney(l.billedCents)}</td>
+                <td>{l.status}</td>
+                <td>{formatMoney(Math.max(l.billedCents - l.paidCents - l.adjustedCents, 0))}</td>
+              </tr>
+            ))}
             {lines.length === 0 && (
               <tr>
                 <td colSpan={6}>No charges on file.</td>

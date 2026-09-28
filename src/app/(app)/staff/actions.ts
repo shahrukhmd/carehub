@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
+import { ensureRenderingProviderForUser } from "@/lib/credentialing";
 
-const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER"];
+const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"];
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -39,9 +40,14 @@ export async function createStaff(formData: FormData) {
     data: { userId: user.id, practiceId: actor.practiceId, role },
   });
 
+  if (role === "CLINICIAN") {
+    await ensureRenderingProviderForUser(user.id, actor.practiceId);
+  }
+
   await logAudit(actor.practiceId, actor.id, "CREATE_STAFF", "User", user.id, `${email} (${role})`);
 
   revalidatePath("/staff");
+  revalidatePath("/credentialing");
 }
 
 export async function updateStaffRole(userId: string, formData: FormData) {
@@ -63,9 +69,15 @@ export async function updateStaffRole(userId: string, formData: FormData) {
     await prisma.user.update({ where: { id: userId }, data: { role } });
   }
 
+  // A clinician's directory record belongs to their home practice only.
+  if (role === "CLINICIAN" && targetUser.practiceId === actor.practiceId) {
+    await ensureRenderingProviderForUser(userId, actor.practiceId);
+  }
+
   await logAudit(actor.practiceId, actor.id, "UPDATE_STAFF_ROLE", "User", userId, `${membership.role} -> ${role}`);
 
   revalidatePath("/staff");
+  revalidatePath("/credentialing");
 }
 
 export async function toggleStaffActive(userId: string) {
@@ -115,9 +127,13 @@ export async function addPracticeMember(formData: FormData) {
   const role = required(formData, "role");
   if (!ROLES.includes(role)) throw new Error("Invalid role");
 
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email }, include: { practice: true } });
   if (!user) {
     throw new Error("No account exists with that email. Ask them to sign in once first, or create a new staff account instead.");
+  }
+  // Each user belongs to one client; access can only be shared between that client's practices.
+  if (user.practice.organizationId !== actor.practice.organizationId) {
+    throw new Error("That user belongs to a different client organization.");
   }
 
   const existing = await prisma.membership.findUnique({
