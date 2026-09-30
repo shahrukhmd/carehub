@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { uploadPatientDocuments } from "../documents/actions";
+import { DOC_STATUS, DOC_TYPES } from "@/lib/patient-docs";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -66,11 +68,11 @@ export default async function IntakeCasePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; docApplied?: string }>;
 }) {
   const user = await requireUser(GATEWAY_ROLES);
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, docApplied } = await searchParams;
   const c = await prisma.intakeCase.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -89,6 +91,10 @@ export default async function IntakeCasePage({
   });
   if (!c) notFound();
   const patient = c.patient;
+  const documents = await prisma.patientDocument.findMany({
+    where: { practiceId: user.practiceId, patientId: patient.id },
+    orderBy: { createdAt: "desc" },
+  });
 
   const [payers, referrers, providers, upcoming, network] = await Promise.all([
     prisma.payer.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
@@ -304,6 +310,42 @@ export default async function IntakeCasePage({
             </details>
           </section>
         )}
+
+        {docApplied && <p className="notice-ok">Document details were applied to the patient and this case.</p>}
+
+        {/* ---------------- Patient documents ---------------- */}
+        <section className="panel">
+          <div className="gw-section-head">
+            <h2>Patient documents ({documents.length})</h2>
+            <Link className="muted" href="/gateway/documents">
+              All documents
+            </Link>
+          </div>
+          {documents.length > 0 && (
+            <ul className="pd-list">
+              {documents.map((d) => (
+                <li key={d.id}>
+                  <Link href={`/gateway/documents/${d.id}`}>{d.name}</Link>
+                  <span className="muted">
+                    {DOC_TYPES[d.docType] ?? d.docType} · {formatDate(d.createdAt)}
+                  </span>
+                  <span className={`gw-tag gw-tag-${d.status === "APPLIED" ? "ok" : d.status === "FAILED" ? "bad" : d.status === "READ" ? "warn" : "info"}`}>
+                    {DOC_STATUS[d.status] ?? d.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {canWorkTeam(user.role, "DATA_ENTRY") && (
+            <form action={uploadPatientDocuments} className="vw-inline pd-case-upload">
+              <input type="hidden" name="caseId" value={c.id} />
+              <input type="file" name="files" multiple required accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" aria-label="Documents to upload" />
+              <button className="btn secondary gw-mini" type="submit">
+                Upload &amp; read
+              </button>
+            </form>
+          )}
+        </section>
 
         {/* ---------------- Team 1 ---------------- */}
         <section className="panel">

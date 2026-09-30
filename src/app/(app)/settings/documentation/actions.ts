@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { DOCUMENT_SECTIONS, FIELD_TYPES, parseFields, slugId, type FieldDef, type FieldType } from "@/lib/chart-forms";
 import { VIEW_PARTS } from "@/lib/document-catalog";
-import { visitTypeLabel } from "@/lib/format";
+import { getVisitTypes } from "@/lib/scheduler-setup";
 
 class SetupError extends Error {}
 
@@ -315,7 +315,8 @@ export async function updateWorkflow(id: string, fd: FormData) {
     const wf = await ownWorkflow(user.practiceId, id);
     const name = str(fd, "name");
     if (!name) fail("Name the workflow.");
-    const visitTypes = fd.getAll("visitTypes").map(String).filter((v) => v in visitTypeLabel);
+    const codes = new Set((await getVisitTypes(user.practiceId, { includeInactive: true })).map((t) => t.code));
+    const visitTypes = fd.getAll("visitTypes").map(String).filter((v) => codes.has(v));
     const isDefault = on(fd, "isDefault");
     const active = on(fd, "active") || isDefault;
     if (wf.isDefault && !isDefault) fail("Make another workflow the default first.");

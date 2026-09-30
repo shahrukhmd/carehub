@@ -406,7 +406,7 @@ export async function termProvider(providerId: string, formData: FormData) {
   }
 
   await logAudit(user.practiceId, user.id, "TERM_PROVIDER", "RenderingProvider", provider.id, `${open.length} enrollment(s) closed`);
-  refresh(`/credentialing/providers/${provider.id}`, "/directories");
+  refresh(`/credentialing/providers/${provider.id}`, "/settings/directories");
 }
 
 export async function reactivateProvider(providerId: string) {
@@ -415,7 +415,7 @@ export async function reactivateProvider(providerId: string) {
   await prisma.renderingProvider.update({ where: { id: provider.id }, data: { status: "ACTIVE", termDate: null } });
   await ensureEnrollmentsForProvider(provider.id);
   await logAudit(user.practiceId, user.id, "REACTIVATE_PROVIDER", "RenderingProvider", provider.id);
-  refresh(`/credentialing/providers/${provider.id}`, "/directories");
+  refresh(`/credentialing/providers/${provider.id}`, "/settings/directories");
 }
 
 export async function syncCredentialing() {

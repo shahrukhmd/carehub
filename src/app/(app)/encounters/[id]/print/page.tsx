@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { visitTypeNames } from "@/lib/scheduler-setup";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { DocumentSummary } from "@/components/DocumentForm";
 import { visitStatusLabel } from "@/lib/visit-workflow";
 import { parseData, parseFields } from "@/lib/chart-forms";
 import { ensureChartSetup } from "@/lib/chart-setup";
-import { calcBmi, formatDate, formatMoney, patientName, visitTypeLabel } from "@/lib/format";
+import { calcBmi, formatDate, formatMoney, patientName } from "@/lib/format";
 import { diagnosisPointerLetter, mdmLevelLabel, parsePointerIds, patientStatusLabel } from "@/lib/superbill";
 import { etiologyLabel } from "@/lib/wound";
 
@@ -31,6 +32,7 @@ export default async function EncounterPrintPage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER", "FRONT_DESK", "CDS"]);
+  const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
   const { view } = await searchParams;
   await ensureChartSetup(user.practiceId);
@@ -447,7 +449,7 @@ export default async function EncounterPrintPage({
               {visits.map((v) => (
                 <tr key={v.id}>
                   <td>{formatDate(v.date)}</td>
-                  <td>{v.appointment ? (visitTypeLabel[v.appointment.visitType] ?? v.appointment.visitType) : v.type}</td>
+                  <td>{v.appointment ? (vtNames[v.appointment.visitType] ?? v.appointment.visitType) : v.type}</td>
                   <td>{v.provider.name}</td>
                   <td>{v.diagnoses.map((d) => d.icd10).join(", ") || "—"}</td>
                   <td>{visitStatusLabel[v.status] ?? v.status}</td>
@@ -570,7 +572,7 @@ export default async function EncounterPrintPage({
               <div>
                 <span className="muted">Visit type / location</span>
                 <p>
-                  {encounter.appointment ? (visitTypeLabel[encounter.appointment.visitType] ?? encounter.appointment.visitType) : encounter.type}
+                  {encounter.appointment ? (vtNames[encounter.appointment.visitType] ?? encounter.appointment.visitType) : encounter.type}
                   {encounter.appointment ? ` · ${encounter.appointment.location.name}` : ""}
                 </p>
               </div>

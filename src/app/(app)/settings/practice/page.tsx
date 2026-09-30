@@ -2,6 +2,8 @@ import { requireUser } from "@/lib/auth";
 import { getPracticeSettings } from "@/lib/chart-setup";
 import { CLEARINGHOUSES, MONTHS } from "@/lib/practice-settings";
 import { SettingsNav } from "../settings-nav";
+import { claudeConfigured } from "@/lib/document-reader";
+import { FAX_PROVIDERS } from "@/lib/fax";
 import { savePracticeSettings } from "./actions";
 
 type S = Awaited<ReturnType<typeof getPracticeSettings>>;
@@ -157,6 +159,46 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
               credentialing
             </label>
           </div>
+        </section>
+
+        <section className="panel" id="fax">
+          <h2>Fax line</h2>
+          <div className="form-grid gw-grid-3">
+            <label>
+              Electronic fax number
+              <input name="faxNumber" defaultValue={s.faxNumber ?? ""} placeholder="(475) 555-7454" />
+            </label>
+            <label>
+              Fax service
+              <select name="faxProvider" defaultValue={s.faxProvider}>
+                {Object.entries(FAX_PROVIDERS).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <p className="muted">
+            Only the built-in test line works today; SRFax, Phaxio, eFax and Documo need their API credentials connected before they can send and receive.
+          </p>
+        </section>
+
+        <section className="panel">
+          <h2>Patient document reading</h2>
+          <p className="muted">
+            Uploaded referrals, face sheets and insurance cards are read on this computer by default (PDF text, or OCR for scans and photos) — nothing
+            leaves the practice. Claude AI reads handwriting, faxes and unusual layouts much better, but it sends each document to Anthropic: only turn it
+            on under a Business Associate Agreement (BAA) with Anthropic, with <code>ANTHROPIC_API_KEY</code> set on the server.
+          </p>
+          <label className="checkbox-inline">
+            <input type="checkbox" name="documentAiEnabled" defaultChecked={s.documentAiEnabled} /> Read uploaded patient documents with Claude AI
+          </label>
+          <p className={claudeConfigured() ? "muted" : "gw-missing"} style={{ margin: "0.4rem 0 0" }}>
+            {claudeConfigured()
+              ? "An Anthropic API key is configured on this server."
+              : "No Anthropic API key is configured on this server, so documents are read on this computer even when this is ticked."}
+          </p>
         </section>
 
         <div className="form-actions">

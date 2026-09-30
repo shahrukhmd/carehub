@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { visitTypeNames } from "@/lib/scheduler-setup";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureChartSetup } from "@/lib/chart-setup";
 import { DOCUMENT_SECTIONS, parseFields } from "@/lib/chart-forms";
 import { VIEW_PARTS } from "@/lib/document-catalog";
-import { visitTypeLabel } from "@/lib/format";
+
 import { SettingsNav } from "../settings-nav";
 import {
   createTemplate,
@@ -30,6 +31,7 @@ export default async function DocumentationSettingsPage({
   searchParams: Promise<{ tab?: string; saved?: string; error?: string }>;
 }) {
   const user = await requireUser(["ADMIN"]);
+  const vtNames = await visitTypeNames(user.practiceId);
   const sp = await searchParams;
   const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "templates";
   await ensureChartSetup(user.practiceId);
@@ -211,7 +213,7 @@ export default async function DocumentationSettingsPage({
                       {(w.visitTypes ?? "")
                         .split(",")
                         .filter(Boolean)
-                        .map((v) => visitTypeLabel[v] ?? v)
+                        .map((v) => vtNames[v] ?? v)
                         .join(", ") || "—"}
                     </td>
                     <td>{w.steps.length}</td>

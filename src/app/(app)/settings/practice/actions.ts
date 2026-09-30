@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { CLEARINGHOUSES } from "@/lib/practice-settings";
+import { FAX_PROVIDERS } from "@/lib/fax";
+import { normalizePhone } from "@/lib/patient-docs";
 
 const ADDRESS_BLOCKS = ["payTo", "payee", "remit", "physical"] as const;
 const ADDRESS_PARTS = ["Name", "Address1", "Address2", "City", "State", "Zip"] as const;
@@ -33,6 +35,9 @@ export async function savePracticeSettings(fd: FormData) {
   if (cutoffDay !== null && !(Number.isInteger(cutoffDay) && cutoffDay >= 1 && cutoffDay <= 28)) errors.push("Cutoff day must be 1–28.");
   const yearEnd = Number(str("yearEndMonth") ?? 12);
   const clearinghouse = str("clearinghouse") ?? "MOCK";
+  const faxRaw = str("faxNumber");
+  const faxNumber = faxRaw ? normalizePhone(faxRaw) : null;
+  if (faxRaw && !faxNumber) errors.push("Fax number must be 10 digits.");
   if (!(clearinghouse in CLEARINGHOUSES)) errors.push("Pick a clearinghouse.");
 
   if (errors.length) redirect(`/settings/practice?error=${encodeURIComponent(errors.join(" ").slice(0, 300))}`);
@@ -52,6 +57,9 @@ export async function savePracticeSettings(fd: FormData) {
     enableClaimRules: on("enableClaimRules"),
     suppressSecondaryEraAdjustments: on("suppressSecondaryEraAdjustments"),
     holdClaimsForCredentialing: on("holdClaimsForCredentialing"),
+    documentAiEnabled: on("documentAiEnabled"),
+    faxNumber: faxNumber,
+    faxProvider: str("faxProvider") && str("faxProvider")! in FAX_PROVIDERS ? str("faxProvider")! : "MOCK",
     clearinghouse,
   });
   await prisma.practiceSettings.upsert({

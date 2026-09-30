@@ -50,7 +50,22 @@ export const visitTypeLabel: Record<string, string> = {
   WELL: "Wellness",
   TELE: "Telehealth",
   WOUND_CARE: "Wound care visit",
-  NON_PROVIDER: "Non-provider treatment",
+  NON_PROVIDER: "Non-Provider Ultrasound Mist Therapy",
+  INIT_WOUND: "Initial Wound Care",
+  EST_WOUND: "Established Wound Care",
+  ACTIGRAFT: "Actigraft Application",
+  ABI: "Ankle Brachial Index Assessment",
+  PROV_MIST: "Provider Ultrasound Mist Therapy",
+  NPWCN_MIST: "NP/WCN Ultrasound Mist Therapy",
+  SNF_EST: "SNF Established Visit",
+  SURVEILLANCE: "Surveillance Visit",
+  PCM: "Principal Care Management",
+  TELE_INIT: "Telehealth Initial Wound Care",
+  TELE_EST: "Telehealth Established Wound Care",
+  RECORDS: "Medical Records Entry",
+  COMM_LOG: "Communication Log",
+  DATA_ENTRY: "Data Entry",
+  PROVIDER_ORDERS: "Provider Orders",
 };
 
 export const appointmentStatusLabel: Record<string, string> = {

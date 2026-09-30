@@ -17,11 +17,17 @@
     "import:credentialing": "tsx scripts/import-credentialing.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.129.0",
+    "@napi-rs/canvas": "^1.0.9",
     "@prisma/client": "^6.16.2",
+    "@tesseract.js-data/eng": "^1.0.0",
     "next": "^15.5.4",
     "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "tesseract.js": "^7.0.0",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",

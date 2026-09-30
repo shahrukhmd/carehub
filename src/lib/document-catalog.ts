@@ -538,7 +538,7 @@ export const STANDARD_WORKFLOWS: CatalogWorkflow[] = [
   {
     name: "Wound Care Visit",
     description: "Provider wound care visit — documentation, procedures, progress note and superbill.",
-    visitTypes: ["NEW", "FOLLOW_UP", "SICK", "WELL", "WOUND_CARE"],
+    visitTypes: ["NEW", "FOLLOW_UP", "SICK", "WELL", "WOUND_CARE", "INIT_WOUND", "EST_WOUND", "SNF_EST", "SURVEILLANCE"],
     isDefault: true,
     steps: [
       ["cc", true],
@@ -575,7 +575,7 @@ export const STANDARD_WORKFLOWS: CatalogWorkflow[] = [
   {
     name: "Telehealth Visit",
     description: "Audio/video visit with telemedicine consent.",
-    visitTypes: ["TELE"],
+    visitTypes: ["TELE", "TELE_INIT", "TELE_EST"],
     steps: [
       ["telemedicine_consent", true],
       ["cc", true],

@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatTime } from "@/lib/format";
-import { timeToMinutes } from "@/lib/schedule";
+import { DAY_NAMES, timeToMinutes } from "@/lib/schedule";
+import { parseOfficeHours, timeLabel } from "@/lib/scheduler";
 
 export type Occurrence = { startsAt: Date; endsAt: Date };
 
@@ -47,6 +48,9 @@ type ConflictInput = {
   clinicalStaffId: string | null;
   intakeCaseId: string | null;
   occurrences: Occurrence[];
+  resourceId?: string | null;
+  // Scheduler admin -> General: warn about double booking; allow the same provider at two sites at once.
+  rules?: { doubleBooking: boolean; crossSite: boolean };
 };
 
 // Same checks the WoundExpert scheduler warns about, returned as readable lines.
@@ -56,6 +60,18 @@ export async function findConflicts(input: ConflictInput): Promise<string[]> {
   const to = occurrences[occurrences.length - 1].endsAt;
   const people = [input.providerId, input.clinicalStaffId].filter((x): x is string => Boolean(x));
 
+  const rules = input.rules ?? { doubleBooking: true, crossSite: false };
+  const [location, resource, resourceAppts] = await Promise.all([
+    prisma.location.findFirst({ where: { id: input.locationId, practiceId } }),
+    input.resourceId ? prisma.schedulerResource.findFirst({ where: { id: input.resourceId, practiceId } }) : null,
+    input.resourceId
+      ? prisma.appointment.findMany({
+          where: { practiceId, resourceId: input.resourceId, status: { notIn: INACTIVE }, startsAt: { lt: to }, endsAt: { gt: from } },
+          select: { startsAt: true, endsAt: true },
+        })
+      : [],
+  ]);
+  const hours = location?.officeHours && location.promptOutsideHours ? parseOfficeHours(location.officeHours) : null;
   const [availability, appts, reserved, authCase, authUsed] = await Promise.all([
     prisma.providerAvailability.findMany({ where: { practiceId, providerId: input.providerId } }),
     prisma.appointment.findMany({
@@ -99,10 +115,25 @@ export async function findConflicts(input: ConflictInput): Promise<string[]> {
       );
       if (!covered) out.push(`${when} — physician not available at this location at this time`);
     }
+    if (hours) {
+      const h = hours[o.startsAt.getDay()];
+      if (h.closed) out.push(`${when} — ${location!.name} is closed on ${DAY_NAMES[h.day]}s`);
+      else if (startMin < timeToMinutes(h.start) || endMin > timeToMinutes(h.end))
+        out.push(`${when} — outside office hours at ${location!.name} (${timeLabel(h.start)}–${timeLabel(h.end)})`);
+    }
+    if (resource) {
+      const inUse = resourceAppts.filter((a) => a.startsAt < o.endsAt && a.endsAt > o.startsAt).length;
+      if (inUse >= resource.maxUnits) out.push(`${when} — ${resource.name} is fully booked (${inUse} of ${resource.maxUnits} in use)`);
+    }
     for (const a of appts) {
       if (a.startsAt >= o.endsAt || a.endsAt <= o.startsAt) continue;
-      if (a.patientId === input.patientId) out.push(`${when} — patient already booked (${a.provider.name})`);
-      else if (a.providerId === input.providerId || a.clinicalStaffId === input.providerId)
+      if (a.patientId === input.patientId) {
+        out.push(`${when} — patient already booked (${a.provider.name})`);
+        continue;
+      }
+      if (!rules.doubleBooking) continue;
+      if (rules.crossSite && a.locationId !== input.locationId) continue;
+      if (a.providerId === input.providerId || a.clinicalStaffId === input.providerId)
         out.push(`${when} — physician already booked with ${a.patient.lastName}, ${a.patient.firstName}`);
       else out.push(`${when} — clinician already booked with ${a.patient.lastName}, ${a.patient.firstName}`);
     }

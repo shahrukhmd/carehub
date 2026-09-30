@@ -50,6 +50,14 @@ model Practice {
   chartWorkflows    ChartWorkflow[]
   documentationViews DocumentationView[]
   settings          PracticeSettings?
+  patientDocuments  PatientDocument[]
+  visitTypes        VisitType[]
+  schedulerSettings SchedulerSettings?
+  cancellationReasons CancellationReason[]
+  calendarFilters   CalendarFilterSet[]
+  schedulerResources SchedulerResource[]
+  systemMessages    SystemMessage[]
+  faxes             Fax[]
 }
 
 model Membership {
@@ -80,6 +88,12 @@ model Location {
   reservedTimes ReservedTime[]
   npi          String?
   claims       Claim[]
+  // Office hours: JSON [{ day: 0-6, closed, start "08:00", end "19:00" }] (Scheduler admin -> Office hours).
+  officeHours        String?
+  slotMinutes        Int     @default(15)
+  showNonOfficeHours Boolean @default(false)
+  promptOutsideHours Boolean @default(true)
+  resources          SchedulerResource[]
 }
 
 model User {
@@ -127,6 +141,8 @@ model User {
   documentsCompleted       EncounterDocument[]  @relation("DocumentCompletedBy")
   documentsSigned          EncounterDocument[]  @relation("DocumentSignedBy")
   attachmentsUploaded      EncounterAttachment[]
+  patientDocumentsUploaded PatientDocument[]    @relation("PatientDocumentUploader")
+  patientDocumentsReviewed PatientDocument[]    @relation("PatientDocumentReviewer")
 }
 
 model ProviderAvailability {
@@ -226,6 +242,7 @@ model Patient {
   eligibilityChecks EligibilityCheck[]
   statements      Statement[]
   intakeCases     IntakeCase[]
+  documents       PatientDocument[]
 
   @@unique([practiceId, mrn])
   claims          Claim[]
@@ -403,6 +420,7 @@ model RenderingProvider {
   intakeAssignments     IntakeCase[]         @relation("IntakeProvider")
   supervisedEncounters  Encounter[]          @relation("EncounterSupervisor")
   supervisedAppointments Appointment[]       @relation("AppointmentSupervisor")
+  collaboratingAppointments Appointment[]    @relation("AppointmentCollaborator")
   claimsRendering       Claim[]              @relation("ClaimRendering")
   claimsReferring       Claim[]              @relation("ClaimReferring")
   claimsSupervising     Claim[]              @relation("ClaimSupervising")
@@ -547,6 +565,15 @@ model Appointment {
   intakeCase            IntakeCase? @relation(fields: [intakeCaseId], references: [id], onDelete: SetNull)
   seriesId              String?
   conflictNote          String?
+  collaboratingProviderId String?
+  collaboratingProvider   RenderingProvider? @relation("AppointmentCollaborator", fields: [collaboratingProviderId], references: [id], onDelete: SetNull)
+  accountNumber         String?
+  resourceId            String?
+  resource              SchedulerResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
+  cancelReason          String?
+  cancelledAt           DateTime?
+  createdById           String?
+  faxes                 Fax[]
 }
 
 model Encounter {
@@ -1010,6 +1037,7 @@ model IntakeCase {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   activities            IntakeActivity[]
+  documents             PatientDocument[]
 
   @@index([practiceId, stage])
   appointments          Appointment[]
@@ -1297,5 +1325,184 @@ model PracticeSettings {
   suppressSecondaryEraAdjustments Boolean @default(false)
   holdClaimsForCredentialing Boolean @default(false)
   clearinghouse    String   @default("MOCK")
+  // Read uploaded patient documents with Claude (sends the file to Anthropic) instead of on-device OCR.
+  documentAiEnabled Boolean @default(false)
+  // Electronic fax line shown on the Faxing page; MOCK until a fax service is connected.
+  faxNumber        String?
+  faxProvider      String   @default("MOCK")
   updatedAt        DateTime @updatedAt
+}
+
+// Patient documents uploaded by the data entry team (referrals, face sheets, insurance cards...).
+// They are read (text layer, OCR or Claude), reviewed, renamed, and their details applied to the patient.
+model PatientDocument {
+  id            String      @id @default(cuid())
+  practiceId    String
+  practice      Practice    @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String?
+  patient       Patient?    @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  intakeCaseId  String?
+  intakeCase    IntakeCase? @relation(fields: [intakeCaseId], references: [id], onDelete: SetNull)
+  // Display name (renameable) and the name it was uploaded with.
+  name          String
+  originalName  String
+  filePath      String
+  mimeType      String
+  sizeBytes     Int
+  // REFERRAL | FACE_SHEET | INSURANCE_CARD | PHOTO_ID | H_AND_P | ORDERS | MEDICATION_LIST | LAB_RESULTS | CONSENT | OTHER
+  docType       String      @default("OTHER")
+  // PROCESSING | READ | FAILED | APPLIED
+  status        String      @default("PROCESSING")
+  // TEXT (PDF text layer) | OCR | CLAUDE
+  readMethod    String?
+  pageCount     Int?
+  extractedText String?
+  // JSON: { docType, fields: { key: { value, confidence, source } }, notes }
+  extraction    String?
+  error         String?
+  uploadedById  String?
+  uploadedBy    User?       @relation("PatientDocumentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  reviewedById  String?
+  reviewedBy    User?       @relation("PatientDocumentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  appliedAt     DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([practiceId, status])
+}
+
+// ---- Scheduler admin (Settings -> Scheduling) ----
+
+// Encounter / visit types with their default length and calendar colours.
+model VisitType {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  code       String
+  name       String
+  durationMin Int?
+  // Non-billable interactions (communication log, data entry, provider orders) don't create claims.
+  billable   Boolean  @default(true)
+  textColor  String   @default("#ffffff")
+  bgColor    String   @default("#2f5fa8")
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(100)
+  createdAt  DateTime @default(now())
+
+  @@unique([practiceId, code])
+}
+
+model SchedulerSettings {
+  id          String   @id @default(cuid())
+  practiceId  String   @unique
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // NONE | TYPE | STATUS | PHYSICIAN
+  colorMode   String   @default("STATUS")
+  // JSON { STATUS_KEY: { text, bg } } and { userId: { text, bg } }
+  statusColors    String @default("{}")
+  physicianColors String @default("{}")
+  // JSON array of field keys shown in the visit preview on the schedule.
+  previewFields   String @default("[\"primaryInsurance\",\"authCount\",\"authRemaining\",\"authStart\",\"authEnd\",\"copay\"]")
+  defaultLocationId String?
+  showWeekends      Boolean @default(false)
+  showPosDropdown   Boolean @default(true)
+  autoCheckIn       Boolean @default(false)
+  autoCheckInMinutes Int    @default(15)
+  showCapacityView  Boolean @default(true)
+  // CURRENT (now, rounded to the slot) | FIXED (startTimeFixed)
+  startTimeMode     String  @default("FIXED")
+  startTimeFixed    String  @default("07:30")
+  showConflicts     Boolean @default(true)
+  allowCrossSiteConflicts Boolean @default(false)
+  defaultAuthorizations   Boolean @default(true)
+  updatedAt   DateTime @updatedAt
+}
+
+model CancellationReason {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name       String
+  active     Boolean  @default(true)
+  sortOrder  Int      @default(100)
+  createdAt  DateTime @default(now())
+
+  @@unique([practiceId, name])
+}
+
+// Saved calendar filters ("filter sets") the schedule can switch between.
+model CalendarFilterSet {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  locationId  String?
+  providerIds String?
+  visitTypes  String?
+  view        String   @default("day")
+  createdAt   DateTime @default(now())
+}
+
+// Bookable equipment/rooms with a limit of simultaneous visits (e.g. MIST ultrasound units).
+model SchedulerResource {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  name       String
+  maxUnits   Int      @default(1)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  appointments Appointment[]
+}
+
+// Announcements shown to every user while active (Settings -> System messages).
+model SystemMessage {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  title       String
+  message     String
+  // INFO | WARNING | URGENT
+  level       String    @default("INFO")
+  active      Boolean   @default(true)
+  activeFrom  DateTime?
+  activeTo    DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+// Inbound and outbound faxes.
+model Fax {
+  id            String     @id @default(cuid())
+  practiceId    String
+  practice      Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // INBOUND | OUTBOUND
+  direction     String
+  // INBOUND: RECEIVED | FILED ; OUTBOUND: QUEUED | PROCESSING | SUCCESS | FAILURE | NOT_SENT
+  status        String
+  faxNumber     String
+  recipientName String?
+  pages         Int?
+  // Outbound: documentation view sent (name) and the visit it came from.
+  contentType   String?
+  viewId        String?
+  encounterId   String?
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  patientId     String?
+  documentId    String?
+  notes         String?
+  error         String?
+  providerRef   String?
+  userId        String?
+  sentAt        DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([practiceId, direction, createdAt])
 }

@@ -215,7 +215,7 @@ export default async function NewPatientPage() {
         </div>
 
         <p className="muted">
-          Payer or referring physician missing? <Link href="/directories">Add it to Directories</Link> first.
+          Payer or referring physician missing? <Link href="/settings/directories">Add it to Directories</Link> first.
         </p>
         <button className="btn" type="submit">
           Create chart

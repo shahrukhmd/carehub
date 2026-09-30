@@ -72,7 +72,7 @@ export default async function ProviderFilePage({ params }: { params: Promise<{ i
           </p>
         </div>
         <div className="stack" style={{ gridAutoFlow: "column", gap: "0.5rem" }}>
-          <Link className="btn secondary" href={`/directories/providers/${provider.id}`}>
+          <Link className="btn secondary" href={`/settings/directories/providers/${provider.id}`}>
             Edit profile
           </Link>
           <Link className="btn secondary" href="/credentialing?tab=providers">

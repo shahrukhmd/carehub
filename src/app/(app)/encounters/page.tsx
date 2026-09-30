@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { visitTypeNames } from "@/lib/scheduler-setup";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { startEncounter } from "@/app/actions";
-import { formatDate, formatTime, patientName, visitTypeLabel } from "@/lib/format";
+import { formatDate, formatTime, patientName } from "@/lib/format";
 import { parsePointerIds } from "@/lib/superbill";
 import { addDays, parseDateParam, startOfDay, toDateParam } from "@/lib/schedule";
 import {
@@ -45,6 +46,7 @@ function defaultQueue(role: string) {
 
 export default async function VisitWorklistPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(VISIT_VIEW_ROLES);
+  const vtNames = await visitTypeNames(user.practiceId);
   const sp = await searchParams;
   const queue = sp.queue && sp.queue in QUEUE_STATUSES ? sp.queue : defaultQueue(user.role);
   const from = sp.from ? parseDateParam(sp.from) : addDays(startOfDay(new Date()), -30);
@@ -225,7 +227,7 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
                   <tr key={`a-${a.id}`}>
                     <td>
                       {formatDate(a.startsAt)} {formatTime(a.startsAt)}
-                      <div className="muted">{visitTypeLabel[a.visitType] ?? a.visitType}</div>
+                      <div className="muted">{vtNames[a.visitType] ?? a.visitType}</div>
                     </td>
                     <td>
                       <Link href={`/patients/${a.patientId}`}>{patientName(a.patient)}</Link>
@@ -282,7 +284,7 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
                       {formatDate(row.at)} {e.appointment ? formatTime(row.at) : ""}
                     </Link>
                     <div className="muted">
-                      {e.appointment ? (visitTypeLabel[e.appointment.visitType] ?? e.appointment.visitType) : e.type}
+                      {e.appointment ? (vtNames[e.appointment.visitType] ?? e.appointment.visitType) : e.type}
                     </div>
                   </td>
                   <td>

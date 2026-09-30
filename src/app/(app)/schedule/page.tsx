@@ -1,16 +1,19 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
-import { createAppointment, startEncounter, updateAppointmentStatus } from "@/app/actions";
+import { cancelAppointment, createAppointment, startEncounter, updateAppointmentStatus } from "@/app/actions";
 import { checkEligibility, createReservedTime, deleteReservedTime } from "@/app/(app)/schedule/actions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { prisma } from "@/lib/prisma";
-import { formatDate, formatTime, patientName, visitTypeLabel } from "@/lib/format";
+import { formatDate, formatMoney, formatTime, patientName } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
 import { placeOfServiceLabel } from "@/lib/superbill";
 import { addDays, DAY_ABBR, parseDateParam, startOfDay, startOfWeek, toDateParam } from "@/lib/schedule";
+import { getSchedulerSettings, getVisitTypes, visitTypeNames } from "@/lib/scheduler-setup";
+import { CALENDAR_STATUSES, PREVIEW_FIELDS, parseJson, parseOfficeHours, timeLabel, type ColorPair } from "@/lib/scheduler";
+import { visitStatusLabel } from "@/lib/visit-workflow";
 
-const VIEWS = ["day", "week", "list", "capacity"] as const;
-type View = (typeof VIEWS)[number];
+const ALL_VIEWS = ["day", "week", "list", "capacity"] as const;
+type View = (typeof ALL_VIEWS)[number];
 
 type SearchParams = {
   view?: string;
@@ -19,6 +22,8 @@ type SearchParams = {
   locationId?: string;
   visitType?: string;
   showMissed?: string;
+  filter?: string;
+  next?: string;
   patientId?: string;
   returnTo?: string;
   bookWith?: string;
@@ -36,47 +41,69 @@ type SearchParams = {
   bookRecur?: string;
   bookRecurEnd?: string;
   bookDays?: string;
+  bookCollab?: string;
+  bookAcct?: string;
+  bookRes?: string;
 };
 
-export default async function SchedulePage({
-  searchParams,
-}: {
-  searchParams: Promise<SearchParams>;
-}) {
+const pad = (n: number) => String(n).padStart(2, "0");
+const localInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+export default async function SchedulePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
   const sp = await searchParams;
-  const view: View = (VIEWS as readonly string[]).includes(sp.view ?? "") ? (sp.view as View) : "week";
+  const [settings, visitTypes, typeNames, filterSets] = await Promise.all([
+    getSchedulerSettings(user.practiceId),
+    getVisitTypes(user.practiceId),
+    visitTypeNames(user.practiceId),
+    prisma.calendarFilterSet.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" } }),
+  ]);
+  const VIEWS = ALL_VIEWS.filter((v) => v !== "capacity" || settings.showCapacityView);
+
+  // A saved calendar filter fills in site, physicians, types and view.
+  const filterSet = filterSets.find((f) => f.id === sp.filter);
+  const locationFilter = sp.locationId ?? filterSet?.locationId ?? undefined;
+  const providerFilter = sp.providerId ? [sp.providerId] : filterSet?.providerIds ? filterSet.providerIds.split(",") : [];
+  const typeFilter = sp.visitType ? [sp.visitType] : filterSet?.visitTypes ? filterSet.visitTypes.split(",") : [];
+  const requested = sp.view ?? filterSet?.view;
+  const view: View = (VIEWS as readonly string[]).includes(requested ?? "") ? (requested as View) : "week";
   const anchor = parseDateParam(sp.date);
   const showMissed = sp.showMissed === "1";
 
-  const [patients, providers, locations] = await Promise.all([
-    prisma.patient.findMany({ where: { practiceId: user.practiceId }, orderBy: { lastName: "asc" } }),
-    prisma.user.findMany({
-      where: { practiceId: user.practiceId, role: "CLINICIAN" },
-      orderBy: { name: "asc" },
-    }),
+  // Automatically check in same-day visits shortly before they start.
+  if (settings.autoCheckIn) {
+    const now = new Date();
+    await prisma.appointment.updateMany({
+      where: {
+        practiceId: user.practiceId,
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        startsAt: { gte: startOfDay(now), lte: new Date(now.getTime() + settings.autoCheckInMinutes * 60_000) },
+      },
+      data: { status: "CHECKED_IN" },
+    });
+  }
+
+  const [patients, providers, locations, collaborators, resources] = await Promise.all([
+    prisma.patient.findMany({ where: { practiceId: user.practiceId, status: { notIn: ["INACTIVE", "DECEASED"] } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }),
+    prisma.user.findMany({ where: { practiceId: user.practiceId, role: "CLINICIAN" }, orderBy: { name: "asc" } }),
     prisma.location.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" } }),
+    prisma.renderingProvider.findMany({ where: { practiceId: user.practiceId, isRendering: true, status: "ACTIVE" }, orderBy: { name: "asc" } }),
+    prisma.schedulerResource.findMany({ where: { practiceId: user.practiceId, active: true }, include: { location: true }, orderBy: { name: "asc" } }),
   ]);
-  const [clinicalStaff, supervisors, approvedAuths] = await Promise.all([
+  const [clinicalStaff, supervisors, approvedAuths, reasons] = await Promise.all([
     prisma.membership.findMany({
       where: { practiceId: user.practiceId, role: { in: ["CLINICIAN", "FRONT_DESK"] }, user: { active: true } },
       include: { user: true },
       orderBy: { user: { name: "asc" } },
     }),
-    prisma.renderingProvider.findMany({
-      where: { practiceId: user.practiceId, isSupervising: true, status: "ACTIVE" },
-      orderBy: { name: "asc" },
-    }),
+    prisma.renderingProvider.findMany({ where: { practiceId: user.practiceId, isSupervising: true, status: "ACTIVE" }, orderBy: { name: "asc" } }),
     // Approved prior auths from the Patient Gateway, to attach to the visit.
     prisma.intakeCase.findMany({
-      where: {
-        practiceId: user.practiceId,
-        authStatus: "APPROVED",
-        ...(sp.patientId ? { patientId: sp.patientId } : {}),
-      },
+      where: { practiceId: user.practiceId, authStatus: "APPROVED", ...(sp.patientId ? { patientId: sp.patientId } : {}) },
       include: { patient: true, payer: true },
       orderBy: { authEndDate: "asc" },
     }),
+    prisma.cancellationReason.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
   ]);
 
   let rangeStart: Date;
@@ -91,54 +118,91 @@ export default async function SchedulePage({
     rangeStart = startOfWeek(anchor);
     rangeEnd = addDays(rangeStart, 7);
   }
+  const weekendHidden = (d: Date) => (view === "week" || view === "capacity") && !settings.showWeekends && (d.getDay() === 0 || d.getDay() === 6);
 
   const apptWhere: Prisma.AppointmentWhereInput = {
     practiceId: user.practiceId,
     startsAt: { gte: rangeStart, lt: rangeEnd },
-    ...(sp.providerId ? { providerId: sp.providerId } : {}),
-    ...(sp.locationId ? { locationId: sp.locationId } : {}),
-    ...(sp.visitType ? { visitType: sp.visitType } : {}),
-    ...(showMissed ? {} : { status: { not: "NO_SHOW" } }),
+    ...(providerFilter.length ? { providerId: { in: providerFilter } } : {}),
+    ...(locationFilter ? { locationId: locationFilter } : {}),
+    ...(typeFilter.length ? { visitType: { in: typeFilter } } : {}),
+    ...(showMissed ? {} : { status: { notIn: ["NO_SHOW", "CANCELLED"] } }),
   };
-
   const reservedWhere: Prisma.ReservedTimeWhereInput = {
     practiceId: user.practiceId,
     startsAt: { gte: rangeStart, lt: rangeEnd },
-    ...(sp.providerId ? { providerId: sp.providerId } : {}),
-    ...(sp.locationId ? { locationId: sp.locationId } : {}),
+    ...(providerFilter.length ? { providerId: { in: providerFilter } } : {}),
+    ...(locationFilter ? { locationId: locationFilter } : {}),
   };
 
   const [appointments, reservedTimes] = await Promise.all([
     prisma.appointment.findMany({
       where: apptWhere,
       include: {
-        patient: true,
+        patient: { include: { insurances: { where: { active: true }, include: { payer: true } } } },
         provider: true,
         location: true,
         encounter: true,
+        clinicalStaff: true,
+        supervisingProvider: true,
+        collaboratingProvider: true,
+        resource: true,
+        intakeCase: true,
         eligibilityChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
       },
       orderBy: { startsAt: "asc" },
     }),
-    prisma.reservedTime.findMany({
-      where: reservedWhere,
-      include: { provider: true, location: true },
-      orderBy: { startsAt: "asc" },
-    }),
+    prisma.reservedTime.findMany({ where: reservedWhere, include: { provider: true, location: true }, orderBy: { startsAt: "asc" } }),
   ]);
+  const creatorIds = [...new Set(appointments.map((a) => a.createdById).filter((x): x is string => Boolean(x)))];
+  const creators = new Map(
+    (creatorIds.length ? await prisma.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name])
+  );
+  // Visits already booked against each auth (for "remaining authorizations").
+  const authIds = [...new Set(appointments.map((a) => a.intakeCaseId).filter((x): x is string => Boolean(x)))];
+  const authUsed = new Map(
+    (authIds.length
+      ? await prisma.appointment.groupBy({ by: ["intakeCaseId"], where: { intakeCaseId: { in: authIds }, status: { notIn: ["CANCELLED", "NO_SHOW"] } }, _count: { _all: true } })
+      : []
+    ).map((g) => [g.intakeCaseId!, g._count._all])
+  );
 
-  const days = Array.from({ length: 7 }, (_, i) => addDays(rangeStart, i));
+  // Patient's next appointment lookup.
+  const nextQuery = sp.next?.trim();
+  const nextResults = nextQuery
+    ? await prisma.patient.findMany({
+        where: {
+          practiceId: user.practiceId,
+          OR: [{ lastName: { contains: nextQuery } }, { firstName: { contains: nextQuery } }, { mrn: { contains: nextQuery } }],
+        },
+        include: {
+          appointments: {
+            where: { startsAt: { gte: new Date() }, status: { notIn: ["CANCELLED", "NO_SHOW"] } },
+            orderBy: { startsAt: "asc" },
+            take: 1,
+            include: { provider: true, location: true },
+          },
+        },
+        take: 8,
+      })
+    : [];
+
+  const statusColors = parseJson<Record<string, ColorPair>>(settings.statusColors, {});
+  const physicianColors = parseJson<Record<string, ColorPair>>(settings.physicianColors, {});
+  const typeColors = new Map(visitTypes.map((t) => [t.code, { text: t.textColor, bg: t.bgColor }]));
+  const defaultStatus = new Map(CALENDAR_STATUSES.map(([k, , c]) => [k, c]));
+  const statusLabel = new Map(CALENDAR_STATUSES.map(([k, l]) => [k, l]));
+  const previewFields = parseJson<string[]>(settings.previewFields, []).filter((f) => f in PREVIEW_FIELDS);
+
+  const days = Array.from({ length: 7 }, (_, i) => addDays(rangeStart, i)).filter((d) => !weekendHidden(d));
 
   let capacityProviders: typeof providers = [];
   const availabilityMap = new Map<string, Set<number>>();
   const bookedCounts = new Map<string, number>();
   if (view === "capacity") {
-    capacityProviders = sp.providerId ? providers.filter((p) => p.id === sp.providerId) : providers;
+    capacityProviders = providerFilter.length ? providers.filter((p) => providerFilter.includes(p.id)) : providers;
     const availability = await prisma.providerAvailability.findMany({
-      where: {
-        practiceId: user.practiceId,
-        ...(sp.locationId ? { locationId: sp.locationId } : {}),
-      },
+      where: { practiceId: user.practiceId, ...(locationFilter ? { locationId: locationFilter } : {}) },
     });
     for (const a of availability) {
       if (!availabilityMap.has(a.providerId)) availabilityMap.set(a.providerId, new Set());
@@ -146,8 +210,7 @@ export default async function SchedulePage({
     }
     for (const a of appointments) {
       if (a.status === "CANCELLED") continue;
-      const dayIndex = Math.round((startOfDay(a.startsAt).getTime() - rangeStart.getTime()) / 86400000);
-      const key = `${a.providerId}-${dayIndex}`;
+      const key = `${a.providerId}-${toDateParam(a.startsAt)}`;
       bookedCounts.set(key, (bookedCounts.get(key) ?? 0) + 1);
     }
   }
@@ -155,27 +218,86 @@ export default async function SchedulePage({
   type Row =
     | { time: Date; kind: "appt"; appt: (typeof appointments)[number] }
     | { time: Date; kind: "reserved"; reserved: (typeof reservedTimes)[number] };
-
   const rows: Row[] = [
     ...appointments.map((appt): Row => ({ time: appt.startsAt, kind: "appt", appt })),
     ...reservedTimes.map((reserved): Row => ({ time: reserved.startsAt, kind: "reserved", reserved })),
-  ].sort((a, b) => a.time.getTime() - b.time.getTime());
+  ]
+    .filter((r) => !weekendHidden(r.time))
+    .sort((a, b) => a.time.getTime() - b.time.getTime());
 
   function link(overrides: Partial<SearchParams & { view: View }>) {
     const params = new URLSearchParams();
     params.set("view", overrides.view ?? view);
     params.set("date", overrides.date ?? toDateParam(anchor));
-    const providerId = overrides.providerId ?? sp.providerId;
-    const locationId = overrides.locationId ?? sp.locationId;
-    const visitType = overrides.visitType ?? sp.visitType;
-    if (providerId) params.set("providerId", providerId);
-    if (locationId) params.set("locationId", locationId);
-    if (visitType) params.set("visitType", visitType);
+    if (sp.filter && overrides.filter !== "") params.set("filter", sp.filter);
+    if (sp.providerId) params.set("providerId", sp.providerId);
+    if (sp.locationId) params.set("locationId", sp.locationId);
+    if (sp.visitType) params.set("visitType", sp.visitType);
     if (showMissed) params.set("showMissed", "1");
     return `/schedule?${params.toString()}`;
   }
-
   const rangeStep = view === "day" ? 1 : view === "list" ? 30 : 7;
+
+  // Booking defaults: the anchor day at the practice's start time (or now), at the default site.
+  const bookDefault = (() => {
+    if (sp.bookStart) return sp.bookStart;
+    const d = new Date(anchor);
+    if (settings.startTimeMode === "CURRENT" && toDateParam(d) === toDateParam(new Date())) {
+      const now = new Date();
+      const slot = 15;
+      d.setHours(now.getHours(), Math.ceil(now.getMinutes() / slot) * slot, 0, 0);
+    } else {
+      const [h, m] = settings.startTimeFixed.split(":").map(Number);
+      d.setHours(h, m, 0, 0);
+    }
+    return localInput(d);
+  })();
+  const bookLocation = sp.bookLocation ?? settings.defaultLocationId ?? locations[0]?.id;
+  const defaultAuth = sp.bookAuth ?? (settings.defaultAuthorizations && sp.patientId && approvedAuths.length === 1 ? approvedAuths[0].id : "");
+
+  const colorFor = (a: (typeof appointments)[number]): ColorPair | null => {
+    const st = a.encounter?.status ?? a.status;
+    if (settings.colorMode === "STATUS") return statusColors[st] ?? defaultStatus.get(st) ?? null;
+    if (settings.colorMode === "TYPE") return typeColors.get(a.visitType) ?? null;
+    if (settings.colorMode === "PHYSICIAN") return physicianColors[a.providerId] ?? null;
+    return null;
+  };
+
+  const preview = (a: (typeof appointments)[number]) => {
+    const primary = a.patient.insurances.find((i) => i.rank === "PRIMARY") ?? a.patient.insurances[0];
+    const used = a.intakeCaseId ? (authUsed.get(a.intakeCaseId) ?? 0) : 0;
+    const copay = a.eligibilityChecks[0]?.copayCents ?? a.intakeCase?.copayCents ?? null;
+    const value: Record<string, string | null> = {
+      createdBy: a.createdById ? (creators.get(a.createdById) ?? null) : null,
+      dob: formatDate(a.patient.dob),
+      phone: a.patient.phone,
+      accountNumber: a.accountNumber,
+      mrn: a.patient.mrn,
+      emergencyName: a.patient.emergencyContactName,
+      emergencyPhone: a.patient.emergencyContactPhone,
+      primaryInsurance: primary?.payer.name ?? "Self-pay",
+      policyNumber: primary?.memberId ?? null,
+      authCount: a.intakeCase?.authVisitsApproved != null ? String(a.intakeCase.authVisitsApproved) : null,
+      authRemaining: a.intakeCase?.authVisitsApproved != null ? String(Math.max(0, a.intakeCase.authVisitsApproved - used)) : null,
+      authStart: a.intakeCase?.authStartDate ? formatDate(a.intakeCase.authStartDate) : null,
+      authEnd: a.intakeCase?.authEndDate ? formatDate(a.intakeCase.authEndDate) : null,
+      copay: copay != null ? formatMoney(copay) : null,
+      visitStatus: a.encounter ? (visitStatusLabel[a.encounter.status] ?? a.encounter.status) : (statusLabel.get(a.status) ?? a.status),
+      preferredLanguage: a.patient.preferredLanguage,
+      clinician: a.clinicalStaff?.name ?? null,
+      supervisor: [a.supervisingProvider?.name, a.collaboratingProvider ? `${a.collaboratingProvider.name} (collaborating)` : null].filter(Boolean).join(", ") || null,
+      room: a.room,
+      resource: a.resource?.name ?? null,
+    };
+    return previewFields.map((f) => [PREVIEW_FIELDS[f], value[f]] as const).filter(([, v]) => v);
+  };
+
+  const hoursNote = (() => {
+    const loc = locations.find((l) => l.id === (locationFilter ?? bookLocation));
+    if (!loc?.officeHours) return null;
+    const h = parseOfficeHours(loc.officeHours)[anchor.getDay()];
+    return `${loc.name}: ${h.closed ? `closed on ${DAY_ABBR[h.day]}` : `${timeLabel(h.start)}–${timeLabel(h.end)}`} · ${loc.slotMinutes}-min slots`;
+  })();
 
   return (
     <>
@@ -184,10 +306,49 @@ export default async function SchedulePage({
           <p className="muted">Practice management</p>
           <h1>Schedule</h1>
         </div>
-        <Link className="btn secondary" href="/schedule/availability">
-          Manage availability
-        </Link>
+        <div className="vw-view-links">
+          <form className="sc-next" method="get">
+            <input name="next" defaultValue={nextQuery ?? ""} placeholder="Patient's next appointment" aria-label="Find a patient's next appointment" />
+          </form>
+          <Link className="btn secondary" href="/schedule/availability">
+            Manage availability
+          </Link>
+          {user.role === "ADMIN" && (
+            <Link className="btn ghost" href="/settings/scheduling">
+              Scheduler admin
+            </Link>
+          )}
+        </div>
       </div>
+
+      {nextQuery && (
+        <section className="panel">
+          <div className="gw-section-head">
+            <h2>Next appointment — &ldquo;{nextQuery}&rdquo;</h2>
+            <Link className="muted" href={link({})}>
+              Close
+            </Link>
+          </div>
+          {nextResults.length === 0 ? (
+            <p className="muted">No matching patients.</p>
+          ) : (
+            <ul className="rp-list">
+              {nextResults.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/patients/${p.id}`}>
+                    {patientName(p)} · {p.mrn}
+                  </Link>
+                  <span className="muted">
+                    {p.appointments[0]
+                      ? `${formatDate(p.appointments[0].startsAt)} ${formatTime(p.appointments[0].startsAt)} · ${typeNames[p.appointments[0].visitType] ?? p.appointments[0].visitType} · ${p.appointments[0].provider.name} · ${p.appointments[0].location.name}`
+                      : "No upcoming appointment"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <div className="schedule-toolbar">
         <div className="view-tabs">
@@ -208,14 +369,30 @@ export default async function SchedulePage({
           <Link className="btn ghost" href={link({ date: toDateParam(addDays(anchor, rangeStep)) })}>
             Next →
           </Link>
+          <Link className="btn ghost" href={link({ date: toDateParam(new Date()) })}>
+            Today
+          </Link>
         </div>
       </div>
 
       <form className="panel schedule-filters" method="get">
         <input type="hidden" name="view" value={view} />
         <input type="hidden" name="date" value={toDateParam(anchor)} />
+        {filterSets.length > 0 && (
+          <label>
+            Calendar filter
+            <select name="filter" defaultValue={sp.filter ?? ""}>
+              <option value="">— None —</option>
+              {filterSets.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
-          Provider
+          Physician
           <select name="providerId" defaultValue={sp.providerId ?? ""}>
             <option value="">All</option>
             {providers.map((p) => (
@@ -226,7 +403,7 @@ export default async function SchedulePage({
           </select>
         </label>
         <label>
-          Location
+          Site of service
           <select name="locationId" defaultValue={sp.locationId ?? ""}>
             <option value="">All</option>
             {locations.map((l) => (
@@ -237,24 +414,33 @@ export default async function SchedulePage({
           </select>
         </label>
         <label>
-          Visit type
+          Encounter type
           <select name="visitType" defaultValue={sp.visitType ?? ""}>
             <option value="">All</option>
-            {Object.entries(visitTypeLabel).map(([v, l]) => (
-              <option key={v} value={v}>
-                {l}
+            {visitTypes.map((t) => (
+              <option key={t.code} value={t.code}>
+                {t.name}
               </option>
             ))}
           </select>
         </label>
         <label className="checkbox-inline">
           <input type="checkbox" name="showMissed" value="1" defaultChecked={showMissed} />
-          Show missed
+          Show missed &amp; cancelled
         </label>
         <button className="btn secondary" type="submit">
           Apply filters
         </button>
+        <Link className="btn ghost" href={`/schedule?view=${view}&date=${toDateParam(anchor)}`}>
+          Clear filters
+        </Link>
       </form>
+      {(filterSet || hoursNote) && (
+        <p className="muted sc-note">
+          {filterSet ? `Filter: ${filterSet.name}${filterSet.description ? ` — ${filterSet.description}` : ""}. ` : ""}
+          {hoursNote}
+        </p>
+      )}
 
       {view === "capacity" ? (
         <section className="panel">
@@ -276,11 +462,11 @@ export default async function SchedulePage({
               {capacityProviders.map((p) => (
                 <tr key={p.id}>
                   <td>{p.name}</td>
-                  {days.map((d, i) => {
+                  {days.map((d) => {
                     const working = availabilityMap.get(p.id)?.has(d.getDay()) ?? false;
-                    const count = bookedCounts.get(`${p.id}-${i}`) ?? 0;
+                    const count = bookedCounts.get(`${p.id}-${toDateParam(d)}`) ?? 0;
                     return (
-                      <td key={i} className={working ? "" : "muted"}>
+                      <td key={d.toISOString()} className={working ? "" : "muted"}>
                         {working ? `${count} booked` : "Unavailable"}
                       </td>
                     );
@@ -298,7 +484,12 @@ export default async function SchedulePage({
       ) : (
         <div className="two-col">
           <section className="panel">
-            <h2>{view === "day" ? formatDate(anchor) : view === "list" ? "Upcoming (30 days)" : "This week"}</h2>
+            <div className="gw-section-head">
+              <h2>{view === "day" ? formatDate(anchor) : view === "list" ? "Upcoming (30 days)" : "This week"}</h2>
+              <span className="muted">
+                Visits (non-missed): {appointments.filter((a) => !["NO_SHOW", "CANCELLED"].includes(a.status)).length}
+              </span>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -311,100 +502,163 @@ export default async function SchedulePage({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) =>
-                  row.kind === "appt" ? (
-                    <tr key={`a-${row.appt.id}`}>
+                {rows.map((row) => {
+                  if (row.kind === "reserved") {
+                    return (
+                      <tr key={`r-${row.reserved.id}`} className="reserved-row">
+                        <td>
+                          {formatDate(row.reserved.startsAt)}
+                          <div className="muted">
+                            {formatTime(row.reserved.startsAt)}–{formatTime(row.reserved.endsAt)} · {row.reserved.provider.name}
+                            {row.reserved.location ? ` · ${row.reserved.location.name}` : ""}
+                          </div>
+                        </td>
+                        <td>
+                          <StatusBadge value="RESERVED" /> {row.reserved.title}
+                        </td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>—</td>
+                        <td>
+                          <form action={deleteReservedTime.bind(null, row.reserved.id)}>
+                            <button className="btn ghost" type="submit">
+                              Remove
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const a = row.appt;
+                  const c = colorFor(a);
+                  const st = a.encounter?.status ?? a.status;
+                  const details = preview(a);
+                  return (
+                    <tr key={`a-${a.id}`} className={a.status === "CANCELLED" ? "sc-cancelled" : undefined}>
                       <td>
-                        {formatDate(row.appt.startsAt)}
+                        {formatDate(a.startsAt)}
                         <div className="muted">
-                          {formatTime(row.appt.startsAt)} · {row.appt.provider.name} · {row.appt.location.name}
+                          {formatTime(a.startsAt)}–{formatTime(a.endsAt)} · {a.provider.name} · {a.location.name}
                         </div>
                       </td>
                       <td>
-                        <Link href={`/patients/${row.appt.patientId}`}>{patientName(row.appt.patient)}</Link>
-                        <div className="muted">{row.appt.reason}</div>
+                        <Link href={`/patients/${a.patientId}`}>{patientName(a.patient)}</Link>
+                        {a.reason && <div className="muted">{a.reason}</div>}
+                        {a.cancelReason && <div className="gw-missing">Cancelled: {a.cancelReason}</div>}
+                        {details.length > 0 && (
+                          <details className="sc-preview">
+                            <summary>Visit info</summary>
+                            <dl>
+                              {details.map(([label, v]) => (
+                                <div key={label}>
+                                  <dt>{label}</dt>
+                                  <dd>{v}</dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </details>
+                        )}
                       </td>
-                      <td>{visitTypeLabel[row.appt.visitType] ?? row.appt.visitType}</td>
                       <td>
-                        <StatusBadge value={row.appt.status} />
+                        {c && settings.colorMode === "TYPE" ? (
+                          <span className="sa-chip" style={{ color: c.text, background: c.bg }}>
+                            {typeNames[a.visitType] ?? a.visitType}
+                          </span>
+                        ) : (
+                          (typeNames[a.visitType] ?? a.visitType)
+                        )}
                       </td>
                       <td>
-                        {row.appt.eligibilityChecks[0] ? (
+                        {c && settings.colorMode !== "TYPE" ? (
+                          <span className="sa-chip" style={{ color: c.text, background: c.bg }}>
+                            {a.encounter ? (visitStatusLabel[st] ?? st) : (statusLabel.get(st) ?? st)}
+                          </span>
+                        ) : (
+                          <StatusBadge value={a.status} />
+                        )}
+                      </td>
+                      <td>
+                        {a.eligibilityChecks[0] ? (
                           <>
-                            <StatusBadge value={row.appt.eligibilityChecks[0].status} />
-                            {row.appt.eligibilityChecks[0].planName && (
-                              <div className="muted">{row.appt.eligibilityChecks[0].planName}</div>
+                            <StatusBadge value={a.eligibilityChecks[0].status} />
+                            {a.eligibilityChecks[0].planName && <div className="muted">{a.eligibilityChecks[0].planName}</div>}
+                            {a.eligibilityChecks[0].copayCents !== null && (
+                              <div className="muted">Copay ${(a.eligibilityChecks[0].copayCents / 100).toFixed(2)}</div>
                             )}
-                            {row.appt.eligibilityChecks[0].copayCents !== null && (
-                              <div className="muted">
-                                Copay ${(row.appt.eligibilityChecks[0].copayCents / 100).toFixed(2)}
-                              </div>
-                            )}
-                            {row.appt.eligibilityChecks[0].payerMessage && (
-                              <div className="muted">{row.appt.eligibilityChecks[0].payerMessage}</div>
-                            )}
+                            {a.eligibilityChecks[0].payerMessage && <div className="muted">{a.eligibilityChecks[0].payerMessage}</div>}
                           </>
                         ) : (
                           <span className="muted">Not checked</span>
                         )}
-                        <form action={checkEligibility.bind(null, row.appt.id)}>
-                          <button className="btn ghost" type="submit">
-                            {row.appt.eligibilityChecks[0] ? "Recheck" : "Check eligibility"}
-                          </button>
-                        </form>
+                        {a.status !== "CANCELLED" && (
+                          <form action={checkEligibility.bind(null, a.id)}>
+                            <button className="btn ghost" type="submit">
+                              {a.eligibilityChecks[0] ? "Recheck" : "Check eligibility"}
+                            </button>
+                          </form>
+                        )}
                       </td>
                       <td>
                         <div className="stack">
-                          {row.appt.status === "SCHEDULED" && (
-                            <form action={updateAppointmentStatus.bind(null, row.appt.id, "CHECKED_IN")}>
+                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && (
+                            <form action={updateAppointmentStatus.bind(null, a.id, "CHECKED_IN")}>
                               <button className="btn secondary" type="submit">
                                 Check in
                               </button>
                             </form>
                           )}
-                          {row.appt.status !== "COMPLETED" && row.appt.status !== "CANCELLED" && (
-                            <form action={startEncounter.bind(null, row.appt.id)}>
-                              <button className="btn" type="submit">
-                                {row.appt.encounter ? "Open chart" : "Start encounter"}
+                          {a.status === "SCHEDULED" && (
+                            <form action={updateAppointmentStatus.bind(null, a.id, "CONFIRMED")}>
+                              <button className="btn ghost" type="submit">
+                                Confirm
                               </button>
                             </form>
                           )}
-                          {row.appt.status === "SCHEDULED" && (
-                            <form action={updateAppointmentStatus.bind(null, row.appt.id, "NO_SHOW")}>
+                          {!["COMPLETED", "CANCELLED", "NO_SHOW"].includes(a.status) && (
+                            <form action={startEncounter.bind(null, a.id)}>
+                              <button className="btn" type="submit">
+                                {a.encounter ? "Open chart" : "Start encounter"}
+                              </button>
+                            </form>
+                          )}
+                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && (
+                            <form action={updateAppointmentStatus.bind(null, a.id, "NO_SHOW")}>
                               <button className="btn ghost" type="submit">
                                 Mark missed
                               </button>
                             </form>
                           )}
+                          {!a.encounter && !["COMPLETED", "CANCELLED"].includes(a.status) && reasons.length > 0 && (
+                            <details className="sc-cancel">
+                              <summary>Cancel visit</summary>
+                              <form action={cancelAppointment.bind(null, a.id)} className="stack">
+                                <select name="cancelReason" required defaultValue="" aria-label="Cancellation reason">
+                                  <option value="" disabled>
+                                    Reason…
+                                  </option>
+                                  {reasons.map((r) => (
+                                    <option key={r.id} value={r.name}>
+                                      {r.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input name="cancelNote" placeholder="Note (optional)" aria-label="Cancellation note" />
+                                {a.seriesId && (
+                                  <label className="checkbox-inline">
+                                    <input type="checkbox" name="series" /> Also cancel later visits in this series
+                                  </label>
+                                )}
+                                <button className="btn ghost gw-mini" type="submit">
+                                  Cancel visit
+                                </button>
+                              </form>
+                            </details>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ) : (
-                    <tr key={`r-${row.reserved.id}`} className="reserved-row">
-                      <td>
-                        {formatDate(row.reserved.startsAt)}
-                        <div className="muted">
-                          {formatTime(row.reserved.startsAt)}–{formatTime(row.reserved.endsAt)} ·{" "}
-                          {row.reserved.provider.name}
-                          {row.reserved.location ? ` · ${row.reserved.location.name}` : ""}
-                        </div>
-                      </td>
-                      <td>
-                        <StatusBadge value="RESERVED" /> {row.reserved.title}
-                      </td>
-                      <td>—</td>
-                      <td>—</td>
-                      <td>—</td>
-                      <td>
-                        <form action={deleteReservedTime.bind(null, row.reserved.id)}>
-                          <button className="btn ghost" type="submit">
-                            Remove
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  )
-                )}
+                  );
+                })}
                 {rows.length === 0 && (
                   <tr>
                     <td colSpan={6}>Nothing scheduled.</td>
@@ -444,11 +698,35 @@ export default async function SchedulePage({
               <div className="form-grid">
                 <label>
                   Visit date &amp; time
-                  <input name="startsAt" type="datetime-local" required defaultValue={sp.bookStart} />
+                  <input name="startsAt" type="datetime-local" required defaultValue={bookDefault} />
                 </label>
                 <label>
                   Length (min)
-                  <input name="durationMinutes" type="number" min="5" max="480" step="5" defaultValue={sp.bookLen ?? "30"} />
+                  <input name="durationMinutes" type="number" min="5" max="480" step="5" defaultValue={sp.bookLen ?? ""} placeholder="From encounter type" />
+                </label>
+                <label>
+                  Encounter type
+                  <select name="visitType" defaultValue={sp.bookType ?? visitTypes.find((t) => t.code === "EST_WOUND")?.code ?? visitTypes[0]?.code}>
+                    {visitTypes
+                      .filter((t) => t.billable)
+                      .map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.name}
+                          {t.durationMin ? ` (${t.durationMin} min)` : ""}
+                        </option>
+                      ))}
+                    {visitTypes.some((t) => !t.billable) && (
+                      <optgroup label="Non-billable interactions">
+                        {visitTypes
+                          .filter((t) => !t.billable)
+                          .map((t) => (
+                            <option key={t.code} value={t.code}>
+                              {t.name}
+                            </option>
+                          ))}
+                      </optgroup>
+                    )}
+                  </select>
                 </label>
                 <label>
                   Physician
@@ -483,8 +761,19 @@ export default async function SchedulePage({
                   </select>
                 </label>
                 <label>
+                  Collaborating physician
+                  <select name="collaboratingProviderId" defaultValue={sp.bookCollab ?? ""}>
+                    <option value="">—</option>
+                    {collaborators.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
                   Insurance auth
-                  <select name="intakeCaseId" defaultValue={sp.bookAuth ?? (sp.patientId && approvedAuths.length === 1 ? approvedAuths[0].id : "")}>
+                  <select name="intakeCaseId" defaultValue={defaultAuth}>
                     <option value="">—</option>
                     {approvedAuths.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -496,29 +785,8 @@ export default async function SchedulePage({
                   </select>
                 </label>
                 <label>
-                  Encounter type
-                  <select name="visitType" defaultValue={sp.bookType ?? "FOLLOW_UP"}>
-                    {Object.entries(visitTypeLabel).map(([v, l]) => (
-                      <option key={v} value={v}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
                   Site of service
-                  <select name="placeOfService" defaultValue={sp.bookPos ?? ""}>
-                    <option value="">— From encounter type —</option>
-                    {Object.entries(placeOfServiceLabel).map(([v, l]) => (
-                      <option key={v} value={v}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Location
-                  <select name="locationId" required defaultValue={sp.bookLocation}>
+                  <select name="locationId" required defaultValue={bookLocation}>
                     {locations.map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.name}
@@ -526,9 +794,39 @@ export default async function SchedulePage({
                     ))}
                   </select>
                 </label>
+                {settings.showPosDropdown && (
+                  <label>
+                    Place of service (POS)
+                    <select name="placeOfService" defaultValue={sp.bookPos ?? ""}>
+                      <option value="">— From encounter type —</option>
+                      {Object.entries(placeOfServiceLabel).map(([v, l]) => (
+                        <option key={v} value={v}>
+                          {l}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <label>
                   Room
                   <input name="room" placeholder="Room / bed" defaultValue={sp.bookRoom} />
+                </label>
+                {resources.length > 0 && (
+                  <label>
+                    Resource
+                    <select name="resourceId" defaultValue={sp.bookRes ?? ""}>
+                      <option value="">—</option>
+                      {resources.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} · {r.location.name} (max {r.maxUnits})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <label>
+                  Account number
+                  <input name="accountNumber" defaultValue={sp.bookAcct} />
                 </label>
               </div>
               <details className="vw-recurring" open={Boolean(sp.bookRecur && sp.bookRecur !== "NONE")}>
@@ -566,7 +864,7 @@ export default async function SchedulePage({
             </form>
 
             <form className="panel stack" action={createReservedTime}>
-              <h2>Reserve time</h2>
+              <h2>Schedule reserved time</h2>
               <label>
                 Provider
                 <select name="providerId" required>
@@ -578,7 +876,7 @@ export default async function SchedulePage({
                 </select>
               </label>
               <label>
-                Location (optional)
+                Site of service (optional)
                 <select name="locationId" defaultValue="">
                   <option value="">—</option>
                   {locations.map((l) => (

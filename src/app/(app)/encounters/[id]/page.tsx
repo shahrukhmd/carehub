@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { visitTypeNames } from "@/lib/scheduler-setup";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import type { DocumentTemplate } from "@prisma/client";
 import {
@@ -61,7 +63,8 @@ import { ensureChartSetup, resolveWorkflow, workflowSteps } from "@/lib/chart-se
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DocumentFields, DocumentSummary } from "@/components/DocumentForm";
-import { calcBmi, formatDate, formatMoney, patientName, visitTypeLabel } from "@/lib/format";
+import { PanelToggle } from "@/components/SidebarNav";
+import { calcBmi, formatDate, formatMoney, patientName } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
 import { claimNumber, claimStatusLabel, claimStatusTone, payerRankLabel, visitBillingStatusLabel } from "@/lib/claim-format";
 import { createWound } from "@/app/(app)/wounds/actions";
@@ -98,6 +101,7 @@ export default async function EncounterPage({
   searchParams: Promise<{ error?: string; step?: string; wound?: string }>;
 }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
+  const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
   const { error, step: stepParam, wound: woundParam } = await searchParams;
   const encounter = await prisma.encounter.findFirst({
@@ -1090,7 +1094,7 @@ export default async function EncounterPage({
             </div>
             <div>
               <dt>Visit type</dt>
-              <dd>{encounter.appointment ? (visitTypeLabel[encounter.appointment.visitType] ?? encounter.appointment.visitType) : encounter.type}</dd>
+              <dd>{encounter.appointment ? (vtNames[encounter.appointment.visitType] ?? encounter.appointment.visitType) : encounter.type}</dd>
             </div>
             <div>
               <dt>Chart workflow</dt>
@@ -1255,11 +1259,15 @@ export default async function EncounterPage({
 
   const title = view in ACTION_VIEWS ? ACTION_VIEWS[view] : `${currentTemplate?.name ?? view}${currentWound ? ` — ${woundTitle(currentWound)}` : ""}`;
   const canFinalize = ["IN_PROGRESS", "CDS_QUERY"].includes(status) && clinicalEditable;
+  const railCollapsed = (await cookies()).get("ch_rail")?.value === "collapsed";
 
   return (
-    <div className="vw-layout">
+    <div className={`vw-layout${railCollapsed ? " rail-collapsed" : ""}`}>
       <aside className="vw-rail panel">
-        <p className="vw-rail-title">Document workflow</p>
+        <div className="vw-rail-head">
+          <PanelToggle target=".vw-layout" cookie="ch_rail" initialCollapsed={railCollapsed} label="document workflow" />
+          <p className="vw-rail-title">Document workflow</p>
+        </div>
         {bySection.map((g) => (
           <div key={g.sec} className="vw-rail-sec">
             <p className="vw-rail-sectitle">{DOCUMENT_SECTIONS[g.sec as keyof typeof DOCUMENT_SECTIONS]}</p>
@@ -1349,7 +1357,7 @@ export default async function EncounterPage({
           <div>
             <p className="muted">
               {formatDate(encounter.date)} ·{" "}
-              {encounter.appointment ? (visitTypeLabel[encounter.appointment.visitType] ?? encounter.appointment.visitType) : encounter.type} · DOB{" "}
+              {encounter.appointment ? (vtNames[encounter.appointment.visitType] ?? encounter.appointment.visitType) : encounter.type} · DOB{" "}
               {formatDate(encounter.patient.dob)} · MRN {encounter.patient.mrn}
             </p>
             <h1>

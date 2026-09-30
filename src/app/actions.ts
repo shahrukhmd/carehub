@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getSchedulerSettings } from "@/lib/scheduler-setup";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -233,7 +234,16 @@ export async function createAppointment(formData: FormData) {
   const startsAtRaw = required(formData, "startsAt");
   const startsAt = new Date(startsAtRaw);
   const visitType = required(formData, "visitType");
-  const minutes = Math.min(Math.max(Number(formData.get("durationMinutes") ?? 30) || 30, 5), 480);
+  const [visitTypeRow, schedSettings] = await Promise.all([
+    prisma.visitType.findFirst({ where: { practiceId: user.practiceId, code: visitType } }),
+    getSchedulerSettings(user.practiceId),
+  ]);
+  // Blank length: use the visit type's default duration (Scheduler admin -> Visit type & time).
+  const minutesRaw = Number(formData.get("durationMinutes") || visitTypeRow?.durationMin || 30);
+  const minutes = Math.min(Math.max(minutesRaw || 30, 5), 480);
+  const collaboratingProviderId = String(formData.get("collaboratingProviderId") ?? "") || null;
+  const accountNumber = String(formData.get("accountNumber") ?? "").trim().slice(0, 40) || null;
+  const resourceId = String(formData.get("resourceId") ?? "") || null;
   const clinicalStaffId = String(formData.get("clinicalStaffId") ?? "") || null;
   const supervisingProviderId = String(formData.get("supervisingProviderId") ?? "") || null;
   const intakeCaseId = String(formData.get("intakeCaseId") ?? "") || null;
@@ -248,6 +258,13 @@ export async function createAppointment(formData: FormData) {
   const safeReturn = /^\/gateway\/[A-Za-z0-9_-]+$/.test(returnTo) ? returnTo : null;
   if (Number.isNaN(startsAt.getTime())) throw new Error("Invalid start time");
   if (recurrence !== "NONE" && !endDate) throw new Error("A recurring visit needs an end date");
+
+  const [collaborator, resource] = await Promise.all([
+    collaboratingProviderId ? prisma.renderingProvider.findFirst({ where: { id: collaboratingProviderId, practiceId: user.practiceId } }) : true,
+    resourceId ? prisma.schedulerResource.findFirst({ where: { id: resourceId, practiceId: user.practiceId, locationId, active: true } }) : true,
+  ]);
+  if (!collaborator) throw new Error("Collaborating physician not found");
+  if (!resource) throw new Error("That resource isn't available at this location");
 
   const [patient, provider, location, staff, supervisor, intakeCase] = await Promise.all([
     prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId } }),
@@ -271,6 +288,8 @@ export async function createAppointment(formData: FormData) {
     clinicalStaffId,
     intakeCaseId,
     occurrences,
+    resourceId,
+    rules: { doubleBooking: schedSettings.showConflicts, crossSite: schedSettings.allowCrossSiteConflicts },
   });
   // Conflicts go back to the scheduler, who can accept them and book anyway.
   if (conflicts.length && formData.get("acceptConflicts") !== "on") {
@@ -291,6 +310,9 @@ export async function createAppointment(formData: FormData) {
       bookRecur: recurrence,
       bookRecurEnd: endDateRaw,
       bookDays: weekdays.join(","),
+      bookCollab: collaboratingProviderId ?? "",
+      bookAcct: accountNumber ?? "",
+      bookRes: resourceId ?? "",
       ...(safeReturn ? { returnTo: safeReturn } : {}),
     });
     redirect(`/schedule?${back.toString()}#book`);
@@ -311,6 +333,10 @@ export async function createAppointment(formData: FormData) {
     intakeCaseId,
     placeOfService,
     seriesId,
+    collaboratingProviderId,
+    accountNumber,
+    resourceId,
+    createdById: user.id,
     conflictNote: conflicts.length ? `Booked with accepted conflicts: ${conflicts.join("; ")}`.slice(0, 1000) : null,
   };
   const created = [];
@@ -332,6 +358,27 @@ export async function createAppointment(formData: FormData) {
   revalidatePath("/encounters");
   // Booking from a Patient Gateway case returns the scheduler to that case (same-site paths only).
   redirect(safeReturn ?? "/schedule");
+}
+
+// Cancel with a reason from Scheduler admin -> Cancellation reasons.
+export async function cancelAppointment(id: string, formData: FormData) {
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
+  const reason = String(formData.get("cancelReason") ?? "").trim();
+  const known = await prisma.cancellationReason.findFirst({ where: { practiceId: user.practiceId, name: reason } });
+  if (!known) throw new Error("Pick a cancellation reason");
+  const note = String(formData.get("cancelNote") ?? "").trim();
+  const appt = await prisma.appointment.findFirst({ where: { id, practiceId: user.practiceId }, include: { encounter: true } });
+  if (!appt) throw new Error("Appointment not found");
+  if (appt.encounter) throw new Error("This visit has been started — it can't be cancelled from the schedule");
+  const full = note ? `${reason} — ${note}`.slice(0, 300) : reason;
+  const scope = formData.get("series") === "on" && appt.seriesId ? { seriesId: appt.seriesId, startsAt: { gte: appt.startsAt } } : { id: appt.id };
+  const { count } = await prisma.appointment.updateMany({
+    where: { practiceId: user.practiceId, ...scope, encounter: null, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+    data: { status: "CANCELLED", cancelReason: full, cancelledAt: new Date() },
+  });
+  await logAudit(user.practiceId, user.id, "CANCEL_APPOINTMENT", "Appointment", appt.id, `${full}${count > 1 ? ` (${count} visits in series)` : ""}`);
+  revalidatePath("/schedule");
+  revalidatePath("/");
 }
 
 export async function updateAppointmentStatus(id: string, status: string) {

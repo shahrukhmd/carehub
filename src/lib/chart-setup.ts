@@ -5,10 +5,22 @@ import { finalizeGaps, parseFields, type DocState, type StepInput } from "@/lib/
 
 // Standard templates are added once per practice (and when the catalog grows); practices then own them.
 // Workflows and documentation views are only created when a practice has none.
-const ready = new Set<string>();
+// One setup run per practice, shared by concurrent callers.
+const setups = new Map<string, Promise<void>>();
 
-export async function ensureChartSetup(practiceId: string) {
-  if (ready.has(practiceId)) return;
+export function ensureChartSetup(practiceId: string) {
+  let run = setups.get(practiceId);
+  if (!run) {
+    run = setup(practiceId).catch((err) => {
+      setups.delete(practiceId);
+      throw err;
+    });
+    setups.set(practiceId, run);
+  }
+  return run;
+}
+
+async function setup(practiceId: string) {
   const existing = await prisma.documentTemplate.findMany({ where: { practiceId }, select: { key: true } });
   const have = new Set(existing.map((t) => t.key));
   const missing = STANDARD_TEMPLATES.map((t, i) => ({ t, i })).filter(({ t }) => !have.has(t.key));
@@ -62,7 +74,6 @@ export async function ensureChartSetup(practiceId: string) {
   }
 
   await prisma.practiceSettings.upsert({ where: { practiceId }, update: {}, create: { practiceId } });
-  ready.add(practiceId);
 }
 
 export async function getPracticeSettings(practiceId: string) {

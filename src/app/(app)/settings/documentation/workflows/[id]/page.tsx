@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DOCUMENT_SECTIONS } from "@/lib/chart-forms";
-import { visitTypeLabel } from "@/lib/format";
+import { getVisitTypes } from "@/lib/scheduler-setup";
 import { SettingsNav } from "../../../settings-nav";
 import { addWorkflowStep, deleteWorkflow, moveWorkflowStep, removeWorkflowStep, saveWorkflowSteps, updateWorkflow } from "../../actions";
 
@@ -15,6 +15,7 @@ export default async function WorkflowEditorPage({
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
   const user = await requireUser(["ADMIN"]);
+  const visitTypes = await getVisitTypes(user.practiceId);
   const { id } = await params;
   const sp = await searchParams;
   const wf = await prisma.chartWorkflow.findFirst({
@@ -70,7 +71,7 @@ export default async function WorkflowEditorPage({
           <fieldset className="gw-fieldset">
             <legend>Visit types that chart with this workflow</legend>
             <div className="st-checks">
-              {Object.entries(visitTypeLabel).map(([v, l]) => (
+              {visitTypes.map(({ code: v, name: l }) => (
                 <label key={v} className="checkbox-inline">
                   <input type="checkbox" name="visitTypes" value={v} defaultChecked={types.has(v)} /> {l}
                 </label>
