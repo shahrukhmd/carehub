@@ -37,7 +37,7 @@ export default async function DocumentationSettingsPage({
   await ensureChartSetup(user.practiceId);
 
   const [templates, workflows, views, usage] = await Promise.all([
-    prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, audience: "STAFF" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.chartWorkflow.findMany({
       where: { practiceId: user.practiceId },
       include: { steps: { include: { template: true }, orderBy: { sortOrder: "asc" } }, _count: { select: { encounters: true } } },

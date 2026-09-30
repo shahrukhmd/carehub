@@ -131,6 +131,25 @@ export function DocumentFields({ fields, values, idPrefix = "doc" }: { fields: F
                 {help}
               </fieldset>
             );
+          case "consent":
+            return (
+              <div key={f.id} className={`${cls} df-consent`}>
+                {label}
+                {f.help && <p className="df-consent-text">{f.help}</p>}
+                <label className="df-option">
+                  <input type="checkbox" name={name} value="on" defaultChecked={Boolean(one)} />
+                  <span>I have read and agree</span>
+                </label>
+              </div>
+            );
+          case "signature":
+          case "file":
+            return (
+              <div key={f.id} className={cls}>
+                {label}
+                <p className="df-help">{f.type === "signature" ? "Signed by the patient on the patient portal." : "Uploaded by the patient on the patient portal."}</p>
+              </div>
+            );
           case "checkbox":
             return (
               <label key={f.id} className={`${cls} df-option`}>

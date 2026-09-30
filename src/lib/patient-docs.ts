@@ -11,6 +11,10 @@ export const DOC_TYPES: Record<string, string> = {
   MEDICATION_LIST: "Medication list",
   LAB_RESULTS: "Lab / test results",
   CONSENT: "Consent form",
+  INTAKE_PACKET: "Patient intake packet",
+  LETTER: "Letter",
+  PRESCRIPTION: "Prescription",
+  CCDA: "Care summary (C-CDA)",
   OTHER: "Other",
 };
 
@@ -25,6 +29,7 @@ export const READ_METHODS: Record<string, string> = {
   TEXT: "PDF text",
   OCR: "OCR (scanned)",
   CLAUDE: "Claude AI",
+  PATIENT: "Entered by the patient",
 };
 
 export type FieldGroup = "patient" | "insurance" | "secondary" | "referral" | "pcp";

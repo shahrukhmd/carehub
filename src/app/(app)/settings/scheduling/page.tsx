@@ -26,7 +26,12 @@ import {
   savePreviewFields,
   saveVisitTypes,
   updateResource,
+  importHolidays,
+  addClosure,
+  deleteClosure,
 } from "./actions";
+import { DEFAULT_HOLIDAYS, holidaysFor } from "@/lib/holidays";
+import { formatDate } from "@/lib/format";
 
 const TABS: [string, string][] = [
   ["types", "Visit type & time"],
@@ -37,6 +42,7 @@ const TABS: [string, string][] = [
   ["filters", "Calendar filters"],
   ["general", "General"],
   ["resources", "Resources"],
+  ["holidays", "Holidays & closures"],
   ["schedules", "Provider & clinician schedules"],
 ];
 
@@ -51,7 +57,7 @@ function Chip({ c, label }: { c: ColorPair; label: string }) {
 export default async function SchedulingSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; saved?: string; error?: string; location?: string }>;
+  searchParams: Promise<{ tab?: string; saved?: string; error?: string; location?: string; year?: string }>;
 }) {
   const user = await requireUser(["ADMIN"]);
   const sp = await searchParams;
@@ -647,6 +653,8 @@ export default async function SchedulingSettingsPage({
         </section>
       )}
 
+      {tab === "holidays" && <HolidaysTab practiceId={user.practiceId} locations={locations} year={Number(sp.year) || new Date().getFullYear()} />}
+
       {tab === "schedules" && (
         <section className="panel stack">
           <h2>Provider &amp; clinician schedules</h2>
@@ -658,6 +666,132 @@ export default async function SchedulingSettingsPage({
           </Link>
         </section>
       )}
+    </div>
+  );
+}
+
+async function HolidaysTab({ practiceId, locations, year }: { practiceId: string; locations: { id: string; name: string }[]; year: number }) {
+  const closures = await prisma.clinicClosure.findMany({
+    where: { practiceId, date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } },
+    orderBy: { date: "asc" },
+  });
+  const locName = new Map(locations.map((l) => [l.id, l.name]));
+  return (
+    <div className="stack">
+      <section className="panel">
+        <div className="cn-head">
+          <h2>Closed days in {year}</h2>
+          <nav className="cn-filters">
+            {[year - 1, year, year + 1].map((y) => (
+              <Link key={y} href={`/settings/scheduling?tab=holidays&year=${y}`} className={y === year ? "active" : ""}>
+                {y}
+              </Link>
+            ))}
+          </nav>
+        </div>
+        <p className="muted">The schedule shows these days as closed and warns when a visit is booked on one (unless the closure allows booking, e.g. on-call clinic).</p>
+        {closures.length === 0 ? (
+          <p className="muted">No closed days yet — import holidays below.</p>
+        ) : (
+          <table className="cn-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Reason</th>
+                <th>Location</th>
+                <th>Booking</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {closures.map((c) => (
+                <tr key={c.id}>
+                  <td>{formatDate(c.date)} <span className="muted">{c.date.toLocaleDateString("en-US", { weekday: "short" })}</span></td>
+                  <td>
+                    {c.name} <span className="cn-tag">{c.kind === "HOLIDAY" ? "holiday" : "closure"}</span>
+                  </td>
+                  <td>{c.locationId ? locName.get(c.locationId) : "All locations"}</td>
+                  <td>{c.allowBooking ? "Allowed" : "Blocked (warning)"}</td>
+                  <td>
+                    <form action={deleteClosure.bind(null, c.id)}>
+                      <button className="btn ghost gw-mini" type="submit">
+                        Remove
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+      <section className="panel">
+        <h2>Import US holidays</h2>
+        <form action={importHolidays} className="stack">
+          <div className="cn-inline">
+            <select name="year" defaultValue={year} aria-label="Year">
+              {[year - 1, year, year + 1, year + 2].map((y) => (
+                <option key={y}>{y}</option>
+              ))}
+            </select>
+            <select name="locationId" defaultValue="" aria-label="Location">
+              <option value="">All locations</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="cn-types">
+            {holidaysFor(year).map(([name, date]) => (
+              <label key={name} className="checkbox-inline">
+                <input type="checkbox" name="holiday" value={name} defaultChecked={DEFAULT_HOLIDAYS.includes(name)} /> {name}{" "}
+                <span className="muted cn-small">{formatDate(date)}</span>
+              </label>
+            ))}
+          </div>
+          <div>
+            <button className="btn secondary" type="submit">
+              Import selected holidays
+            </button>
+          </div>
+        </form>
+      </section>
+      <section className="panel">
+        <h2>Add a closure</h2>
+        <form action={addClosure} className="form-grid gw-grid-3">
+          <label>
+            From
+            <input type="date" name="from" required />
+          </label>
+          <label>
+            To (optional)
+            <input type="date" name="to" />
+          </label>
+          <label>
+            Reason
+            <input name="name" required placeholder="Staff training, weather, office move…" />
+          </label>
+          <label>
+            Location
+            <select name="locationId" defaultValue="">
+              <option value="">All locations</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="checkbox-inline">
+            <input type="checkbox" name="allowBooking" /> Still allow booking
+          </label>
+          <button className="btn" type="submit">
+            Add closure
+          </button>
+        </form>
+      </section>
     </div>
   );
 }

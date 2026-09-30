@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { closuresBetween, dayKey } from "@/lib/holidays";
 import { formatDate, formatTime } from "@/lib/format";
 import { DAY_NAMES, timeToMinutes } from "@/lib/schedule";
 import { parseOfficeHours, timeLabel } from "@/lib/scheduler";
@@ -98,9 +99,12 @@ export async function findConflicts(input: ConflictInput): Promise<string[]> {
       : 0,
   ]);
 
+  const closures = (await closuresBetween(practiceId, from, to, input.locationId)).filter((c) => !c.allowBooking);
   const out: string[] = [];
   for (const o of occurrences) {
     const when = `${formatDate(o.startsAt)} ${formatTime(o.startsAt)}`;
+    const closed = closures.find((c) => dayKey(c.date) === dayKey(o.startsAt));
+    if (closed) out.push(`${when} — clinic closed (${closed.name})`);
     const startMin = o.startsAt.getHours() * 60 + o.startsAt.getMinutes();
     const endMin = startMin + (o.endsAt.getTime() - o.startsAt.getTime()) / 60_000;
 

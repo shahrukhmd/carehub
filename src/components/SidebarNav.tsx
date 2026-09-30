@@ -23,10 +23,29 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M2 20h20M10 13h4M12 11v4" {...s} />
     </>
   ),
+  connect: (
+    <>
+      <rect x="6" y="2" width="12" height="20" rx="2.5" {...s} />
+      <path d="M10 18h4M9 8.5l2 2 4-4" {...s} />
+    </>
+  ),
   schedule: (
     <>
       <rect x="3" y="5" width="18" height="16" rx="2" {...s} />
       <path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2" {...s} />
+    </>
+  ),
+  flow: (
+    <>
+      <rect x="3" y="4" width="5" height="16" rx="1.5" {...s} />
+      <rect x="10" y="4" width="5" height="11" rx="1.5" {...s} />
+      <rect x="17" y="4" width="4" height="7" rx="1.5" {...s} />
+    </>
+  ),
+  recall: (
+    <>
+      <path d="M4 12a8 8 0 1 0 2.4-5.7" {...s} />
+      <path d="M4 4v4h4M12 8v4l3 2" {...s} />
     </>
   ),
   visits: (

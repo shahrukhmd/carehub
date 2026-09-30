@@ -23,7 +23,7 @@ export default async function WorkflowEditorPage({
     include: { steps: { include: { template: true }, orderBy: { sortOrder: "asc" } }, _count: { select: { encounters: true } } },
   });
   if (!wf) notFound();
-  const templates = await prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+  const templates = await prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, active: true, audience: "STAFF" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
   const inFlow = new Set(wf.steps.map((s) => s.templateId));
   const available = templates.filter((t) => !inFlow.has(t.id));
   const types = new Set((wf.visitTypes ?? "").split(",").filter(Boolean));

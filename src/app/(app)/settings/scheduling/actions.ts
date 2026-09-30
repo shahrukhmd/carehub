@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { ensureSchedulerSetup } from "@/lib/scheduler-setup";
 import { CALENDAR_STATUSES, COLOR_MODES, PREVIEW_FIELDS, type DayHours } from "@/lib/scheduler";
+import { FEDERAL_HOLIDAYS, dayKey, holidaysFor } from "@/lib/holidays";
 
 class SchedError extends Error {}
 function fail(message: string): never {
@@ -255,5 +256,50 @@ export async function updateResource(id: string, fd: FormData) {
     const units = Number(str(fd, "maxUnits"));
     if (!(Number.isInteger(units) && units >= 1 && units <= 99)) fail("Maximum units must be 1–99.");
     await prisma.schedulerResource.update({ where: { id }, data: { maxUnits: units, active: on(fd, "active"), name: str(fd, "name").slice(0, 80) || r.name } });
+  });
+}
+
+// ---- Holidays & closures ----
+
+export async function importHolidays(fd: FormData) {
+  return guarded("/settings/scheduling?tab=holidays", async (user) => {
+    const year = Number(fd.get("year"));
+    if (!Number.isInteger(year) || year < 2020 || year > 2100) fail("Pick a year.");
+    const picked = new Set(fd.getAll("holiday").map(String).filter((h) => FEDERAL_HOLIDAYS.includes(h)));
+    if (picked.size === 0) fail("Tick the holidays the practice closes for.");
+    const locationId = String(fd.get("locationId") ?? "") || null;
+    const existing = await prisma.clinicClosure.findMany({ where: { practiceId: user.practiceId, date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } } });
+    const have = new Set(existing.map((c) => `${dayKey(c.date)}|${c.locationId ?? ""}`));
+    const rows = holidaysFor(year)
+      .filter(([name, date]) => picked.has(name) && !have.has(`${dayKey(date)}|${locationId ?? ""}`))
+      .map(([name, date]) => ({ practiceId: user.practiceId, locationId, date, name, kind: "HOLIDAY" }));
+    if (rows.length) await prisma.clinicClosure.createMany({ data: rows });
+    await logAudit(user.practiceId, user.id, "IMPORT_HOLIDAYS", "ClinicClosure", String(year), `${rows.length} holidays`);
+    return `/settings/scheduling?tab=holidays&year=${year}&saved=1`;
+  });
+}
+
+export async function addClosure(fd: FormData) {
+  return guarded("/settings/scheduling?tab=holidays", async (user) => {
+    const from = String(fd.get("from") ?? "");
+    const to = String(fd.get("to") ?? "") || from;
+    const name = String(fd.get("name") ?? "").trim().slice(0, 80);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) fail("Pick the date(s).");
+    if (!name) fail("Say why the clinic is closed (e.g. staff training).");
+    const start = new Date(`${from}T12:00:00`);
+    const end = new Date(`${to}T12:00:00`);
+    if (end < start || end.getTime() - start.getTime() > 60 * 86_400_000) fail("A closure can span up to 60 days.");
+    const locationId = String(fd.get("locationId") ?? "") || null;
+    const rows = [];
+    for (let d = new Date(start); d <= end; d = new Date(d.getTime() + 86_400_000)) rows.push({ practiceId: user.practiceId, locationId, date: new Date(d), name, kind: "CLOSURE", allowBooking: fd.get("allowBooking") === "on" });
+    await prisma.clinicClosure.createMany({ data: rows });
+    await logAudit(user.practiceId, user.id, "ADD_CLOSURE", "ClinicClosure", from, `${name} (${rows.length} day${rows.length === 1 ? "" : "s"})`);
+    return `/settings/scheduling?tab=holidays&year=${start.getFullYear()}&saved=1`;
+  });
+}
+
+export async function deleteClosure(id: string) {
+  return guarded("/settings/scheduling?tab=holidays", async (user) => {
+    await prisma.clinicClosure.deleteMany({ where: { id, practiceId: user.practiceId } });
   });
 }

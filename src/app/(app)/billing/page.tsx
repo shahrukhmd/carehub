@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { createDeposit } from "@/app/actions";
 import { createClaim } from "./claims/actions";
+import { createTestEra, uploadEra } from "./era/actions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { agingBucket, depositPayerTypeLabel, formatDate, formatMoney, patientName } from "@/lib/format";
@@ -23,10 +24,12 @@ const TABS = [
   { key: "visits", label: "Visits to bill" },
   { key: "claims", label: "Claims" },
   { key: "deposits", label: "Deposits" },
+  { key: "era", label: "ERA / 835 posting" },
   { key: "ar", label: "AR & denials" },
+  { key: "reports", label: "Financial reports" },
 ];
 
-type Search = { tab?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string };
+type Search = { tab?: string; imported?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string };
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
@@ -85,7 +88,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
       <nav className="view-tabs" style={{ margin: "0.9rem 0", width: "fit-content" }}>
         {TABS.map((t) => (
-          <Link key={t.key} href={`/billing?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
+          <Link key={t.key} href={t.key === "reports" ? "/billing/reports" : `/billing?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
             {t.label}
           </Link>
         ))}
@@ -94,6 +97,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       {tab === "visits" && <VisitsTab practiceId={user.practiceId} sp={sp} />}
       {tab === "claims" && <ClaimsTab practiceId={user.practiceId} sp={sp} />}
       {tab === "deposits" && <DepositsTab practiceId={user.practiceId} />}
+      {tab === "era" && <EraTab practiceId={user.practiceId} imported={sp.imported} />}
       {tab === "ar" && <ArTab claims={claims} />}
     </>
   );
@@ -558,5 +562,98 @@ function ArTab({
         </div>
       </div>
     </section>
+  );
+}
+
+async function EraTab({ practiceId, imported }: { practiceId: string; imported?: string }) {
+  const [files, payers] = await Promise.all([
+    prisma.eraFile.findMany({ where: { practiceId }, include: { _count: { select: { claims: true } }, claims: { select: { matchStatus: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.payer.findMany({ where: { practiceId, claims: { some: { status: { in: ["SUBMITTED", "ACCEPTED"] } } } }, orderBy: { name: "asc" } }),
+  ]);
+  return (
+    <div className="stack">
+      {imported && <p className="notice-ok">{imported} remittance files imported.</p>}
+      <section className="panel">
+        <h2>Import an ERA (835 remittance)</h2>
+        <p className="muted">
+          Upload the 835 files your clearinghouse or payer portal gives you. CareHub reads every claim on the remittance, matches it to your claim, and posts
+          the payment, contractual write-off, patient responsibility or denial in one step.
+        </p>
+        <form action={uploadEra} className="cn-inline">
+          <input type="file" name="files" multiple required accept=".835,.txt,.edi,.x12,.era" aria-label="835 files" />
+          <button className="btn" type="submit">
+            Import &amp; match
+          </button>
+        </form>
+        {payers.length > 0 && (
+          <details>
+            <summary className="muted">Testing without a clearinghouse? Create a test remittance for submitted claims</summary>
+            <form action={createTestEra} className="cn-inline">
+              <select name="payerId" aria-label="Payer">
+                {payers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <label className="checkbox-inline">
+                <input type="checkbox" name="deny" /> Deny the first claim
+              </label>
+              <button className="btn secondary" type="submit">
+                Create test 835
+              </button>
+            </form>
+          </details>
+        )}
+      </section>
+      <section className="panel">
+        <h2>Remittances</h2>
+        {files.length === 0 ? (
+          <p className="muted">No ERAs imported yet.</p>
+        ) : (
+          <table className="cn-table">
+            <thead>
+              <tr>
+                <th>Imported</th>
+                <th>Payer</th>
+                <th>Payment</th>
+                <th>Claims</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((f) => {
+                const unmatched = f.claims.filter((c) => c.matchStatus === "UNMATCHED").length;
+                const ready = f.claims.filter((c) => c.matchStatus === "MATCHED").length;
+                return (
+                  <tr key={f.id}>
+                    <td>{formatDate(f.createdAt)}</td>
+                    <td>
+                      <Link href={`/billing/era/${f.id}`}>{f.payerName}</Link>
+                      <div className="muted cn-small">{f.fileName}</div>
+                    </td>
+                    <td>
+                      {formatMoney(f.totalCents)}
+                      <div className="muted cn-small">
+                        {f.paymentMethod === "ACH" ? "EFT" : f.paymentMethod === "CHK" ? "Check" : f.paymentMethod} {f.traceNumber ?? ""}
+                      </div>
+                    </td>
+                    <td>
+                      {f._count.claims}
+                      {unmatched > 0 && <div className="gw-missing">{unmatched} unmatched</div>}
+                    </td>
+                    <td>
+                      <span className={`cn-status ${f.status === "POSTED" ? "cn-completed" : f.status === "PARTIAL" ? "cn-in_progress" : "cn-sent"}`}>
+                        {f.status === "POSTED" ? "Posted" : f.status === "PARTIAL" ? "Partly posted" : ready ? `${ready} ready to post` : "Needs matching"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }

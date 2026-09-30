@@ -19,7 +19,7 @@ export default async function DocumentationViewEditor({
   const view = id === "new" ? null : await prisma.documentationView.findFirst({ where: { id, practiceId: user.practiceId } });
   if (id !== "new" && !view) notFound();
   const forms = await prisma.documentTemplate.findMany({
-    where: { practiceId: user.practiceId, kind: "FORM" },
+    where: { audience: "STAFF",  practiceId: user.practiceId, kind: "FORM" },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
   let parts: string[] = [];

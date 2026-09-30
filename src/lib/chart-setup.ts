@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { STANDARD_TEMPLATES, STANDARD_VIEWS, STANDARD_WORKFLOWS } from "@/lib/document-catalog";
+import { PATIENT_TEMPLATES } from "@/lib/connect/patient-forms";
 import { finalizeGaps, parseFields, type DocState, type StepInput } from "@/lib/chart-forms";
 
 // Standard templates are added once per practice (and when the catalog grows); practices then own them.
@@ -23,7 +24,7 @@ export function ensureChartSetup(practiceId: string) {
 async function setup(practiceId: string) {
   const existing = await prisma.documentTemplate.findMany({ where: { practiceId }, select: { key: true } });
   const have = new Set(existing.map((t) => t.key));
-  const missing = STANDARD_TEMPLATES.map((t, i) => ({ t, i })).filter(({ t }) => !have.has(t.key));
+  const missing = [...STANDARD_TEMPLATES, ...PATIENT_TEMPLATES].map((t, i) => ({ t, i })).filter(({ t }) => !have.has(t.key));
   if (missing.length) {
     await prisma.documentTemplate.createMany({
       data: missing.map(({ t, i }) => ({
@@ -33,6 +34,7 @@ async function setup(practiceId: string) {
         description: t.description ?? null,
         section: t.section,
         kind: t.kind,
+        audience: t.audience ?? "STAFF",
         builtin: t.kind === "BUILTIN" ? t.key : null,
         perWound: Boolean(t.perWound),
         fields: JSON.stringify(t.fields ?? []),

@@ -58,6 +58,22 @@ model Practice {
   schedulerResources SchedulerResource[]
   systemMessages    SystemMessage[]
   faxes             Fax[]
+  intakePackets     IntakePacket[]
+  intakeRequests    IntakeRequest[]
+  messages          MessageLog[]
+  automationRules   AutomationRule[]
+  surveys           SurveyResponse[]
+  kioskLinks        KioskLink[]
+  connectSettings   ConnectSettings?
+  eraFiles          EraFile[]
+  recalls           Recall[]
+  careRules         CareRule[]
+  prescriptions     Prescription[]
+  immunizations     Immunization[]
+  letterTemplates   LetterTemplate[]
+  clinicClosures    ClinicClosure[]
+  apiClients        ApiClient[]
+  duplicateDismissals DuplicateDismissal[]
 }
 
 model Membership {
@@ -243,9 +259,15 @@ model Patient {
   statements      Statement[]
   intakeCases     IntakeCase[]
   documents       PatientDocument[]
+  intakeRequests  IntakeRequest[]
+  surveys         SurveyResponse[]
 
   @@unique([practiceId, mrn])
   claims          Claim[]
+  recalls         Recall[]
+  prescriptions   Prescription[]
+  immunizations   Immunization[]
+  careOverrides   CareRuleOverride[]
 }
 
 model Insurance {
@@ -574,6 +596,17 @@ model Appointment {
   cancelledAt           DateTime?
   createdById           String?
   faxes                 Fax[]
+  // Patient Connect: confirm / cancel link in reminders.
+  confirmToken          String?   @unique
+  reminderSentAt        DateTime?
+  confirmedAt           DateTime?
+  // PATIENT_LINK | STAFF
+  confirmedVia          String?
+  intakeRequests        IntakeRequest[]
+  surveys               SurveyResponse[]
+  // Flow board: each status change with its time.
+  events                AppointmentEvent[]
+  recalls               Recall[]
 }
 
 model Encounter {
@@ -1176,6 +1209,8 @@ model DocumentTemplate {
   builtin     String?
   // Completed once per open wound (e.g. treatment notes) instead of once per visit.
   perWound    Boolean  @default(false)
+  // STAFF (chart documents) | PATIENT (Patient Connect intake forms)
+  audience    String   @default("STAFF")
   fields      String   @default("[]")
   standard    Boolean  @default(false)
   signatureRequired Boolean @default(false)
@@ -1505,4 +1540,442 @@ model Fax {
   updatedAt     DateTime   @updatedAt
 
   @@index([practiceId, direction, createdAt])
+}
+
+// ---- Patient Connect (patient-facing intake, reminders, surveys) ----
+
+// A bundle of patient-facing forms sent together (e.g. "New patient packet").
+model IntakePacket {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  // JSON array of DocumentTemplate keys in order.
+  templateKeys String  @default("[]")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  requests    IntakeRequest[]
+  rules       AutomationRule[]
+  kioskLinks  KioskLink[]
+}
+
+// A packet sent to one patient (or started at a kiosk by a new patient).
+model IntakeRequest {
+  id            String       @id @default(cuid())
+  practiceId    String
+  practice      Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String?
+  patient       Patient?     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  packetId      String
+  packet        IntakePacket @relation(fields: [packetId], references: [id], onDelete: Cascade)
+  token         String       @unique
+  // SENT | OPENED | IN_PROGRESS | COMPLETED | EXPIRED | CANCELLED
+  status        String       @default("SENT")
+  // SMS | EMAIL | LINK | KIOSK
+  channel       String       @default("LINK")
+  sentTo        String?
+  expiresAt     DateTime
+  openedAt      DateTime?
+  completedAt   DateTime?
+  verifyAttempts Int         @default(0)
+  lockedUntil   DateTime?
+  // Hash of the browser session allowed in after the DOB check.
+  sessionHash   String?
+  // JSON { templateKey: { fieldId: value } }
+  answers       String       @default("{}")
+  currentStep   Int          @default(0)
+  documentId    String?
+  kioskLinkId   String?
+  reminderCount Int          @default(0)
+  lastReminderAt DateTime?
+  ruleId        String?
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([practiceId, status])
+}
+
+// Every text / email CareHub sends (or would send, with the test sender).
+model MessageLog {
+  id            String   @id @default(cuid())
+  practiceId    String
+  practice      Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String?
+  appointmentId String?
+  requestId     String?
+  // SMS | EMAIL
+  channel       String
+  to            String
+  subject       String?
+  body          String
+  // INTAKE | REMINDER | SURVEY | OTHER
+  kind          String
+  // SENT | FAILED
+  status        String
+  provider      String   @default("MOCK")
+  error         String?
+  ruleId        String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  @@index([practiceId, createdAt])
+}
+
+model AutomationRule {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  // INTAKE_PACKET | REMINDER | SURVEY
+  kind        String
+  // Hours before the appointment (INTAKE_PACKET, REMINDER) or after it (SURVEY).
+  offsetHours Int      @default(48)
+  // SMS | EMAIL | BOTH
+  channel     String   @default("BOTH")
+  packetId    String?
+  packet      IntakePacket? @relation(fields: [packetId], references: [id], onDelete: SetNull)
+  onlyNewPatients Boolean @default(false)
+  // Comma-separated visit type codes; empty = all.
+  visitTypes  String?
+  messageTemplate String?
+  active      Boolean  @default(true)
+  lastRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SurveyResponse {
+  id            String       @id @default(cuid())
+  practiceId    String
+  practice      Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  token         String       @unique
+  score         Int?
+  comment       String?
+  sentAt        DateTime     @default(now())
+  respondedAt   DateTime?
+}
+
+// QR / link for walk-in self-registration at a site (starts a packet without a chart).
+model KioskLink {
+  id          String       @id @default(cuid())
+  practiceId  String
+  practice    Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  token       String       @unique
+  packetId    String
+  packet      IntakePacket @relation(fields: [packetId], references: [id], onDelete: Cascade)
+  locationId  String?
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+}
+
+// Patient-facing branding and messaging.
+model ConnectSettings {
+  id            String   @id @default(cuid())
+  practiceId    String   @unique
+  practice      Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  displayName   String?
+  brandColor    String   @default("#171342")
+  accentColor   String   @default("#4f9c60")
+  // Small logo as a PNG/JPEG data URL.
+  logo          String?
+  welcomeText   String?
+  supportPhone  String?
+  // MOCK (test sender) | TWILIO | SENDGRID
+  smsProvider   String   @default("MOCK")
+  emailProvider String   @default("MOCK")
+  linkDays      Int      @default(14)
+  // Spanish forms offered when a form has a Spanish version (future).
+  languages     String   @default("en")
+  updatedAt     DateTime @updatedAt
+}
+
+// ---- ERA / 835 remittance ----
+
+model EraFile {
+  id            String   @id @default(cuid())
+  practiceId    String
+  practice      Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  fileName      String
+  payerName     String
+  payerId       String?
+  payeeName     String?
+  payeeNpi      String?
+  // BPR04: ACH | CHK | NON (no payment)
+  paymentMethod String
+  // TRN02 check / EFT trace number
+  traceNumber   String?
+  paymentDate   DateTime?
+  totalCents    Int
+  // IMPORTED | POSTED | PARTIAL
+  status        String   @default("IMPORTED")
+  depositId     String?
+  raw           String
+  importedById  String?
+  postedAt      DateTime?
+  createdAt     DateTime @default(now())
+  claims        EraClaim[]
+
+  @@index([practiceId, createdAt])
+}
+
+model EraClaim {
+  id               String   @id @default(cuid())
+  eraFileId        String
+  eraFile          EraFile  @relation(fields: [eraFileId], references: [id], onDelete: Cascade)
+  claimId          String?
+  // CLP01 patient control number as sent on the claim
+  controlNumber    String
+  // CLP02: 1 primary, 2 secondary, 3 tertiary, 4 denied, 19-22 forwarded / reversal
+  statusCode       String
+  billedCents      Int
+  paidCents        Int
+  patientRespCents Int      @default(0)
+  payerClaimNumber String?
+  patientName      String?
+  memberId         String?
+  // JSON [{group, reason, cents}] claim-level + line-level CAS
+  adjustments      String   @default("[]")
+  // JSON [{code, modifiers, billedCents, paidCents, units, adjustments}]
+  lines            String   @default("[]")
+  remarks          String?
+  // MATCHED | UNMATCHED | POSTED | SKIPPED
+  matchStatus      String   @default("UNMATCHED")
+  note             String?
+  postedAt         DateTime?
+}
+
+// ---- Patient flow ----
+
+model AppointmentEvent {
+  id            String      @id @default(cuid())
+  appointmentId String
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  status        String
+  room          String?
+  userId        String?
+  at            DateTime    @default(now())
+
+  @@index([appointmentId, at])
+}
+
+// ---- Recalls ----
+
+model Recall {
+  id            String       @id @default(cuid())
+  practiceId    String
+  practice      Practice     @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  providerId    String?
+  locationId    String?
+  visitType     String?
+  dueDate       DateTime
+  reason        String
+  // OPEN | SCHEDULED | CLOSED
+  status        String       @default("OPEN")
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  contactCount  Int          @default(0)
+  lastContactAt DateTime?
+  lastContactVia String?
+  notes         String?
+  closedReason  String?
+  createdById   String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([practiceId, status, dueDate])
+}
+
+// ---- Clinical decision support (care gaps) ----
+
+model CareRule {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  key          String
+  name         String
+  description  String?
+  // Who it applies to (JSON): { ageMin, ageMax, sex, icd10 (prefixes), activeWound, etiologies }
+  criteria     String   @default("{}")
+  // What satisfies it: LAB:<name>, DOCUMENT:<template key>, VITALS_BP, VITALS_WEIGHT, SMOKING_STATUS, IMMUNIZATION:<name>
+  satisfiedBy  String
+  intervalDays Int      @default(365)
+  message      String
+  // ALERT (warning) | INFO
+  severity     String   @default("ALERT")
+  source       String?
+  active       Boolean  @default(true)
+  standard     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  overrides    CareRuleOverride[]
+
+  @@unique([practiceId, key])
+}
+
+model CareRuleOverride {
+  id          String   @id @default(cuid())
+  ruleId      String
+  rule        CareRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // DONE (done elsewhere) | NOT_APPLICABLE | REFUSED
+  status      String
+  note        String?
+  until       DateTime?
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  @@index([patientId, ruleId])
+}
+
+// ---- Duplicate patients ----
+
+model DuplicateDismissal {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // Sorted pair "idA|idB"
+  pairKey     String
+  userId      String?
+  createdAt   DateTime @default(now())
+
+  @@unique([practiceId, pairKey])
+}
+
+// ---- Prescriptions ----
+
+model Prescription {
+  id              String     @id @default(cuid())
+  practiceId      String
+  practice        Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId     String?
+  prescriberId    String
+  drug            String
+  strength        String?
+  form            String?
+  route           String?
+  sig             String
+  quantity        String
+  quantityUnit    String?
+  refills         Int        @default(0)
+  daysSupply      Int?
+  dispenseAsWritten Boolean  @default(false)
+  controlled      Boolean    @default(false)
+  diagnosisCode   String?
+  pharmacyName    String?
+  pharmacyPhone   String?
+  pharmacyFax     String?
+  notes           String?
+  // DRAFT | SIGNED | SENT | PRINTED | CANCELLED
+  status          String     @default("DRAFT")
+  // PRINT | FAX | ERX
+  sentVia         String?
+  sentAt          DateTime?
+  faxId           String?
+  signedAt        DateTime?
+  signedName      String?
+  medicationId    String?
+  allergyOverride String?
+  cancelledReason String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([practiceId, patientId])
+}
+
+// ---- Immunizations ----
+
+model Immunization {
+  id             String   @id @default(cuid())
+  practiceId     String
+  practice       Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId    String?
+  vaccine        String
+  cvxCode        String?
+  administeredAt DateTime
+  // ADMINISTERED | HISTORICAL | REFUSED
+  source         String   @default("ADMINISTERED")
+  lotNumber      String?
+  manufacturer   String?
+  expirationDate DateTime?
+  site           String?
+  route          String?
+  doseMl         Float?
+  administeredById String?
+  refusalReason  String?
+  visDate        DateTime?
+  notes          String?
+  reportedAt     DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([practiceId, administeredAt])
+}
+
+// ---- Letters ----
+
+model LetterTemplate {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  key         String
+  name        String
+  subject     String?
+  body        String
+  active      Boolean  @default(true)
+  standard    Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([practiceId, key])
+}
+
+// ---- Holidays & closures ----
+
+model ClinicClosure {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // null = every location
+  locationId  String?
+  date        DateTime
+  name        String
+  // HOLIDAY | CLOSURE
+  kind        String   @default("HOLIDAY")
+  // Allow booking anyway (e.g. on-call clinic)
+  allowBooking Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([practiceId, date])
+}
+
+// ---- API clients (FHIR) ----
+
+model ApiClient {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  tokenHash   String    @unique
+  tokenHint   String
+  // Space-separated scopes, e.g. "patient/*.read"
+  scopes      String    @default("patient/*.read")
+  active      Boolean   @default(true)
+  lastUsedAt  DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
 }

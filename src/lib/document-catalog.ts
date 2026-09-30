@@ -31,6 +31,7 @@ export type CatalogTemplate = {
   name: string;
   section: DocumentSection;
   kind: "BUILTIN" | "FORM";
+  audience?: "STAFF" | "PATIENT";
   description?: string;
   perWound?: boolean;
   signatureRequired?: boolean;

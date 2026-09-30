@@ -37,6 +37,15 @@ export async function saveUpload(file: File, practiceId: string) {
   };
 }
 
+// Saves a file CareHub generated (letters, summaries) next to the uploads.
+export async function saveGenerated(practiceId: string, bytes: Uint8Array | Buffer, ext: ".pdf" | ".xml" | ".txt") {
+  const dir = path.join(UPLOAD_ROOT, practiceId);
+  await mkdir(dir, { recursive: true });
+  const storedName = `${randomUUID()}${ext}`;
+  await writeFile(path.join(dir, storedName), bytes);
+  return { filePath: path.posix.join(practiceId, storedName), sizeBytes: bytes.length };
+}
+
 export async function readUpload(relativePath: string) {
   const full = path.resolve(UPLOAD_ROOT, relativePath);
   if (!full.startsWith(UPLOAD_ROOT + path.sep)) throw new Error("Invalid file path");

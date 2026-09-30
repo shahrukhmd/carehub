@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CareGapsPanel } from "@/app/(app)/care-gaps/care-gaps-panel";
 import { visitTypeNames } from "@/lib/scheduler-setup";
 import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
@@ -151,7 +152,7 @@ export default async function EncounterPage({
       where: { practiceId: user.practiceId, isSupervising: true, status: "ACTIVE" },
       orderBy: { name: "asc" },
     }),
-    prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, active: true, audience: "STAFF" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.chartWorkflow.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ isDefault: "desc" }, { name: "asc" }] }),
     prisma.documentationView.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.encounter.findMany({
@@ -1418,6 +1419,8 @@ export default async function EncounterPage({
             {error}
           </p>
         )}
+
+        {!SIGNED_STATUSES.includes(status) && <CareGapsPanel practiceId={user.practiceId} patientId={encounter.patientId} back={`/encounters/${encounter.id}`} compact />}
 
         {criticalOpen.length > 0 && !SIGNED_STATUSES.includes(status) && (
           <p className="vw-critical" role="status">

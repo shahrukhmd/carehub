@@ -4,6 +4,8 @@ import { cancelAppointment, createAppointment, startEncounter, updateAppointment
 import { checkEligibility, createReservedTime, deleteReservedTime } from "@/app/(app)/schedule/actions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { prisma } from "@/lib/prisma";
+import { recordFlow } from "@/lib/flow";
+import { closuresBetween } from "@/lib/holidays";
 import { formatDate, formatMoney, formatTime, patientName } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
 import { placeOfServiceLabel } from "@/lib/superbill";
@@ -73,14 +75,18 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   // Automatically check in same-day visits shortly before they start.
   if (settings.autoCheckIn) {
     const now = new Date();
-    await prisma.appointment.updateMany({
+    const due = await prisma.appointment.findMany({
       where: {
         practiceId: user.practiceId,
         status: { in: ["SCHEDULED", "CONFIRMED"] },
         startsAt: { gte: startOfDay(now), lte: new Date(now.getTime() + settings.autoCheckInMinutes * 60_000) },
       },
-      data: { status: "CHECKED_IN" },
+      select: { id: true },
     });
+    if (due.length) {
+      await prisma.appointment.updateMany({ where: { id: { in: due.map((d) => d.id) } }, data: { status: "CHECKED_IN" } });
+      await recordFlow(due.map((d) => d.id), "CHECKED_IN", null);
+    }
   }
 
   const [patients, providers, locations, collaborators, resources] = await Promise.all([
@@ -299,6 +305,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     return `${loc.name}: ${h.closed ? `closed on ${DAY_ABBR[h.day]}` : `${timeLabel(h.start)}–${timeLabel(h.end)}`} · ${loc.slotMinutes}-min slots`;
   })();
 
+  const closures = await closuresBetween(user.practiceId, rangeStart, rangeEnd);
   return (
     <>
       <div className="page-head">
@@ -320,6 +327,13 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           )}
         </div>
       </div>
+
+      {closures.length > 0 && (
+        <p className="sc-closed" role="status">
+          Clinic closed:{" "}
+          {closures.map((c) => `${c.date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} — ${c.name}${c.allowBooking ? " (booking allowed)" : ""}`).join(" · ")}
+        </p>
+      )}
 
       {nextQuery && (
         <section className="panel">
@@ -576,6 +590,13 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                         ) : (
                           <StatusBadge value={a.status} />
                         )}
+                        {a.confirmedVia === "PATIENT_LINK" && a.confirmedAt ? (
+                          <div className="muted" title="Confirmed by the patient from the reminder link">
+                            ✓ Patient confirmed {formatDate(a.confirmedAt)}
+                          </div>
+                        ) : a.reminderSentAt ? (
+                          <div className="muted">Reminder sent {formatDate(a.reminderSentAt)}</div>
+                        ) : null}
                       </td>
                       <td>
                         {a.eligibilityChecks[0] ? (

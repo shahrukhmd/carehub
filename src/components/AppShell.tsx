@@ -12,7 +12,10 @@ import { PATIENT_VIEW_ROLES, canWorkTeam } from "@/lib/gateway";
 const nav = [
   { href: "/credentialing", label: "Credentialing", icon: "credentialing", roles: ["ADMIN", "CREDENTIALING"] },
   { href: "/", label: "Patient Gateway", icon: "gateway", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] },
+  { href: "/connect", label: "Patient Connect", icon: "connect", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] },
   { href: "/schedule", label: "Schedule", icon: "schedule", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
+  { href: "/flow", label: "Flow board", icon: "flow", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER", "INTAKE"] },
+  { href: "/recalls", label: "Recalls", icon: "recall", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN", "INTAKE"] },
   { href: "/encounters", label: "Visit worklist", icon: "visits", roles: ["ADMIN", "CLINICIAN", "CDS", "BILLER", "FRONT_DESK", "SCHEDULER"] },
   { href: "/faxing", label: "Faxing", icon: "fax", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "SCHEDULER", "CLINICIAN"] },
   { href: "/billing", label: "Revenue cycle", icon: "revenue", roles: ["ADMIN", "BILLER"] },

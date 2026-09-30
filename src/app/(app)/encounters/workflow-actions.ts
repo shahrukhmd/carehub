@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { recordFlow } from "@/lib/flow";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { parsePointerIds } from "@/lib/superbill";
@@ -173,6 +174,7 @@ export async function submitToCds(encounterId: string) {
     // The visit itself is done once the chart leaves the provider.
     if (e.appointmentId) {
       await prisma.appointment.update({ where: { id: e.appointmentId }, data: { status: "COMPLETED" } });
+      if (!(await prisma.appointmentEvent.findFirst({ where: { appointmentId: e.appointmentId, status: "COMPLETED" } }))) await recordFlow(e.appointmentId, "COMPLETED", user.id);
     }
   });
 }
@@ -311,6 +313,7 @@ export async function setAppointmentStatus(appointmentId: string, fd: FormData) 
   if (!appt) throw new Error("Appointment not found");
   if (appt.encounter) throw new Error("The chart has been started; its status now follows the visit workflow");
   await prisma.appointment.update({ where: { id: appt.id }, data: { status } });
+  if (appt.status !== status) await recordFlow(appt.id, status, user.id);
   await logAudit(user.practiceId, user.id, "appointment.status", "Appointment", appt.id, status);
   revalidatePath("/encounters");
   revalidatePath("/schedule");

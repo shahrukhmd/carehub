@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { QuickActions } from "@/components/QuickActions";
+import { PatientFormsPanel } from "../../connect/patient-forms-panel";
 import { networkStatusForPayer } from "@/lib/credentialing";
 import { ageFromDob, enrollmentStatusLabel, formatDate, formatTime, patientName, planSegmentLabel } from "@/lib/format";
 import {
@@ -346,6 +347,8 @@ export default async function IntakeCasePage({
             </form>
           )}
         </section>
+
+        <PatientFormsPanel practiceId={user.practiceId} patientId={patient.id} role={user.role} back={`/gateway/${c.id}`} />
 
         {/* ---------------- Team 1 ---------------- */}
         <section className="panel">

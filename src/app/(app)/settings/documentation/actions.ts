@@ -1,5 +1,6 @@
 "use server";
 
+import { MAP_TARGETS } from "@/lib/connect/patient-forms";
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -100,7 +101,7 @@ export async function updateTemplate(id: string, fd: FormData) {
   });
 }
 
-function readField(fd: FormData): Omit<FieldDef, "id"> {
+function readField(fd: FormData, previous?: FieldDef): Omit<FieldDef, "id"> {
   const label = str(fd, "label");
   if (!label) fail("Give the field a label.");
   const type = str(fd, "type") as FieldType;
@@ -121,6 +122,8 @@ function readField(fd: FormData): Omit<FieldDef, "id"> {
     help: str(fd, "help").slice(0, 300) || undefined,
     unit: type === "number" ? str(fd, "unit").slice(0, 20) || undefined : undefined,
     width,
+    // Patient forms only: which chart field the answer fills. Kept as-is when the designer doesn't show the picker.
+    map: fd.has("map") ? (MAP_TARGETS.some(([k]) => k === str(fd, "map")) ? str(fd, "map") : undefined) : previous?.map,
   };
 }
 
@@ -158,7 +161,7 @@ export async function updateField(id: string, fieldId: string, fd: FormData) {
     const i = fields.findIndex((f) => f.id === fieldId);
     if (i < 0) fail("Field not found.");
     // The field id stays the same so answers already recorded keep lining up.
-    fields[i] = { ...readField(fd), id: fieldId };
+    fields[i] = { ...readField(fd, fields[i]), id: fieldId };
     await saveFields(t, fields);
     return `/settings/documentation/templates/${id}?saved=1#f-${fieldId}`;
   });
@@ -267,7 +270,7 @@ export async function saveTemplateFlags(flag: "signatureRequired" | "critical", 
 export async function saveProgressNoteSettings(fd: FormData) {
   return guarded("/settings/documentation?tab=progress", async () => {
     const user = await admin();
-    const templates = await prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, kind: "FORM" } });
+    const templates = await prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, kind: "FORM", audience: "STAFF" } });
     for (const t of templates) {
       const order = Number(str(fd, `ord_${t.id}`));
       await prisma.documentTemplate.update({

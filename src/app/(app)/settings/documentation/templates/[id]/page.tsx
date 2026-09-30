@@ -4,10 +4,11 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { BUILTIN_SECTIONS, DOCUMENT_SECTIONS, FIELD_TYPES, parseFields, type FieldDef } from "@/lib/chart-forms";
 import { DocumentFields } from "@/components/DocumentForm";
+import { MAP_TARGETS } from "@/lib/connect/patient-forms";
 import { SettingsNav } from "../../../settings-nav";
 import { addField, deleteTemplate, duplicateTemplate, moveField, removeField, updateField, updateTemplate } from "../../actions";
 
-function FieldInputs({ field }: { field?: FieldDef }) {
+function FieldInputs({ field, patient }: { field?: FieldDef; patient?: boolean }) {
   return (
     <div className="form-grid gw-grid-3">
       <label>
@@ -51,6 +52,19 @@ function FieldInputs({ field }: { field?: FieldDef }) {
       <label className="checkbox-inline">
         <input type="checkbox" name="required" defaultChecked={Boolean(field?.required)} /> Required to complete the form
       </label>
+      {patient && (
+        <label>
+          Fills patient field
+          <select name="map" defaultValue={field?.map ?? ""}>
+            <option value="">— Not mapped —</option>
+            {MAP_TARGETS.map(([k, l]) => (
+              <option key={k} value={k}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
     </div>
   );
 }
@@ -78,7 +92,12 @@ export default async function TemplateDesignerPage({
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">
-            <Link href="/settings/documentation?tab=templates">Documentation settings</Link> · {isForm ? "Form designer" : "Built-in chart section"}
+            {t.audience === "PATIENT" ? (
+              <Link href="/connect?tab=forms">Patient Connect · Patient forms</Link>
+            ) : (
+              <Link href="/settings/documentation?tab=templates">Documentation settings</Link>
+            )}{" "}
+            · {isForm ? "Form designer" : "Built-in chart section"}
           </p>
           <h1>{t.name}</h1>
         </div>
@@ -190,7 +209,7 @@ export default async function TemplateDesignerPage({
                       {f.options?.length ? <span className="muted"> · {f.options.length} options</span> : null}
                     </summary>
                     <form action={updateField.bind(null, t.id, f.id)} className="stack dz-edit">
-                      <FieldInputs field={f} />
+                      <FieldInputs field={f} patient={t.audience === "PATIENT"} />
                       <div className="vw-step-actions">
                         <button className="btn" type="submit">
                           Save field
@@ -221,7 +240,7 @@ export default async function TemplateDesignerPage({
             <div className="dz-add">
               <h3>Add a field</h3>
               <form action={addField.bind(null, t.id)} className="stack">
-                <FieldInputs />
+                <FieldInputs patient={t.audience === "PATIENT"} />
                 <div className="form-grid gw-grid-3">
                   <label>
                     Position

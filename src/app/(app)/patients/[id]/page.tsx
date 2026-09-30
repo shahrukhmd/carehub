@@ -19,6 +19,9 @@ import { requireUser } from "@/lib/auth";
 import { etiologyLabel } from "@/lib/wound";
 import { setGuarantorAccount, setPatientStatus } from "@/app/actions";
 import { QuickActions } from "@/components/QuickActions";
+import { PatientFormsPanel } from "@/app/(app)/connect/patient-forms-panel";
+import { CareGapsPanel } from "@/app/(app)/care-gaps/care-gaps-panel";
+import { ImmunizationsPanel, PrescriptionsPanel, RecallsPanel, RecordsPanel } from "./chart-panels";
 import { startIntake } from "@/app/(app)/gateway/actions";
 import {
   PATIENT_EDIT_ROLES,
@@ -30,9 +33,12 @@ import {
   intakeStageLabel,
 } from "@/lib/gateway";
 
-export default async function PatientChartPage({ params }: { params: Promise<{ id: string }> }) {
+type ChartSearch = { merged?: string; rxOk?: string; rxError?: string; ccdaError?: string; ccdaApplied?: string };
+
+export default async function PatientChartPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<ChartSearch> }) {
   const user = await requireUser(PATIENT_VIEW_ROLES);
   const { id } = await params;
+  const sp = await searchParams;
   const patient = await prisma.patient.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -118,8 +124,17 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
         </div>
       </div>
 
+      {sp.merged && <p className="notice-ok">Charts merged — moved {sp.merged}.</p>}
+      {sp.rxOk && <p className="notice-ok">{sp.rxOk}</p>}
+      {sp.rxError && (
+        <p className="gw-error" role="alert">
+          {sp.rxError}
+        </p>
+      )}
+
       <div className="two-col">
         <div className="stack">
+          <CareGapsPanel practiceId={user.practiceId} patientId={patient.id} back={`/patients/${patient.id}`} />
           <section className="panel">
             <h2>Clinical summary</h2>
             <div className="panel-section">
@@ -242,6 +257,8 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
               </ul>
             </div>
           </section>
+          <PrescriptionsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
+          <ImmunizationsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
         </div>
         <div className="stack">
           <section className="panel">
@@ -283,6 +300,9 @@ export default async function PatientChartPage({ params }: { params: Promise<{ i
               <p className="muted">No gateway case.</p>
             )}
           </section>
+          <PatientFormsPanel practiceId={user.practiceId} patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
+          <RecallsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
+          <RecordsPanel patientId={patient.id} role={user.role} sp={sp} />
           <section className="panel">
             <h2>Patient info</h2>
             <div className="panel-section">

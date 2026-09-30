@@ -14,6 +14,10 @@ export const FIELD_TYPES = {
   checkboxes: "Checkboxes (several choices)",
   checkbox: "Single checkbox",
   score: "Score total (calculated)",
+  // Patient Connect (patient-facing forms)
+  consent: "Consent (patient agrees to the help text)",
+  signature: "Signature (drawn by the patient)",
+  file: "Photo / file upload (patient)",
 } as const;
 
 export type FieldType = keyof typeof FIELD_TYPES;
@@ -28,10 +32,12 @@ export type FieldDef = {
   help?: string;
   unit?: string;
   width?: "full" | "half";
+  // Patient forms: chart field this answer fills (a patient-docs field key, or "consent.<name>").
+  map?: string;
 };
 
 export const CHOICE_TYPES: FieldType[] = ["select", "radio", "checkboxes"];
-export const INPUT_TYPES: FieldType[] = ["text", "textarea", "number", "date", "yesno", "select", "radio", "checkboxes", "checkbox"];
+export const INPUT_TYPES: FieldType[] = ["text", "textarea", "number", "date", "yesno", "select", "radio", "checkboxes", "checkbox", "consent", "signature"];
 
 export const DOCUMENT_SECTIONS = {
   DOCUMENTATION: "Documentation",
@@ -149,6 +155,11 @@ export function collectValues(fields: FieldDef[], fd: FormData) {
       if (picked.length) values[f.id] = picked;
     } else if (f.type === "checkbox") {
       if (fd.get(key)) values[f.id] = "Yes";
+    } else if (f.type === "consent") {
+      if (fd.get(key)) values[f.id] = `Agreed ${new Date().toISOString()}`;
+    } else if (f.type === "signature") {
+      const v = String(fd.get(key) ?? "");
+      if (/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(v) && v.length < 400_000) values[f.id] = v;
     } else {
       let v = String(fd.get(key) ?? "").trim().slice(0, 8000);
       if (f.type === "number" && v && !Number.isFinite(Number(v))) v = "";
@@ -166,6 +177,9 @@ export function collectValues(fields: FieldDef[], fd: FormData) {
 export function displayValue(field: FieldDef, value: string | string[] | undefined) {
   if (!hasValue(value)) return "";
   if (Array.isArray(value)) return value.join(", ");
+  if (field.type === "signature") return "Signed";
+  if (field.type === "consent") return `Agreed${value!.length > 7 ? ` (${new Date(value!.slice(7)).toLocaleString()})` : ""}`;
+  if (field.type === "file") return "File uploaded";
   if (field.type === "date") {
     const [y, m, d] = value!.split("-");
     return `${m}/${d}/${y}`;

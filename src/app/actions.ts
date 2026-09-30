@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSchedulerSettings } from "@/lib/scheduler-setup";
 import { redirect } from "next/navigation";
+import { recordFlow } from "@/lib/flow";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -372,10 +373,15 @@ export async function cancelAppointment(id: string, formData: FormData) {
   if (appt.encounter) throw new Error("This visit has been started — it can't be cancelled from the schedule");
   const full = note ? `${reason} — ${note}`.slice(0, 300) : reason;
   const scope = formData.get("series") === "on" && appt.seriesId ? { seriesId: appt.seriesId, startsAt: { gte: appt.startsAt } } : { id: appt.id };
-  const { count } = await prisma.appointment.updateMany({
+  const targets = await prisma.appointment.findMany({
     where: { practiceId: user.practiceId, ...scope, encounter: null, status: { notIn: ["COMPLETED", "CANCELLED"] } },
+    select: { id: true },
+  });
+  const { count } = await prisma.appointment.updateMany({
+    where: { id: { in: targets.map((t) => t.id) } },
     data: { status: "CANCELLED", cancelReason: full, cancelledAt: new Date() },
   });
+  await recordFlow(targets.map((t) => t.id), "CANCELLED", user.id);
   await logAudit(user.practiceId, user.id, "CANCEL_APPOINTMENT", "Appointment", appt.id, `${full}${count > 1 ? ` (${count} visits in series)` : ""}`);
   revalidatePath("/schedule");
   revalidatePath("/");
@@ -383,7 +389,8 @@ export async function cancelAppointment(id: string, formData: FormData) {
 
 export async function updateAppointmentStatus(id: string, status: string) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
-  await prisma.appointment.updateMany({ where: { id, practiceId: user.practiceId }, data: { status } });
+  const { count } = await prisma.appointment.updateMany({ where: { id, practiceId: user.practiceId }, data: { status } });
+  if (count) await recordFlow(id, status, user.id);
   revalidatePath("/schedule");
   revalidatePath("/");
 }
@@ -425,6 +432,7 @@ export async function startEncounter(appointmentId: string) {
     where: { id: appointmentId },
     data: { status: "IN_ROOM" },
   });
+  if (appt.status !== "IN_ROOM") await recordFlow(appointmentId, "IN_ROOM", user.id, appt.room);
 
   revalidatePath("/schedule");
   redirect(`/encounters/${encounter.id}`);
