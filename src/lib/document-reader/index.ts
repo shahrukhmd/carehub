@@ -101,7 +101,10 @@ Classify the document and extract every field you can find, using only the field
 Rules:
 - Only report values that are actually written in the document; never guess or infer values that aren't there.
 - Dates as YYYY-MM-DD. Phone and fax numbers as (555) 555-5555. Sex as M or F. State as the 2-letter code.
-- patient.* is the patient themselves; referral.* is the referring facility, physician and contact; pcp.* is the primary care physician.
+- patient.* is the patient themselves; referral.* is the referring facility, physician and contact; pcp.* is the primary care physician; pharmacy.* is the patient's pharmacy; homeHealth.* is the home health agency and nurse.
+- patient.ssnLast4: the last four digits of the Social Security Number only - never the full number.
+- insurance.* is the primary coverage and secondary.* the secondary. insurance.copay as a plain dollar amount (e.g. 25.00). insurance.subscriberRelationship is the patient's relationship to the subscriber (Spouse, Child, Other).
+- patient.race and patient.ethnicity exactly as written in the document.
 - referral.diagnoses: comma-separated ICD-10 codes (add the description only if no code is given).
 - confidence: high when clearly printed, medium when partly legible or inferred from layout, low when uncertain.
 - source: the short snippet of the document the value came from.
@@ -136,7 +139,8 @@ async function readWithClaude(bytes: Buffer, mimeType: string): Promise<Extracti
   for (const f of parsed.fields) {
     let value = f.value.trim();
     // Same normalisation as the on-device reader so the review screen gets consistent formats.
-    if (f.key.endsWith("dob") || f.key.endsWith("Date")) value = normalizeDate(value) ?? "";
+    if (/dob$/i.test(f.key) || f.key.endsWith("Date")) value = normalizeDate(value) ?? "";
+    else if (f.key === "patient.ssnLast4") value = value.replace(/\D/g, "").slice(-4);
     else if (/phone|fax/i.test(f.key)) value = normalizePhone(value) ?? value;
     else if (f.key === "patient.sex") value = normalizeSex(value) ?? "";
     if (!fields[f.key] || (!fields[f.key].value && value)) fields[f.key] = { value, confidence: f.confidence, source: f.source.slice(0, 160) };

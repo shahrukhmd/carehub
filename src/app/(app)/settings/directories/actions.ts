@@ -48,6 +48,7 @@ export async function saveInsurance(payerId: string | null, formData: FormData) 
   const unit = String(formData.get("timelyFilingUnit") ?? "DAYS");
   const filingLimit = optionalNumber(formData, "timelyFilingLimit");
   const alertDays = optionalNumber(formData, "timelyFilingAlertDays");
+  const appealDays = optionalNumber(formData, "appealLimitDays");
 
   const data = {
     name: required(formData, "name"),
@@ -75,6 +76,7 @@ export async function saveInsurance(payerId: string | null, formData: FormData) 
     timelyFilingLimit: filingLimit === null ? null : Math.round(filingLimit),
     timelyFilingUnit: ["DAYS", "MONTHS", "YEARS"].includes(unit) ? unit : "DAYS",
     timelyFilingAlertDays: alertDays === null ? null : Math.round(alertDays),
+    appealLimitDays: appealDays === null || appealDays <= 0 ? null : Math.round(appealDays),
     reimbursementRate: optionalNumber(formData, "reimbursementRate"),
     notes: optional(formData, "notes"),
   };

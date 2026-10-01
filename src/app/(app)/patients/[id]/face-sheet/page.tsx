@@ -15,6 +15,7 @@ import {
   raceLabel,
 } from "@/lib/format";
 import { PATIENT_VIEW_ROLES, referralSourceTypeLabel } from "@/lib/gateway";
+import { communicationLabel, guarantorRelationshipLabel, phoneTypeLabel, pronounLabel } from "@/lib/patient-fields";
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -42,6 +43,13 @@ export default async function FaceSheetPage({ params }: { params: Promise<{ id: 
   if (!patient) notFound();
   await logAudit(user.practiceId, user.id, "patient.face_sheet_viewed", "Patient", patient.id);
   const intake = patient.intakeCases[0];
+  const providerIds = [patient.woundCarePhysicianId, patient.primaryCarePhysicianId, patient.supervisingPhysicianId].filter((v): v is string => Boolean(v));
+  const [careTeam, site] = await Promise.all([
+    providerIds.length ? prisma.renderingProvider.findMany({ where: { id: { in: providerIds }, practiceId: user.practiceId }, select: { id: true, name: true } }) : [],
+    patient.siteOfServiceId ? prisma.location.findFirst({ where: { id: patient.siteOfServiceId, practiceId: user.practiceId }, select: { id: true, name: true } }) : null,
+  ]);
+  const nameOfProvider = (id: string | null) => careTeam.find((p) => p.id === id)?.name ?? null;
+  const nameOfLocation = (id: string | null) => (site && site.id === id ? site.name : null);
 
   return (
     <>
@@ -91,8 +99,28 @@ export default async function FaceSheetPage({ params }: { params: Promise<{ id: 
                 .filter(Boolean)
                 .join(", ")}
             />
-            <Field label="Home phone" value={patient.phone} />
-            <Field label="Email" value={patient.email} />
+            <Field label={`${phoneTypeLabel[patient.phoneType ?? ""] ?? "Primary"} phone`} value={patient.phone} />
+            <Field label={`${phoneTypeLabel[patient.phone2Type ?? ""] ?? "Secondary"} phone`} value={patient.phone2} />
+            <Field label="Email" value={patient.noEmail ? "No email" : patient.email} />
+            <Field label="Preferred name" value={patient.preferredName} />
+            <Field label="Pronoun" value={patient.pronoun ? (pronounLabel[patient.pronoun] ?? patient.pronoun) : null} />
+            <Field label="Interpreter" value={patient.interpreterNeeded ? "Needed" : null} />
+            <Field label="Contact by" value={patient.preferredCommunication ? (communicationLabel[patient.preferredCommunication] ?? patient.preferredCommunication) : null} />
+          </div>
+        </div>
+
+        <div className="panel-section">
+          <h3>Admission &amp; care team</h3>
+          <div className="print-meta">
+            <Field label="Site of service" value={nameOfLocation(patient.siteOfServiceId)} />
+            <Field label="Admission date" value={patient.admissionDate ? formatDate(patient.admissionDate) : null} />
+            <Field label="Onset of symptoms" value={patient.onsetDate ? formatDate(patient.onsetDate) : null} />
+            <Field label="Wound care physician" value={nameOfProvider(patient.woundCarePhysicianId)} />
+            <Field label="Primary care physician" value={nameOfProvider(patient.primaryCarePhysicianId)} />
+            <Field label="Supervising physician" value={nameOfProvider(patient.supervisingPhysicianId)} />
+            <Field label="Pharmacy" value={[patient.pharmacyName, patient.pharmacyPhone].filter(Boolean).join(" · ") || null} />
+            <Field label="Home health" value={[patient.homeHealthCompany, patient.homeHealthNurse].filter(Boolean).join(" · ") || null} />
+            <Field label="Auto accident" value={patient.autoAccident ? [patient.autoAccidentState, patient.autoAccidentDate ? formatDate(patient.autoAccidentDate) : ""].filter(Boolean).join(" · ") || "Yes" : null} />
           </div>
         </div>
 
@@ -113,7 +141,10 @@ export default async function FaceSheetPage({ params }: { params: Promise<{ id: 
               label="Name"
               value={patient.guarantorPatient ? patientName(patient.guarantorPatient) : (patient.guarantorName ?? "Self")}
             />
-            <Field label="Relationship" value={patient.guarantorPatient ? "Account holder" : (patient.guarantorRelationship ?? "Self")} />
+            <Field
+              label="Relationship"
+              value={patient.guarantorPatient ? "Account holder" : (guarantorRelationshipLabel[patient.guarantorRelationship ?? ""] ?? patient.guarantorRelationship ?? "Self")}
+            />
             <Field label="Phone" value={patient.guarantorPhone} />
           </div>
         </div>

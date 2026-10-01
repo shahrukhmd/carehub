@@ -14,6 +14,7 @@ export const TASK_TYPES: Record<string, string> = {
   REFERRAL: "Referral follow-up",
   DOCUMENT: "Document / fax to file",
   BILLING: "Billing question",
+  DENIAL: "Denied claim",
   GENERAL: "Task",
 };
 

@@ -16,8 +16,8 @@ const nextConfig: NextConfig = {
     ];
   },
   experimental: {
-    // Credentialing documents and approval letters are uploaded through server actions (10 MB cap in lib/storage).
-    serverActions: { bodySizeLimit: "11mb" },
+    // Documents are uploaded through server actions: 10 MB per file (lib/storage), several files per upload.
+    serverActions: { bodySizeLimit: "52mb" },
   },
 };
 

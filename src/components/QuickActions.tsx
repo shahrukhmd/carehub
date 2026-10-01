@@ -19,7 +19,8 @@ export function QuickActions({
   const items: { href: string; label: string }[] = [
     { href: `/patients/${patientId}`, label: "Patient dashboard" },
     ...(canEdit ? [{ href: `/patients/${patientId}/edit`, label: "Edit patient details" }] : []),
-    { href: `/patients/${patientId}/insurance`, label: "Insurance coverage (primary / secondary)" },
+    { href: `/patients/${patientId}/insurance`, label: "Insurance, authorizations & eligibility" },
+    { href: `/patients/${patientId}/scans`, label: "Scans" },
     ...(caseId ? [{ href: `/gateway/${caseId}`, label: "Patient Gateway case" }] : []),
     { href: `/patients/${patientId}/face-sheet`, label: "Patient demographics report (face sheet)" },
     ...(caseId ? [{ href: `/gateway/${caseId}/report`, label: "Patient authorization report" }] : []),

@@ -6,9 +6,13 @@ export async function runEligibilityCheck(params: {
   practiceId: string;
   patientId: string;
   appointmentId?: string | null;
+  // A specific coverage (defaults to the active primary) and who asked for the check.
+  insuranceId?: string | null;
+  checkedById?: string | null;
 }) {
   const insurance = await prisma.insurance.findFirst({
-    where: { patientId: params.patientId, isPrimary: true },
+    where: params.insuranceId ? { id: params.insuranceId, patientId: params.patientId } : { patientId: params.patientId, isPrimary: true },
+    orderBy: { active: "desc" },
     include: { payer: true },
   });
   if (!insurance) return null;
@@ -45,6 +49,8 @@ export async function runEligibilityCheck(params: {
       deductibleRemainingCents: result.deductibleRemainingCents ?? null,
       outOfPocketRemainingCents: result.outOfPocketRemainingCents ?? null,
       payerMessage: result.payerMessage ?? null,
+      insuranceId: insurance.id,
+      checkedById: params.checkedById ?? null,
     },
   });
   // The visit's expected copay follows the latest eligibility response.

@@ -183,6 +183,12 @@ const PATIENT_COLUMNS = [
   "emergencyContactName",
   "emergencyContactPhone",
   "emergencyContactRelationship",
+  "middleName",
+  "ssnLast4",
+  "phone2",
+  "addressLine2",
+  "county",
+  "occupation",
 ] as const;
 
 function nextMrn() {
@@ -200,6 +206,10 @@ export async function applyDocument(id: string, fd: FormData) {
     for (const col of PATIENT_COLUMNS) if (v[`patient.${col}`]) patientData[col] = v[`patient.${col}`];
     if (v["patient.dob"]) patientData.dob = new Date(`${v["patient.dob"]}T00:00:00Z`);
     if (v["patient.sex"]) patientData.sex = v["patient.sex"];
+    if (v["referral.onsetDate"]) patientData.onsetDate = new Date(`${v["referral.onsetDate"]}T12:00:00`);
+    for (const [key, col] of [["pharmacy.name", "pharmacyName"], ["pharmacy.phone", "pharmacyPhone"], ["pharmacy.fax", "pharmacyFax"], ["pharmacy.address", "pharmacyAddress"], ["homeHealth.company", "homeHealthCompany"], ["homeHealth.nurse", "homeHealthNurse"]]) {
+      if (v[key]) patientData[col] = v[key];
+    }
 
     const payerId = str(fd, "payerId") || null;
     const secondaryPayerId = str(fd, "secondaryPayerId") || null;

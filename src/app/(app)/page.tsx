@@ -59,9 +59,6 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
         </div>
         {canWorkTeam(user.role, "DATA_ENTRY") && (
           <div className="vw-view-links">
-            <Link className="btn secondary" href="/gateway/documents">
-              Upload patient documents
-            </Link>
             <Link className="btn" href="/patients/new">
               + Register patient
             </Link>

@@ -26,15 +26,18 @@ const TABS = [
   { key: "deposits", label: "Deposits" },
   { key: "era", label: "ERA / 835 posting" },
   { key: "ar", label: "AR & denials" },
+  { key: "denials", label: "Denial worklist" },
   { key: "reports", label: "Financial reports" },
 ];
+// Tabs that are their own pages.
+const TAB_PAGES: Record<string, string> = { reports: "/billing/reports", denials: "/billing/denials" };
 
 type Search = { tab?: string; imported?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string };
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const sp = await searchParams;
-  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "visits";
+  const tab = TABS.some((t) => t.key === sp.tab && !TAB_PAGES[t.key]) ? sp.tab! : "visits";
 
   const claims = await prisma.claim.findMany({
     where: { practiceId: user.practiceId, status: { not: "VOID" } },
@@ -88,7 +91,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
       <nav className="view-tabs" style={{ margin: "0.9rem 0", width: "fit-content" }}>
         {TABS.map((t) => (
-          <Link key={t.key} href={t.key === "reports" ? "/billing/reports" : `/billing?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
+          <Link key={t.key} href={TAB_PAGES[t.key] ?? `/billing?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
             {t.label}
           </Link>
         ))}
@@ -546,9 +549,11 @@ function ArTab({
         <div className="panel-section">
           <h3>Denials &amp; rejections</h3>
           <div className="grid-stats" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: "0.7rem" }}>
-            <Link className="stat" href="/billing?tab=claims&status=DENIED">
-              <span>Payer denials</span>
-              <strong>{count("DENIED")}</strong>
+            <Link className="stat" href="/billing/denials">
+              <span>Payer denials · under appeal</span>
+              <strong>
+                {count("DENIED")} · {count("APPEAL")}
+              </strong>
             </Link>
             <Link className="stat" href="/billing?tab=claims&status=EDI_REJECTED">
               <span>Clearinghouse rejections</span>
@@ -557,7 +562,8 @@ function ArTab({
           </div>
           <p className="muted">
             Clearinghouse rejections happen before a payer ever sees the claim (bad NPI, invalid pointer, subscriber not found) and
-            are fixed and resent. Denials happen after the payer adjudicates the claim and are appealed or corrected.
+            are fixed and resent. Denials happen after the payer adjudicates the claim and are appealed or corrected — work them
+            from the <Link href="/billing/denials">denial worklist</Link>.
           </p>
         </div>
       </div>

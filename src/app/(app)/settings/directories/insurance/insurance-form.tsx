@@ -135,6 +135,10 @@ export function InsuranceForm({ action, payer, otherPayers, submitLabel }: Props
               Alert before timely filing (days)
               <input name="timelyFilingAlertDays" type="number" min="0" defaultValue={v("timelyFilingAlertDays")} />
             </label>
+            <label>
+              Appeal limit (days from denial)
+              <input name="appealLimitDays" type="number" min="0" defaultValue={v("appealLimitDays")} placeholder="120" />
+            </label>
           </div>
         </section>
 

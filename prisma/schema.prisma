@@ -82,6 +82,7 @@ model Practice {
   tasks             Task[]
   outgoingReferrals OutgoingReferral[]
   importBatches     ImportBatch[]
+  claimDenials      ClaimDenial[]
 }
 
 model Membership {
@@ -162,6 +163,8 @@ model User {
   // Provider signature on file (PNG data URL), stamped onto signed records.
   signatureImage           String?
   signatureUpdatedAt       DateTime?
+  // JSON list of widget keys shown on the patient dashboard, in order (null = default layout).
+  patientDashboard         String?
   documentsCompleted       EncounterDocument[]  @relation("DocumentCompletedBy")
   documentsSigned          EncounterDocument[]  @relation("DocumentSignedBy")
   attachmentsUploaded      EncounterAttachment[]
@@ -253,6 +256,78 @@ model Patient {
   guarantorPatientId String?
   guarantorPatient   Patient?  @relation("GuarantorAccount", fields: [guarantorPatientId], references: [id])
   dependents      Patient[] @relation("GuarantorAccount")
+  guarantorAddress String?
+
+  // ---- Full registration (Add Patient) ----
+  // Identification
+  preferredName   String?
+  middleName      String?
+  suffix          String?
+  // Last four digits only; the full number is never stored.
+  ssnLast4        String?
+  genderIdentity  String?
+  sexualOrientation String?
+  pronoun         String?
+  // Every race selected (comma separated codes); `race` keeps the first for single-value outputs.
+  races           String?
+  religion        String?
+  tribalAffiliation String?
+  interpreterNeeded Boolean     @default(false)
+  preferredCommunication String?
+  careCenterId    String?
+  previousFirstName  String?
+  previousMiddleName String?
+  previousLastName   String?
+  nameChangedAt   DateTime?
+  occupation      String?
+  occupationIndustry String?
+  // Contact
+  phoneType       String?
+  phone2          String?
+  phone2Type      String?
+  noEmail         Boolean       @default(false)
+  // PRIMARY | SECONDARY: which address is current
+  currentAddress  String        @default("PRIMARY")
+  addressLine2    String?
+  county          String?
+  // JSON { line1, line2, city, state, zip, county }
+  secondaryAddress String?
+  previousAddress  String?
+  // Admission
+  siteOfServiceId String?
+  admissionDate   DateTime?
+  consult         Boolean       @default(false)
+  palliativeCare  Boolean       @default(false)
+  medicareAdmission String?
+  nonWoundDiagnosis Boolean     @default(false)
+  howHeard        String?
+  onsetDate       DateTime?
+  autoAccident    Boolean       @default(false)
+  autoAccidentState String?
+  autoAccidentDate  DateTime?
+  // Care providers and instructions
+  woundCarePhysicianId   String?
+  primaryCarePhysicianId String?
+  supervisingPhysicianId String?
+  referralDate    DateTime?
+  externalProviders String?
+  pharmacyName    String?
+  pharmacyPhone   String?
+  pharmacyFax     String?
+  pharmacyAddress String?
+  emergencyContactEmail String?
+  // JSON { line1, line2, city, state, zip }
+  emergencyContactAddress String?
+  emergencyContactGuardian Boolean @default(false)
+  emergencyContactGuardianAdLitem Boolean @default(false)
+  motherFirstName  String?
+  motherMaidenName String?
+  homeHealthNurse   String?
+  homeHealthCompany String?
+  // JSON [{ firstName, lastName }]
+  portalRepresentatives String?
+  registrationNotes String?
+  photoPath       String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   insurances      Insurance[]
@@ -311,6 +386,20 @@ model Insurance {
   claims     Claim[]
   // Office-visit copay on the card / plan.
   copayCents Int?
+  groupName         String?
+  insuredMiddleName String?
+  insuredPhone      String?
+  // Benefits as verified at registration.
+  deductibleCents    Int?
+  deductibleMetCents Int?
+  coveragePercent    Int?
+  verifiedAt         DateTime?
+  verifiedWith       String?
+  // YES | NO | UNKNOWN
+  authRequired       String?
+  priorAuthRequired  String?
+  notes              String?
+  authorizations     InsuranceAuthorization[]
 }
 
 model Payer {
@@ -349,6 +438,8 @@ model Payer {
   timelyFilingLimit     Int?
   timelyFilingUnit      String  @default("DAYS")
   timelyFilingAlertDays Int?
+  // Days the payer allows to appeal a denial, counted from the denial date.
+  appealLimitDays       Int?
   reimbursementRate     Float?
   notes                 String?
   insurances   Insurance[]
@@ -831,6 +922,7 @@ model Claim {
   events         ClaimEvent[]
   applications   PaymentApplication[]
   statementLines StatementLine[]
+  denials        ClaimDenial[]
 
   @@index([practiceId, status])
   @@index([encounterId])
@@ -1005,6 +1097,8 @@ model EligibilityCheck {
   outOfPocketRemainingCents Int?
   payerMessage  String?
   checkedAt     DateTime     @default(now())
+  insuranceId   String?
+  checkedById   String?
 }
 
 // Patient Gateway: the pre-scheduling case every new referral moves through.
@@ -1192,6 +1286,70 @@ model ClaimEvent {
   newValue  String?
   note      String?
   createdAt DateTime @default(now())
+}
+
+// One row per payer denial of a claim, kept after the claim is fixed so denial and overturn rates can be reported.
+model ClaimDenial {
+  id             String    @id @default(cuid())
+  practiceId     String
+  practice       Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  claimId        String
+  claim          Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  deniedAt       DateTime  @default(now())
+  // ERA | MANUAL
+  source         String    @default("MANUAL")
+  // CAS group (CO, PR, OA, PI) and claim adjustment reason code (CARC); remark codes (RARC) comma separated.
+  groupCode      String?
+  code           String?
+  remarks        String?
+  // ELIGIBILITY | COB | AUTHORIZATION | CODING | INFORMATION | DUPLICATE | TIMELY_FILING | MEDICAL_NECESSITY | NON_COVERED | CREDENTIALING | OTHER
+  category       String    @default("OTHER")
+  reason         String
+  amountCents    Int       @default(0)
+  // OPEN | APPEALED | RESOLVED
+  status         String    @default("OPEN")
+  // RESUBMITTED | CORRECTED | OVERTURNED | PAID | PATIENT | WRITTEN_OFF | VOIDED
+  resolution     String?
+  resolvedAt     DateTime?
+  recoveredCents Int       @default(0)
+  ownerId        String?
+  followUpAt     DateTime?
+  workNote       String?
+  appealDueAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  appeals        ClaimAppeal[]
+
+  @@index([practiceId, status])
+  @@index([claimId])
+}
+
+model ClaimAppeal {
+  id               String      @id @default(cuid())
+  practiceId       String
+  denialId         String
+  denial           ClaimDenial @relation(fields: [denialId], references: [id], onDelete: Cascade)
+  claimId          String
+  // 1 first-level, 2 second-level, 3 external review
+  level            Int         @default(1)
+  // DRAFT | FILED | OVERTURNED | PARTIAL | UPHELD | WITHDRAWN
+  status           String      @default("DRAFT")
+  letterBody       String
+  dueAt            DateTime?
+  filedAt          DateTime?
+  // FAX | MAIL | PORTAL
+  filedVia         String?
+  faxId            String?
+  letterDocumentId String?
+  payerReference   String?
+  decisionAt       DateTime?
+  recoveredCents   Int         @default(0)
+  outcomeNote      String?
+  createdById      String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([practiceId, status])
 }
 
 // Practice code lists for the superbill: ICD-10 favorites and CPT/HCPCS codes with fees.
@@ -1427,6 +1585,8 @@ model PatientDocument {
   reviewedBy    User?       @relation("PatientDocumentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   reviewedAt    DateTime?
   appliedAt     DateTime?
+  // Visit the scan belongs to (optional).
+  encounterId   String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -2288,4 +2448,31 @@ model ImportBatch {
   createdById String?
   createdAt   DateTime @default(now())
   importedAt  DateTime?
+}
+
+// Authorizations a payer granted for a coverage: a number of visits (ENCOUNTER) or of a procedure (PROCEDURE) in a date range.
+model InsuranceAuthorization {
+  id               String    @id @default(cuid())
+  practiceId       String
+  patientId        String
+  insuranceId      String
+  insurance        Insurance @relation(fields: [insuranceId], references: [id], onDelete: Cascade)
+  // ENCOUNTER | PROCEDURE
+  kind             String    @default("ENCOUNTER")
+  reason           String?
+  // CPT / HCPCS the authorization covers (PROCEDURE only)
+  procedureCode    String?
+  authNumber       String?
+  authorizedCount  Int?
+  startDate        DateTime?
+  endDate          DateTime?
+  insuranceContact String?
+  verifiedAt       DateTime?
+  verifiedBy       String?
+  notes            String?
+  createdById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([patientId])
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { agingBucket, patientName } from "@/lib/format";
 import { OPEN_AR_STATUSES, claimNumber, claimStatusLabel } from "@/lib/claim-format";
+import { APPEAL_LEVELS, DENIAL_CATEGORIES, ensureDenialRecords } from "@/lib/denials";
 
 export const REPORTS: [string, string, string][] = [
   ["collections", "Collections", "Money received by payer and payment method"],
@@ -10,7 +11,11 @@ export const REPORTS: [string, string, string][] = [
   ["aging", "Aging by payer", "Open balances by payer and age"],
   ["patient_aging", "Patient balances", "What patients owe, oldest first"],
   ["credits", "Credit balances", "Overpaid claims and unapplied deposits (refunds due)"],
-  ["denials", "Denials by reason", "Denied claims grouped by payer reason"],
+  ["denials", "Denials by reason", "Every denial in the period, grouped by payer and reason code"],
+  ["denial_rate", "Denial rate by payer", "Denials against claims submitted in the period, with money recovered"],
+  ["denial_categories", "Denials by category", "Where denials come from, and how much of each kind is recovered"],
+  ["denial_providers", "Denial rate by provider", "Denials against claims submitted, per rendering provider"],
+  ["appeals", "Appeal outcomes", "Appeals filed in the period: overturned, upheld, pending and money recovered"],
   ["ledger", "Patient ledger", "Every charge, payment and adjustment for one patient"],
 ];
 
@@ -113,19 +118,100 @@ export async function runReport(practiceId: string, key: string, from: Date, to:
       return { columns: ["Type", "Reference", "Patient", "Payer", "Amount"], rows, totals: ["Total", "", "", "", rows.reduce((s, r) => s + Number(r[4]), 0)], money: [4] };
     }
     case "denials": {
-      const claims = await prisma.claim.findMany({ where: { practiceId, status: "DENIED", updatedAt: range } });
-      const g = new Map<string, { n: number; cents: number }>();
-      for (const c of claims) {
-        const k = `${c.payerName}|${(c.denialReason ?? "No reason recorded").slice(0, 120)}`;
-        const r = g.get(k) ?? { n: 0, cents: 0 };
+      await ensureDenialRecords(practiceId);
+      const denials = await prisma.claimDenial.findMany({ where: { practiceId, deniedAt: range }, include: { claim: { select: { payerName: true } } } });
+      const g = new Map<string, { n: number; cents: number; recovered: number }>();
+      for (const d of denials) {
+        const code = d.code ? `${d.groupCode ? `${d.groupCode}-` : ""}${d.code}` : "";
+        const k = [d.claim.payerName, DENIAL_CATEGORIES[d.category]?.label ?? d.category, code, d.reason.slice(0, 120)].map((v) => v.replace(/\|/g, "/")).join("|");
+        const r = g.get(k) ?? { n: 0, cents: 0, recovered: 0 };
         r.n++;
-        r.cents += c.billedCents;
+        r.cents += d.amountCents;
+        r.recovered += d.recoveredCents;
         g.set(k, r);
       }
       return {
-        columns: ["Payer", "Reason", "Claims", "Billed"],
-        rows: [...g.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, r]) => [...k.split("|"), r.n, $(r.cents)]),
-        money: [3],
+        columns: ["Payer", "Category", "Code", "Reason", "Denials", "Denied", "Recovered"],
+        rows: [...g.entries()].sort((a, b) => b[1].n - a[1].n).map(([k, r]) => [...k.split("|"), r.n, $(r.cents), $(r.recovered)]),
+        totals: ["Total", "", "", "", denials.length, $(denials.reduce((s, d) => s + d.amountCents, 0)), $(denials.reduce((s, d) => s + d.recoveredCents, 0))],
+        money: [5, 6],
+      };
+    }
+    case "denial_rate":
+    case "denial_providers": {
+      await ensureDenialRecords(practiceId);
+      const byProvider = key === "denial_providers";
+      const [claims, denials] = await Promise.all([
+        prisma.claim.findMany({ where: { practiceId, status: { not: "VOID" }, submittedAt: range }, select: { payerName: true, renderingProvider: { select: { name: true } } } }),
+        prisma.claimDenial.findMany({ where: { practiceId, deniedAt: range }, include: { claim: { select: { payerName: true, renderingProvider: { select: { name: true } } } } } }),
+      ]);
+      const nameOf = (c: { payerName: string; renderingProvider: { name: string } | null }) => (byProvider ? (c.renderingProvider?.name ?? "No rendering provider") : c.payerName);
+      const g = new Map<string, { submitted: number; n: number; cents: number; open: number; recovered: number }>();
+      const row = (k: string) => {
+        if (!g.has(k)) g.set(k, { submitted: 0, n: 0, cents: 0, open: 0, recovered: 0 });
+        return g.get(k)!;
+      };
+      for (const c of claims) row(nameOf(c)).submitted++;
+      for (const d of denials) {
+        const r = row(nameOf(d.claim));
+        r.n++;
+        r.cents += d.amountCents;
+        r.recovered += d.recoveredCents;
+        if (d.status !== "RESOLVED") r.open++;
+      }
+      const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 1000) / 10}%` : "—");
+      const t = [...g.values()].reduce((s, r) => ({ submitted: s.submitted + r.submitted, n: s.n + r.n, cents: s.cents + r.cents, open: s.open + r.open, recovered: s.recovered + r.recovered }), { submitted: 0, n: 0, cents: 0, open: 0, recovered: 0 });
+      return {
+        columns: [byProvider ? "Rendering provider" : "Payer", "Claims submitted", "Denials", "Denial rate", "Denied", "Still open", "Recovered"],
+        rows: [...g.entries()].sort((a, b) => b[1].n - a[1].n || b[1].submitted - a[1].submitted).map(([k, r]) => [k, r.submitted, r.n, pct(r.n, r.submitted), $(r.cents), r.open, $(r.recovered)]),
+        totals: ["Total", t.submitted, t.n, pct(t.n, t.submitted), $(t.cents), t.open, $(t.recovered)],
+        money: [4, 6],
+      };
+    }
+    case "denial_categories": {
+      await ensureDenialRecords(practiceId);
+      const denials = await prisma.claimDenial.findMany({ where: { practiceId, deniedAt: range } });
+      const g = new Map<string, { n: number; cents: number; resolved: number; recovered: number }>();
+      for (const d of denials) {
+        const r = g.get(d.category) ?? { n: 0, cents: 0, resolved: 0, recovered: 0 };
+        r.n++;
+        r.cents += d.amountCents;
+        r.recovered += d.recoveredCents;
+        if (d.status === "RESOLVED") r.resolved++;
+        g.set(d.category, r);
+      }
+      const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : "—");
+      return {
+        columns: ["Category", "Denials", "Share", "Denied", "Resolved", "Recovered", "Recovery rate"],
+        rows: [...g.entries()]
+          .sort((a, b) => b[1].cents - a[1].cents)
+          .map(([k, r]) => [DENIAL_CATEGORIES[k]?.label ?? k, r.n, pct(r.n, denials.length), $(r.cents), r.resolved, $(r.recovered), pct(r.recovered, r.cents)]),
+        money: [3, 5],
+      };
+    }
+    case "appeals": {
+      const appeals = await prisma.claimAppeal.findMany({ where: { practiceId, filedAt: range }, include: { denial: { include: { claim: { select: { payerName: true } } } } } });
+      const g = new Map<string, { filed: number; won: number; lost: number; pending: number; recovered: number; days: number; decided: number }>();
+      for (const a of appeals) {
+        const k = `${a.denial.claim.payerName.replace(/\|/g, "/")}|${APPEAL_LEVELS[a.level] ?? `Level ${a.level}`}`;
+        const r = g.get(k) ?? { filed: 0, won: 0, lost: 0, pending: 0, recovered: 0, days: 0, decided: 0 };
+        r.filed++;
+        if (["OVERTURNED", "PARTIAL"].includes(a.status)) r.won++;
+        else if (a.status === "UPHELD") r.lost++;
+        else if (a.status === "FILED") r.pending++;
+        if (a.decisionAt && a.filedAt && ["OVERTURNED", "PARTIAL", "UPHELD"].includes(a.status)) {
+          r.decided++;
+          r.days += Math.max(Math.round((a.decisionAt.getTime() - a.filedAt.getTime()) / 86_400_000), 0);
+        }
+        r.recovered += a.recoveredCents;
+        g.set(k, r);
+      }
+      return {
+        columns: ["Payer", "Level", "Filed", "Overturned", "Upheld", "Pending", "Overturn rate", "Avg days to decision", "Recovered"],
+        rows: [...g.entries()]
+          .sort((a, b) => b[1].filed - a[1].filed)
+          .map(([k, r]) => [...k.split("|"), r.filed, r.won, r.lost, r.pending, r.won + r.lost > 0 ? `${Math.round((r.won / (r.won + r.lost)) * 100)}%` : "—", r.decided ? Math.round(r.days / r.decided) : "—", $(r.recovered)]),
+        money: [8],
       };
     }
     case "ledger": {

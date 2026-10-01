@@ -29,6 +29,8 @@ import {
   setClaimStatus,
   submitClaim,
 } from "../actions";
+import { denialCodeOptions } from "@/lib/denials";
+import { DenialPanel, loadDenialPanel } from "./denial-panel";
 
 function d(v: Date | null | undefined) {
   return v ? v.toISOString().slice(0, 10) : "";
@@ -53,11 +55,11 @@ export default async function ClaimPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string }>;
 }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, ok } = await searchParams;
   const claim = await prisma.claim.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -87,6 +89,7 @@ export default async function ClaimPage({
     }),
   ]);
 
+  const denialData = await loadDenialPanel(claim.id, user.practiceId);
   const editable = EDITABLE_CLAIM_STATUSES.includes(claim.status);
   const edits = claimEdits(claim, await claimRuleOptions(user.practiceId, claim));
   const errors = edits.filter((e) => e.severity === "error");
@@ -160,6 +163,7 @@ export default async function ClaimPage({
           {error}
         </p>
       )}
+      {ok && <p className="notice-ok">{ok}</p>}
 
       {related.length > 0 && (
         <p className="muted">
@@ -199,6 +203,8 @@ export default async function ClaimPage({
           <p>{claim.rejectionReason}</p>
         </section>
       )}
+
+      <DenialPanel {...denialData} payerFax={claim.payer?.fax ?? null} />
 
       {/* ---------------- The claim form ---------------- */}
       <form action={saveClaim.bind(null, claim.id)} className="stack">
@@ -649,6 +655,21 @@ export default async function ClaimPage({
                   <option value="DELINQUENT">Delinquent</option>
                   <option value="IN_COLLECTION">In collection</option>
                   <option value="WRITTEN_OFF">Written off</option>
+                </select>
+              </label>
+              <label>
+                Denial reason code (from the EOB)
+                <select name="denialCode" defaultValue="">
+                  <option value="">— none / not a denial —</option>
+                  {denialCodeOptions().map((g) => (
+                    <optgroup key={g.category} label={g.label}>
+                      {g.codes.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.code} · {c.text}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </label>
               <label>

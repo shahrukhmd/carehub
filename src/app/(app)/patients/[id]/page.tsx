@@ -1,129 +1,598 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
-import {
-  ageFromDob,
-  calcBmi,
-  employmentStatusLabel,
-  ethnicityLabel,
-  formatDate,
-  formatTime,
-  maritalStatusLabel,
-  patientAccountStatusLabel,
-  patientName,
-  raceLabel,
-  smokingStatusLabel,
-} from "@/lib/format";
+import { WoundTrendChart } from "@/components/WoundTrendChart";
+import { calcBmi, formatDate, formatMoney, formatTime, patientAccountStatusLabel, patientName } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
 import { etiologyLabel } from "@/lib/wound";
-import { setGuarantorAccount, setPatientStatus } from "@/app/actions";
-import { QuickActions } from "@/components/QuickActions";
+import { setGuarantorAccount } from "@/app/actions";
 import { PatientFormsPanel } from "@/app/(app)/connect/patient-forms-panel";
 import { CareGapsPanel } from "@/app/(app)/care-gaps/care-gaps-panel";
 import { BalancePanel, ImmunizationsPanel, OrdersPanel, PatientTasksPanel, PrescriptionsPanel, RecallsPanel, RecordsPanel, ReferralsPanel } from "./chart-panels";
 import { startIntake } from "@/app/(app)/gateway/actions";
-import {
-  PATIENT_EDIT_ROLES,
-  PATIENT_VIEW_ROLES,
-  authStatusLabel,
-  canWorkTeam,
-  careStatusLabel,
-  eligibilityStatusLabel,
-  intakeStageLabel,
-} from "@/lib/gateway";
+import { PATIENT_VIEW_ROLES, authStatusLabel, canWorkTeam, careStatusLabel, eligibilityStatusLabel, intakeStageLabel } from "@/lib/gateway";
+import { payerRankLabel } from "@/lib/claim-format";
+import { SCAN_GROUPS } from "@/lib/patient-docs";
+import { yesNoUnknownLabel } from "@/lib/patient-fields";
+import { WIDGETS, parseWidgets, type WidgetKey } from "@/lib/patient-dashboard";
+import { PatientShell, loadPatientShell } from "./patient-shell";
+import { checkCoverageEligibility } from "./insurance/actions";
 
 type ChartSearch = { merged?: string; rxOk?: string; rxError?: string; ccdaError?: string; ccdaApplied?: string };
 
-export default async function PatientChartPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<ChartSearch> }) {
+function Widget({ k, count, more, children }: { k: WidgetKey; count?: string; more?: string; children: React.ReactNode }) {
+  return (
+    <section className="pd-widget" style={{ gridColumn: `span ${WIDGETS[k].span}` }}>
+      <header>
+        <h2>
+          {WIDGETS[k].title} {count && <span className="muted">({count})</span>}
+        </h2>
+        {more && <Link href={more}>More »</Link>}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+// Existing chart panels bring their own frame; they only need a place in the grid.
+function Slot({ k, children }: { k: WidgetKey; children: React.ReactNode }) {
+  return (
+    <div className="pd-slot" style={{ gridColumn: `span ${WIDGETS[k].span}` }}>
+      {children}
+    </div>
+  );
+}
+
+export default async function PatientDashboardPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<ChartSearch> }) {
   const user = await requireUser(PATIENT_VIEW_ROLES);
   const { id } = await params;
   const sp = await searchParams;
-  const patient = await prisma.patient.findFirst({
-    where: { id, practiceId: user.practiceId },
-    include: {
-      insurances: { include: { payer: true } },
-      allergies: true,
-      problems: true,
-      medications: { orderBy: { startDate: "desc" } },
-      appointments: { include: { provider: true }, orderBy: { startsAt: "desc" }, take: 8 },
-      encounters: {
-        include: { provider: true, vitals: true },
-        orderBy: { date: "desc" },
-        take: 8,
-      },
-      labOrders: {
-        include: { result: true },
-        orderBy: { orderedAt: "desc" },
-        take: 8,
-      },
-      wounds: {
-        include: { assessments: { orderBy: { assessedAt: "desc" }, take: 1 } },
-        orderBy: { createdAt: "desc" },
-      },
-      referringPhysician: true,
-      guarantorPatient: true,
-      dependents: true,
-      intakeCases: { orderBy: { createdAt: "desc" }, take: 1, include: { payer: true, assignedProvider: true } },
-    },
-  });
+  const shell = await loadPatientShell(id, user);
+  const patient = shell.patient;
+  const widgets = parseWidgets(user.patientDashboard);
+  const has = (k: WidgetKey) => widgets.includes(k);
+  const back = `/patients/${id}`;
 
-  if (!patient) notFound();
-  const intake = patient.intakeCases[0];
+  const [insurances, checks, scans, scanCount, messages, activities, problems, allergies, medications, appointments, encounters, labOrders, wounds, intake, site, members, family, otherPatients] = await Promise.all([
+    has("insurance") || has("authorizations")
+      ? prisma.insurance.findMany({ where: { patientId: id, active: true }, include: { payer: true, authorizations: { orderBy: { endDate: "desc" } } }, orderBy: { rank: "asc" } })
+      : [],
+    has("insurance") ? prisma.eligibilityCheck.findMany({ where: { patientId: id, practiceId: user.practiceId }, orderBy: { checkedAt: "desc" }, take: 20 }) : [],
+    has("scans") ? prisma.patientDocument.findMany({ where: { patientId: id, practiceId: user.practiceId }, orderBy: { createdAt: "desc" }, take: 5 }) : [],
+    has("scans") ? prisma.patientDocument.count({ where: { patientId: id, practiceId: user.practiceId } }) : 0,
+    has("communications") ? prisma.messageLog.findMany({ where: { patientId: id, practiceId: user.practiceId }, orderBy: { createdAt: "desc" }, take: 8 }) : [],
+    has("communications")
+      ? prisma.intakeActivity.findMany({ where: { case: { patientId: id, practiceId: user.practiceId }, note: { not: null } }, include: { user: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 8 })
+      : [],
+    has("diagnosis") ? prisma.problem.findMany({ where: { patientId: id } }) : [],
+    has("medications") ? prisma.allergy.findMany({ where: { patientId: id } }) : [],
+    has("medications") ? prisma.medication.findMany({ where: { patientId: id }, orderBy: { startDate: "desc" } }) : [],
+    has("encounters") ? prisma.appointment.findMany({ where: { patientId: id }, include: { provider: true }, orderBy: { startsAt: "desc" }, take: 8 }) : [],
+    has("encounters") || has("results") ? prisma.encounter.findMany({ where: { patientId: id }, include: { provider: true, vitals: true }, orderBy: { date: "desc" }, take: 8 }) : [],
+    has("results") ? prisma.labOrder.findMany({ where: { patientId: id }, include: { result: true }, orderBy: { orderedAt: "desc" }, take: 8 }) : [],
+    has("wounds") ? prisma.wound.findMany({ where: { patientId: id }, include: { assessments: { orderBy: { assessedAt: "asc" } } }, orderBy: { createdAt: "desc" } }) : [],
+    has("gateway") ? prisma.intakeCase.findFirst({ where: { patientId: id, practiceId: user.practiceId }, orderBy: { createdAt: "desc" }, include: { payer: true, assignedProvider: true } }) : null,
+    has("admissions") && patient.siteOfServiceId ? prisma.location.findFirst({ where: { id: patient.siteOfServiceId, practiceId: user.practiceId }, select: { name: true } }) : null,
+    has("insurance") || has("communications") ? prisma.membership.findMany({ where: { practiceId: user.practiceId }, include: { user: { select: { id: true, name: true } } } }) : [],
+    has("account") ? prisma.patient.findFirst({ where: { id }, select: { guarantorPatient: true, dependents: true } }) : null,
+    has("account")
+      ? prisma.patient.findMany({ where: { practiceId: user.practiceId, id: { not: id } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], select: { id: true, firstName: true, lastName: true, mrn: true } })
+      : [],
+  ]);
+  const nameOf = (uid: string | null) => members.find((m) => m.user.id === uid)?.user.name ?? "";
+  const log = [
+    ...messages.map((m) => ({ at: m.createdAt, text: `${m.channel === "SMS" ? "Text" : "Email"} ${m.status === "SENT" ? "sent" : "failed"}: ${m.subject ?? m.body}`, by: nameOf(m.createdById) || "Automatic" })),
+    ...activities.map((a) => ({ at: a.createdAt, text: a.note ?? a.action, by: a.user?.name ?? "System" })),
+  ]
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .slice(0, 8);
+  const auths = insurances.flatMap((i) => i.authorizations.map((a) => ({ ...a, payer: i.payer.name })));
+  const withVitals = encounters.filter((e) => e.vitals);
 
-  const otherPatients = await prisma.patient.findMany({
-    where: { practiceId: user.practiceId, id: { not: patient.id } },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    select: { id: true, firstName: true, lastName: true, mrn: true },
-  });
-
-  return (
-    <>
-      <div className="page-head">
-        <div>
-          <p className="muted">{patient.mrn}</p>
-          <h1>{patientName(patient)}</h1>
-          <p className="chart-meta">
-            <span>
-              {ageFromDob(patient.dob)}y {patient.sex} · DOB {formatDate(patient.dob)}
-            </span>
-            <span>{patient.phone ?? "No phone"}</span>
-            <span>{patient.insurances.find((i) => i.isPrimary)?.payer.name ?? "Self-pay"}</span>
-            <StatusBadge value={patient.status} />
+  const render: Record<WidgetKey, () => React.ReactNode> = {
+    insurance: () => (
+      <Widget k="insurance" count={`${insurances.length ? 1 : 0}-${insurances.length} of ${insurances.length}`} more={`${back}/insurance`}>
+        {insurances.length === 0 ? (
+          <p className="muted">
+            No insurance on file — self-pay. <Link href={`${back}/insurance?add=1`}>Add insurance payer</Link>
           </p>
-        </div>
-        <div className="stack" style={{ gridAutoFlow: "column", alignItems: "start", gap: "0.5rem" }}>
-          <form
-            action={setPatientStatus.bind(null, patient.id)}
-            style={{ display: "flex", flexDirection: "row", gap: "0.4rem" }}
-          >
-            <select name="status" defaultValue={patient.status}>
-              {Object.entries(patientAccountStatusLabel).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
+        ) : (
+          <div className="pd-ins">
+            {insurances.map((i) => {
+              const last = checks.find((c) => c.insuranceId === i.id || (!c.insuranceId && c.payerId === i.payerId));
+              return (
+                <div key={i.id} className="pd-ins-card">
+                  <dl>
+                    <dt>Payer</dt>
+                    <dd>{i.payer.name}</dd>
+                    <dt>Classification</dt>
+                    <dd>{payerRankLabel[i.rank] ?? i.rank}</dd>
+                    <dt>Policy number</dt>
+                    <dd>{i.memberId === "PENDING" ? "" : i.memberId}</dd>
+                    <dt>Group number</dt>
+                    <dd>{i.groupNumber}</dd>
+                    <dt>Copay</dt>
+                    <dd>{i.copayCents !== null ? formatMoney(i.copayCents) : ""}</dd>
+                    <dt>Authorization required</dt>
+                    <dd>{yesNoUnknownLabel[i.authRequired ?? ""]}</dd>
+                    <dt>Prior authorization required</dt>
+                    <dd>{yesNoUnknownLabel[i.priorAuthRequired ?? ""]}</dd>
+                  </dl>
+                  <form action={checkCoverageEligibility.bind(null, id, i.id, "dashboard")}>
+                    <button className="btn secondary gw-mini" type="submit">
+                      Check eligibility
+                    </button>
+                    {last && (
+                      <span className={`gw-tag gw-tag-${last.status === "ACTIVE" ? "ok" : last.status === "INACTIVE" ? "bad" : "warn"}`}>
+                        {last.status === "ACTIVE" ? "✓ Active coverage" : (eligibilityStatusLabel[last.status] ?? last.status)}
+                      </span>
+                    )}
+                  </form>
+                  {last && (
+                    <p className="muted pd-verified">
+                      Verified {formatDate(last.checkedAt)} {formatTime(last.checkedAt)}
+                      {nameOf(last.checkedById) ? ` by ${nameOf(last.checkedById)}` : ""}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+            {insurances.length === 1 && <p className="muted">No additional insurance information has been entered.</p>}
+          </div>
+        )}
+      </Widget>
+    ),
+    scans: () => (
+      <Widget k="scans" count={`${scans.length ? 1 : 0}-${scans.length} of ${scanCount}`} more={`${back}/scans`}>
+        {scans.length === 0 ? (
+          <p className="muted">
+            No scans yet. <Link href={`${back}/scans?add=1`}>Add a scan</Link>
+          </p>
+        ) : (
+          <table className="pd-table">
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>File name</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scans.map((s) => (
+                <tr key={s.id}>
+                  <td style={{ whiteSpace: "nowrap" }}>{SCAN_GROUPS[s.docType] ?? SCAN_GROUPS.OTHER}</td>
+                  <td>
+                    <a href={`/api/files/patientdoc/${s.id}`} target="_blank" rel="noopener">
+                      {s.name}
+                    </a>
+                  </td>
+                </tr>
               ))}
-            </select>
-            <button className="btn secondary" type="submit">
-              Update status
+            </tbody>
+          </table>
+        )}
+      </Widget>
+    ),
+    admissions: () => (
+      <Widget k="admissions" count={patient.admissionDate ? "1 of 1" : undefined} more={`${back}/edit`}>
+        <table className="pd-table">
+          <tbody>
+            <tr>
+              <th>Admission date</th>
+              <td>{patient.admissionDate ? formatDate(patient.admissionDate) : "Not recorded"}</td>
+            </tr>
+            <tr>
+              <th>Site of service</th>
+              <td>{site?.name ?? ""}</td>
+            </tr>
+            <tr>
+              <th>Palliative care</th>
+              <td>{patient.palliativeCare ? "Yes" : "No"}</td>
+            </tr>
+            <tr>
+              <th>Consult</th>
+              <td>{patient.consult ? "Yes" : "No"}</td>
+            </tr>
+            <tr>
+              <th>Status</th>
+              <td>{patientAccountStatusLabel[patient.status] ?? patient.status}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Widget>
+    ),
+    communications: () => (
+      <Widget k="communications" count={log.length ? `1-${log.length}` : undefined} more={shell.caseId ? `/gateway/${shell.caseId}` : undefined}>
+        {log.length === 0 ? (
+          <p className="muted">No calls, messages or notes logged for this patient.</p>
+        ) : (
+          <table className="pd-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Communication log</th>
+                <th>Added by</th>
+              </tr>
+            </thead>
+            <tbody>
+              {log.map((l, i) => (
+                <tr key={i}>
+                  <td>{formatDate(l.at)}</td>
+                  <td>{l.text.length > 160 ? `${l.text.slice(0, 160)}…` : l.text}</td>
+                  <td>{l.by}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Widget>
+    ),
+    diagnosis: () => (
+      <Widget k="diagnosis">
+        <table className="pd-table">
+          <thead>
+            <tr>
+              <th>Code</th>
+              <th>Diagnosis description</th>
+              <th>Active date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {problems.map((p) => (
+              <tr key={p.id}>
+                <td>{p.icd10}</td>
+                <td>
+                  {p.description} {p.status !== "ACTIVE" && <StatusBadge value={p.status} />}
+                </td>
+                <td>{p.onsetDate ? formatDate(p.onsetDate) : ""}</td>
+              </tr>
+            ))}
+            {problems.length === 0 && (
+              <tr>
+                <td colSpan={3} className="muted">
+                  No active problems have been documented.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Widget>
+    ),
+    orders: () => (
+      <Slot k="orders">
+        <OrdersPanel patientId={id} role={user.role} />
+      </Slot>
+    ),
+    medications: () => (
+      <Widget k="medications">
+        <table className="pd-table">
+          <thead>
+            <tr>
+              <th>Medication</th>
+              <th>Directions</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {medications.map((m) => (
+              <tr key={m.id}>
+                <td>{m.name}</td>
+                <td>{m.sig}</td>
+                <td>
+                  <StatusBadge value={m.status} />
+                </td>
+              </tr>
+            ))}
+            {medications.length === 0 && (
+              <tr>
+                <td colSpan={3} className="muted">
+                  No medications on file.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        <p className="pd-foot">
+          <strong>Allergies:</strong> {allergies.length ? allergies.map((a) => `${a.allergen} (${a.reaction})`).join("; ") : "NKDA"}
+        </p>
+      </Widget>
+    ),
+    tasks: () => (
+      <Slot k="tasks">
+        <PatientTasksPanel patientId={id} />
+      </Slot>
+    ),
+    results: () => (
+      <Widget k="results">
+        <table className="pd-table">
+          <thead>
+            <tr>
+              <th>Test</th>
+              <th>Result</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {labOrders.map((o) => (
+              <tr key={o.id}>
+                <td>{o.testName}</td>
+                <td>
+                  {o.result ? `${o.result.value} ${o.result.unit ?? ""}` : ""} {o.result && o.result.flag !== "NORMAL" && <StatusBadge value={o.result.flag} />}
+                </td>
+                <td>
+                  <StatusBadge value={o.status} />
+                </td>
+              </tr>
+            ))}
+            {labOrders.length === 0 && (
+              <tr>
+                <td colSpan={3} className="muted">
+                  No test results on file.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {withVitals.length > 0 && (
+          <table className="pd-table">
+            <thead>
+              <tr>
+                <th>Vitals</th>
+                <th>BP</th>
+                <th>HR</th>
+                <th>SpO2</th>
+                <th>BMI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withVitals.map((e) => {
+                const bmi = calcBmi(e.vitals!.heightCm, e.vitals!.weightKg);
+                return (
+                  <tr key={e.id}>
+                    <td>{formatDate(e.date)}</td>
+                    <td>
+                      {e.vitals!.bpSystolic ?? "—"}/{e.vitals!.bpDiastolic ?? "—"}
+                    </td>
+                    <td>{e.vitals!.heartRate ?? "—"}</td>
+                    <td>{e.vitals!.spo2 ?? "—"}</td>
+                    <td>{bmi ? bmi.toFixed(1) : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </Widget>
+    ),
+    encounters: () => (
+      <Widget k="encounters" more={`/schedule?patientId=${id}`}>
+        <table className="pd-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Provider</th>
+              <th>Status</th>
+              <th>Visit note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {appointments.map((a) => {
+              const visit = encounters.find((e) => e.appointmentId === a.id);
+              return (
+                <tr key={a.id}>
+                  <td>
+                    {formatDate(a.startsAt)} {formatTime(a.startsAt)}
+                  </td>
+                  <td>{a.provider.name}</td>
+                  <td>
+                    <StatusBadge value={a.status} />
+                  </td>
+                  <td>{visit ? <Link href={`/encounters/${visit.id}`}>Open</Link> : ""}</td>
+                </tr>
+              );
+            })}
+            {encounters
+              .filter((e) => !appointments.some((a) => a.id === e.appointmentId))
+              .map((e) => (
+                <tr key={e.id}>
+                  <td>{formatDate(e.date)}</td>
+                  <td>{e.provider.name}</td>
+                  <td>
+                    <StatusBadge value={e.status} />
+                  </td>
+                  <td>
+                    <Link href={`/encounters/${e.id}`}>Open</Link>
+                  </td>
+                </tr>
+              ))}
+            {appointments.length === 0 && encounters.length === 0 && (
+              <tr>
+                <td colSpan={4} className="muted">
+                  No visits scheduled and no encounters yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Widget>
+    ),
+    wounds: () => (
+      <Widget k="wounds">
+        {wounds.length === 0 ? (
+          <p className="muted">This graph appears once a wound assessment has been recorded for the patient.</p>
+        ) : (
+          <div className="pd-wounds">
+            {wounds.map((w) => {
+              const latest = w.assessments[w.assessments.length - 1];
+              return (
+                <div key={w.id}>
+                  <p>
+                    <strong>{w.label}</strong> <StatusBadge value={w.status} />
+                    <span className="muted">
+                      {" "}
+                      {w.location} · {etiologyLabel[w.etiology] ?? w.etiology}
+                      {latest?.areaCm2 ? ` · last area ${latest.areaCm2.toFixed(1)} cm²` : ""}
+                    </span>
+                  </p>
+                  <WoundTrendChart points={w.assessments.map((a) => ({ date: a.assessedAt, areaCm2: a.areaCm2 }))} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Widget>
+    ),
+    authorizations: () => (
+      <Widget k="authorizations" more={`${back}/insurance`}>
+        {auths.length === 0 ? (
+          <p className="muted">No authorizations on file.</p>
+        ) : (
+          <table className="pd-table">
+            <thead>
+              <tr>
+                <th>Authorization</th>
+                <th>Dates</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auths.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    {a.authNumber ?? a.reason}
+                    <div className="muted">
+                      {a.payer} · {a.kind === "PROCEDURE" ? `procedure ${a.procedureCode ?? ""}` : "encounters"}
+                      {a.authorizedCount !== null ? ` × ${a.authorizedCount}` : ""}
+                    </div>
+                  </td>
+                  <td>
+                    {a.startDate ? formatDate(a.startDate) : ""} – {a.endDate ? formatDate(a.endDate) : ""}
+                    {a.endDate && a.endDate.getTime() < Date.now() && <span className="gw-tag gw-tag-bad"> expired</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Widget>
+    ),
+    caregaps: () => (
+      <Slot k="caregaps">
+        <CareGapsPanel practiceId={user.practiceId} patientId={id} back={back} />
+      </Slot>
+    ),
+    gateway: () => (
+      <Widget k="gateway" more={intake ? `/gateway/${intake.id}` : undefined}>
+        {intake ? (
+          <>
+            <p>
+              <Link href={`/gateway/${intake.id}`} className={`gw-stage gw-stage-${intake.stage.toLowerCase()}`}>
+                {intakeStageLabel[intake.stage]}
+              </Link>
+              {intake.careStatus ? ` · ${careStatusLabel[intake.careStatus]}` : ""}
+            </p>
+            <p className="muted">
+              {intake.payer?.name ?? "No payer"} · {eligibilityStatusLabel[intake.eligibilityStatus]}
+              {intake.verifiedAt ? ` (verified ${formatDate(intake.verifiedAt)})` : ""}
+            </p>
+            <p className="muted">
+              Prior auth: {authStatusLabel[intake.authStatus]}
+              {intake.authNumber ? ` #${intake.authNumber}` : ""}
+              {intake.authEndDate ? ` · thru ${formatDate(intake.authEndDate)}` : ""}
+            </p>
+            <p className="muted">Rendering provider: {intake.assignedProvider?.name ?? "not assigned"}</p>
+            {intake.providerBrief && <p>{intake.providerBrief}</p>}
+          </>
+        ) : canWorkTeam(user.role, "DATA_ENTRY") ? (
+          <form action={startIntake.bind(null, id)}>
+            <p className="muted">No gateway case yet.</p>
+            <button className="btn secondary gw-mini" type="submit">
+              Start intake
             </button>
           </form>
-          {PATIENT_EDIT_ROLES.includes(user.role) && (
-            <Link className="btn secondary" href={`/patients/${patient.id}/edit`}>
-              Edit patient
-            </Link>
-          )}
-          <QuickActions
-            patientId={patient.id}
-            caseId={intake?.id}
-            latestEncounterId={patient.encounters[0]?.id}
-            canEdit={PATIENT_EDIT_ROLES.includes(user.role)}
-            canSchedule={["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"].includes(user.role)}
-            canBill={["ADMIN", "BILLER", "FRONT_DESK"].includes(user.role)}
-          />
-        </div>
-      </div>
+        ) : (
+          <p className="muted">No gateway case.</p>
+        )}
+      </Widget>
+    ),
+    forms: () => (
+      <Slot k="forms">
+        <PatientFormsPanel practiceId={user.practiceId} patientId={id} role={user.role} back={back} />
+      </Slot>
+    ),
+    prescriptions: () => (
+      <Slot k="prescriptions">
+        <PrescriptionsPanel patientId={id} role={user.role} back={back} />
+      </Slot>
+    ),
+    immunizations: () => (
+      <Slot k="immunizations">
+        <ImmunizationsPanel patientId={id} role={user.role} back={back} />
+      </Slot>
+    ),
+    referrals: () => (
+      <Slot k="referrals">
+        <ReferralsPanel patientId={id} role={user.role} />
+      </Slot>
+    ),
+    recalls: () => (
+      <Slot k="recalls">
+        <RecallsPanel patientId={id} role={user.role} back={back} />
+      </Slot>
+    ),
+    balance: () => (
+      <Slot k="balance">
+        <BalancePanel patientId={id} role={user.role} />
+      </Slot>
+    ),
+    records: () => (
+      <Slot k="records">
+        <RecordsPanel patientId={id} role={user.role} sp={sp} />
+      </Slot>
+    ),
+    account: () => (
+      <Widget k="account" more={`${back}/statement`}>
+        {family?.guarantorPatient ? (
+          <p>
+            Billed under <Link href={`/patients/${family.guarantorPatient.id}`}>{patientName(family.guarantorPatient)}</Link>&apos;s account.
+          </p>
+        ) : (
+          <p className="muted">Billed under their own account.</p>
+        )}
+        {family && family.dependents.length > 0 && (
+          <p className="muted">
+            Dependents:{" "}
+            {family.dependents.map((d, i) => (
+              <span key={d.id}>
+                {i ? ", " : ""}
+                <Link href={`/patients/${d.id}`}>{patientName(d)}</Link>
+              </span>
+            ))}
+          </p>
+        )}
+        <form action={setGuarantorAccount.bind(null, id)} className="cn-inline">
+          <select name="guarantorPatientId" defaultValue={patient.guarantorPatientId ?? ""} aria-label="Guarantor account">
+            <option value="">— Self (own account) —</option>
+            {otherPatients.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.lastName}, {p.firstName} ({p.mrn})
+              </option>
+            ))}
+          </select>
+          <button className="btn secondary gw-mini" type="submit">
+            Update
+          </button>
+        </form>
+      </Widget>
+    ),
+  };
 
+  return (
+    <PatientShell data={shell}>
+      <div className="pd-head">
+        <h1>Patient dashboard</h1>
+        <Link className="btn secondary" href={`${back}/widgets`}>
+          Add widgets
+        </Link>
+      </div>
       {sp.merged && <p className="notice-ok">Charts merged — moved {sp.merged}.</p>}
       {sp.rxOk && <p className="notice-ok">{sp.rxOk}</p>}
       {sp.rxError && (
@@ -131,331 +600,21 @@ export default async function PatientChartPage({ params, searchParams }: { param
           {sp.rxError}
         </p>
       )}
-
-      <div className="two-col">
-        <div className="stack">
-          <CareGapsPanel practiceId={user.practiceId} patientId={patient.id} back={`/patients/${patient.id}`} />
-          <section className="panel">
-            <h2>Clinical summary</h2>
-            <div className="panel-section">
-              <h3>Problem list</h3>
-              {patient.problems.length === 0 && <p className="muted">No active problems.</p>}
-              <ul>
-                {patient.problems.map((p) => (
-                  <li key={p.id}>
-                    <strong>{p.icd10}</strong> {p.description} <StatusBadge value={p.status} />
-                  </li>
-                ))}
-              </ul>
+      {widgets.length === 0 ? (
+        <section className="panel">
+          <p className="muted">
+            Your dashboard has no widgets. <Link href={`${back}/widgets`}>Add widgets</Link> to choose what you see when you open a patient.
+          </p>
+        </section>
+      ) : (
+        <div className="pd-grid">
+          {widgets.map((k) => (
+            <div key={k} className="pd-cell" style={{ display: "contents" }}>
+              {render[k]()}
             </div>
-            <div className="panel-section">
-              <h3>Allergies</h3>
-              {patient.allergies.length === 0 && <p className="muted">NKDA</p>}
-              <ul>
-                {patient.allergies.map((a) => (
-                  <li key={a.id}>
-                    {a.allergen} ({a.reaction}) <StatusBadge value={a.severity} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="panel-section">
-              <h3>Medications</h3>
-              {patient.medications.length === 0 && <p className="muted">No medications on file.</p>}
-              <ul>
-                {patient.medications.map((m) => (
-                  <li key={m.id}>
-                    <strong>{m.name}</strong> — {m.sig} <StatusBadge value={m.status} />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-
-          <section className="panel">
-            <h2>Vitals, wounds &amp; labs</h2>
-            <div className="panel-section">
-              <h3>Vitals trend</h3>
-              {patient.encounters.filter((e) => e.vitals).length === 0 && (
-                <p className="muted">No vitals recorded yet.</p>
-              )}
-              {patient.encounters.filter((e) => e.vitals).length > 0 && (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>BP</th>
-                      <th>HR</th>
-                      <th>SpO2</th>
-                      <th>BMI</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {patient.encounters
-                      .filter((e) => e.vitals)
-                      .map((e) => {
-                        const bmi = calcBmi(e.vitals!.heightCm, e.vitals!.weightKg);
-                        return (
-                          <tr key={e.id}>
-                            <td>{formatDate(e.date)}</td>
-                            <td>
-                              {e.vitals!.bpSystolic ?? "—"}/{e.vitals!.bpDiastolic ?? "—"}
-                            </td>
-                            <td>{e.vitals!.heartRate ?? "—"}</td>
-                            <td>{e.vitals!.spo2 ?? "—"}</td>
-                            <td>{bmi ? bmi.toFixed(1) : "—"}</td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div className="panel-section">
-              <h3>Wounds</h3>
-              {patient.wounds.length === 0 && <p className="muted">No wounds on file.</p>}
-              <ul>
-                {patient.wounds.map((w) => {
-                  const latest = w.assessments[0];
-                  const recentEncounterId = patient.encounters[0]?.id;
-                  const label = (
-                    <>
-                      <strong>{w.label}</strong> <StatusBadge value={w.status} />
-                      <div className="muted">
-                        {w.location} · {etiologyLabel[w.etiology] ?? w.etiology}
-                        {latest?.areaCm2 ? ` · Last area ${latest.areaCm2.toFixed(1)} cm²` : ""}
-                      </div>
-                    </>
-                  );
-                  return (
-                    <li key={w.id}>
-                      {recentEncounterId ? (
-                        <Link href={`/encounters/${recentEncounterId}/wounds/${w.id}`}>{label}</Link>
-                      ) : (
-                        label
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-            <div className="panel-section">
-              <h3>Labs</h3>
-              {patient.labOrders.length === 0 && <p className="muted">No labs ordered.</p>}
-              <ul>
-                {patient.labOrders.map((o) => (
-                  <li key={o.id}>
-                    <strong>{o.testName}</strong> <StatusBadge value={o.status} />
-                    {o.result && (
-                      <span className="muted">
-                        {" "}
-                        — {o.result.value} {o.result.unit ?? ""} <StatusBadge value={o.result.flag} />
-                      </span>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </section>
-          <OrdersPanel patientId={patient.id} role={user.role} />
-          <PrescriptionsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
-          <ImmunizationsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
+          ))}
         </div>
-        <div className="stack">
-          <section className="panel">
-            <h2>Patient Gateway</h2>
-            {intake ? (
-              <>
-                <p>
-                  <Link href={`/gateway/${intake.id}`} className={`gw-stage gw-stage-${intake.stage.toLowerCase()}`}>
-                    {intakeStageLabel[intake.stage]}
-                  </Link>
-                  {intake.careStatus ? ` · ${careStatusLabel[intake.careStatus]}` : ""}
-                </p>
-                <p className="muted">
-                  {intake.payer?.name ?? "No payer"} · {eligibilityStatusLabel[intake.eligibilityStatus]}
-                  {intake.verifiedAt ? ` (verified ${formatDate(intake.verifiedAt)})` : ""}
-                </p>
-                <p className="muted">
-                  Prior auth: {authStatusLabel[intake.authStatus]}
-                  {intake.authNumber ? ` #${intake.authNumber}` : ""}
-                  {intake.authEndDate ? ` · thru ${formatDate(intake.authEndDate)}` : ""}
-                </p>
-                <p className="muted">Rendering provider: {intake.assignedProvider?.name ?? "not assigned"}</p>
-                {intake.providerBrief && (
-                  <p>
-                    <span className="muted">Brief for the provider</span>
-                    <br />
-                    {intake.providerBrief}
-                  </p>
-                )}
-              </>
-            ) : canWorkTeam(user.role, "DATA_ENTRY") ? (
-              <form action={startIntake.bind(null, patient.id)}>
-                <p className="muted">No gateway case yet.</p>
-                <button className="btn secondary" type="submit">
-                  Start intake
-                </button>
-              </form>
-            ) : (
-              <p className="muted">No gateway case.</p>
-            )}
-          </section>
-          <PatientFormsPanel practiceId={user.practiceId} patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
-          <PatientTasksPanel patientId={patient.id} />
-          <ReferralsPanel patientId={patient.id} role={user.role} />
-          <RecallsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
-          <BalancePanel patientId={patient.id} role={user.role} />
-          <RecordsPanel patientId={patient.id} role={user.role} sp={sp} />
-          <section className="panel">
-            <h2>Patient info</h2>
-            <div className="panel-section">
-              <h3>Demographics</h3>
-              <p className="muted">
-                {patient.race ? raceLabel[patient.race] ?? patient.race : "Race not on file"} ·{" "}
-                {patient.ethnicity ? ethnicityLabel[patient.ethnicity] ?? patient.ethnicity : "Ethnicity not on file"}
-              </p>
-              <p className="muted">
-                {patient.maritalStatus
-                  ? maritalStatusLabel[patient.maritalStatus] ?? patient.maritalStatus
-                  : "Marital status not on file"}{" "}
-                ·{" "}
-                {patient.employmentStatus
-                  ? employmentStatusLabel[patient.employmentStatus] ?? patient.employmentStatus
-                  : "Employment not on file"}
-              </p>
-              <p className="muted">
-                Smoking:{" "}
-                {patient.smokingStatus ? smokingStatusLabel[patient.smokingStatus] ?? patient.smokingStatus : "Not on file"}
-              </p>
-              {patient.emergencyContactName && (
-                <p>
-                  <span className="muted">Emergency contact</span>
-                  <br />
-                  {patient.emergencyContactName}
-                  {patient.emergencyContactRelationship ? ` (${patient.emergencyContactRelationship})` : ""}
-                  {patient.emergencyContactPhone ? ` · ${patient.emergencyContactPhone}` : ""}
-                </p>
-              )}
-              {patient.guarantorName && (
-                <p>
-                  <span className="muted">Guarantor</span>
-                  <br />
-                  {patient.guarantorName}
-                  {patient.guarantorRelationship ? ` (${patient.guarantorRelationship})` : ""}
-                  {patient.guarantorPhone ? ` · ${patient.guarantorPhone}` : ""}
-                </p>
-              )}
-            </div>
-            <div className="panel-section">
-              <h3>Family / guarantor account</h3>
-              {patient.guarantorPatient ? (
-                <p>
-                  Billed under{" "}
-                  <Link href={`/patients/${patient.guarantorPatient.id}`}>
-                    {patientName(patient.guarantorPatient)}
-                  </Link>
-                  &apos;s account.
-                </p>
-              ) : (
-                <p className="muted">Billed under their own account.</p>
-              )}
-              {patient.dependents.length > 0 && (
-                <>
-                  <p className="muted">Dependents on this account:</p>
-                  <ul>
-                    {patient.dependents.map((d) => (
-                      <li key={d.id}>
-                        <Link href={`/patients/${d.id}`}>{patientName(d)}</Link>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-              <form
-                action={setGuarantorAccount.bind(null, patient.id)}
-                style={{ display: "flex", flexDirection: "row", gap: "0.4rem", marginTop: "0.6rem" }}
-              >
-                <select name="guarantorPatientId" defaultValue={patient.guarantorPatientId ?? ""}>
-                  <option value="">— Self (own account) —</option>
-                  {otherPatients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.lastName}, {p.firstName} ({p.mrn})
-                    </option>
-                  ))}
-                </select>
-                <button className="btn secondary" type="submit">
-                  Update
-                </button>
-              </form>
-            </div>
-            <div className="panel-section">
-              <h3>Coverage</h3>
-              <p>
-                <Link href={`/patients/${patient.id}/insurance`}>Manage insurance coverage</Link> ·{" "}
-                <Link href={`/patients/${patient.id}/statement`}>View patient statement</Link>
-              </p>
-              {patient.insurances.map((i) => (
-                <p key={i.id}>
-                  {i.payer.name}
-                  <br />
-                  <span className="muted">
-                    {i.planName} · {i.memberId}
-                  </span>
-                </p>
-              ))}
-              {patient.referringPhysician && (
-                <p>
-                  <span className="muted">Referred by</span>
-                  <br />
-                  {patient.referringPhysician.name}
-                  {patient.referringPhysician.specialty ? ` · ${patient.referringPhysician.specialty}` : ""}
-                </p>
-              )}
-            </div>
-          </section>
-
-          <section className="panel">
-            <h2>Visit history</h2>
-            <div className="panel-section">
-              <h3>Upcoming &amp; recent visits</h3>
-              {patient.appointments.length === 0 ? (
-                <p className="muted">No visits scheduled.</p>
-              ) : (
-                <table>
-                  <tbody>
-                    {patient.appointments.map((a) => (
-                      <tr key={a.id}>
-                        <td>
-                          {formatDate(a.startsAt)} {formatTime(a.startsAt)}
-                        </td>
-                        <td>{a.provider.name}</td>
-                        <td>
-                          <StatusBadge value={a.status} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-            <div className="panel-section">
-              <h3>Encounters</h3>
-              {patient.encounters.length === 0 ? (
-                <p className="muted">No encounters yet.</p>
-              ) : (
-                patient.encounters.map((e) => (
-                  <p key={e.id}>
-                    <Link href={`/encounters/${e.id}`}>
-                      {formatDate(e.date)} · {e.provider.name}
-                    </Link>
-                  </p>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
-      </div>
-    </>
+      )}
+    </PatientShell>
   );
 }

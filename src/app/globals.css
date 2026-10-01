@@ -4942,3 +4942,592 @@ form.fb-room input {
   gap: 0.2rem;
   font-size: 0.86rem;
 }
+
+/* ---- Add / Edit Patient (full registration form) ---- */
+.reg-form {
+  display: grid;
+  gap: 0.8rem;
+  padding-bottom: 4.5rem;
+}
+.reg-section > summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 1.02rem;
+  list-style-position: inside;
+}
+.reg-section[open] > summary {
+  margin-bottom: 0.9rem;
+}
+.reg-section h3 {
+  margin: 1.2rem 0 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.95rem;
+}
+.reg-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem 2rem;
+  align-items: start;
+}
+.reg-narrow {
+  max-width: 46rem;
+}
+.reg-wide {
+  grid-column: 1 / -1;
+}
+.reg-check-cell {
+  align-self: end;
+  padding-bottom: 0.55rem;
+}
+.reg-checks,
+.reg-radio {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+.reg-checks legend,
+.reg-radio legend {
+  font-size: 0.84rem;
+  color: var(--muted);
+  padding: 0 0.3rem;
+}
+.reg-hint {
+  margin: 0.7rem 0 0;
+  font-size: 0.86rem;
+}
+.reg-ins {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.7rem;
+}
+.reg-ins > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.reg-ins[open] > summary {
+  margin-bottom: 0.8rem;
+}
+/* Insured details only when the patient isn't the policy holder. */
+.reg-insured {
+  display: none;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--line);
+}
+.reg-ins:has(input[type="radio"][value="no"]:checked) .reg-insured {
+  display: grid;
+}
+.reg-accident-detail {
+  display: none;
+  margin-top: 0.6rem;
+}
+.reg-accident:has(input[name="autoAccident"]:checked) .reg-accident-detail {
+  display: grid;
+}
+.reg-guarantor-detail {
+  margin-top: 0.75rem;
+}
+.reg-guarantor:has(option[value="SELF"]:checked) .reg-guarantor-detail {
+  display: none;
+}
+.reg-photo {
+  display: flex;
+  gap: 1.2rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.reg-photo img,
+.patient-photo {
+  width: 7rem;
+  height: 7rem;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+.reg-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel, #fff);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 -4px 14px rgba(25, 27, 35, 0.06);
+}
+@media (max-width: 900px) {
+  .reg-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- Patient dashboard: summary column + widgets ---- */
+.pd-shell {
+  display: grid;
+  grid-template-columns: 19rem minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.pd-side {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.9rem;
+  font-size: 0.9rem;
+  position: sticky;
+  top: 0.75rem;
+  max-height: calc(100vh - 1.5rem);
+  overflow-y: auto;
+}
+.pd-top {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  margin-bottom: 0.6rem;
+}
+.pd-photo {
+  width: 5.2rem;
+  height: 5.2rem;
+  flex: none;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+.pd-glyph {
+  display: grid;
+  place-items: center;
+  font-size: 3.2rem;
+  line-height: 1;
+  background: var(--panel-alt);
+  color: var(--ink);
+}
+.pd-top-actions {
+  display: grid;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 0;
+}
+.pd-top-actions .btn {
+  width: 100%;
+  text-align: center;
+}
+.pd-side .quick-actions ul {
+  left: 0;
+  right: auto;
+}
+.pd-name {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.pd-line {
+  margin: 0.1rem 0 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.pd-block {
+  margin-bottom: 0.6rem;
+}
+.pd-block h4,
+.wc-title {
+  margin: 0;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.pd-block p {
+  margin: 0;
+}
+.pd-sub {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.pd-notes {
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+.pd-status {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+.pd-main {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+}
+.pd-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.pd-head h1 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+.pd-back {
+  margin: 0;
+  font-size: 0.86rem;
+}
+.pd-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  align-items: start;
+}
+.pd-widget {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem 0.8rem;
+  min-width: 0;
+  font-size: 0.86rem;
+}
+.pd-widget > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+.pd-widget > header h2 {
+  margin: 0;
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pd-widget > header h2 span {
+  font-weight: 400;
+  font-size: 0.74rem;
+  text-transform: none;
+}
+.pd-widget > header a {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pd-slot {
+  min-width: 0;
+}
+.pd-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.pd-table th {
+  text-align: left;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.4rem;
+  vertical-align: top;
+}
+.pd-table thead th {
+  background: var(--panel-alt);
+}
+.pd-table td {
+  padding: 0.35rem 0.4rem;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.pd-table tbody tr:nth-child(odd) {
+  background: var(--panel-alt);
+}
+.pd-table + .pd-table {
+  margin-top: 0.6rem;
+}
+.pd-foot {
+  margin: 0.5rem 0 0;
+}
+.pd-ins {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.6rem;
+  align-items: start;
+}
+.pd-ins-card {
+  background: var(--panel-alt);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+}
+.pd-ins-card dl {
+  margin: 0 0 0.5rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.5rem;
+}
+.pd-ins-card dt {
+  font-weight: 700;
+}
+.pd-ins-card dt::after {
+  content: ":";
+}
+.pd-ins-card dd {
+  margin: 0;
+}
+.pd-ins-card form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.pd-verified {
+  margin: 0.3rem 0 0;
+  font-size: 0.76rem;
+}
+.pd-wounds {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1rem;
+}
+
+/* Insurance page */
+.ins-card h2 {
+  margin: 0;
+}
+.ins-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.6rem 2.5rem;
+  align-items: start;
+  margin-top: 0.7rem;
+}
+.ins-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: 0.45rem 1rem;
+}
+.ins-facts dt {
+  color: var(--muted);
+}
+.ins-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ins-fields {
+  display: grid;
+  gap: 0.6rem;
+}
+.ins-holder {
+  display: none;
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--line);
+}
+.ins-form:has(input[name="holder"][value="no"]:checked) .ins-holder {
+  display: block;
+}
+.ins-holder h4,
+.ins-sub h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.ins-notes {
+  display: block;
+  margin-top: 0.7rem;
+}
+.ins-warn {
+  margin: 0;
+  color: #b45309;
+  font-style: italic;
+  font-size: 0.84rem;
+}
+.ins-sub {
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+.ins-sub > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.ins-sub table {
+  margin-top: 0.5rem;
+}
+.ins-auth-form {
+  background: var(--panel-alt);
+  border-radius: 8px;
+  padding: 0.3rem 0.8rem 0.8rem;
+  margin-top: 0.5rem;
+}
+.ins-elig {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  margin-top: 0.5rem;
+}
+.ins-elig h5 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  text-decoration: underline;
+}
+.ins-elig .gw-actions {
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+/* Scans page */
+.scan-table {
+  width: 100%;
+}
+.scan-table thead th {
+  background: var(--navy, #1f2440);
+  color: #fff;
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+}
+.scan-group th {
+  background: var(--panel-alt);
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+}
+.scan-drop input[type="file"] {
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  padding: 1.4rem 1rem;
+  background: var(--panel-alt);
+}
+
+/* Widget configuration */
+.wc-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+.wc-list button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0.35rem 0.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+}
+.wc-list button:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.wc-list button:disabled {
+  color: var(--muted);
+  cursor: default;
+}
+.wc-widget {
+  min-height: 7rem;
+}
+.wc-tools {
+  display: flex;
+  gap: 0.3rem;
+}
+.wc-tools button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.wc-tools button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.wc-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Upload documents block at the top of Add patient */
+.reg-upload h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.02rem;
+}
+.reg-upload > p {
+  margin: 0 0 0.7rem;
+}
+.reg-upload input[type="file"] {
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  padding: 0.9rem 0.8rem;
+  background: var(--panel-alt);
+}
+
+@media (max-width: 1100px) {
+  .pd-shell {
+    grid-template-columns: 1fr;
+  }
+  .pd-side {
+    position: static;
+    max-height: none;
+  }
+  .pd-grid {
+    grid-template-columns: 1fr;
+  }
+  .pd-grid > * > *,
+  .pd-grid .pd-widget,
+  .pd-grid .pd-slot {
+    grid-column: auto !important;
+  }
+  .ins-cols {
+    grid-template-columns: 1fr;
+  }
+}
+@media print {
+  .pd-shell {
+    display: block;
+  }
+}
+
+/* Add patient: documents read to fill the form */
+.reg-upload-row {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 0.7rem;
+}
+.reg-upload-row label {
+  flex: 1 1 22rem;
+}
+.reg-docs {
+  margin-bottom: 0.4rem;
+}
+.reg-review {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--line);
+}
+.reg-review > p {
+  margin: 0 0 0.4rem;
+}
+.reg-note {
+  margin: 0 0 0.4rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  background: var(--amber-soft, #fdf3d8);
+  font-size: 0.88rem;
+}
+.reg-note ul {
+  margin: 0.3rem 0 0;
+}
+.reg-form .reg-auto {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  background: var(--accent-soft);
+}

@@ -4,6 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { logClaimEvent, refreshVisitBillingStatus } from "@/lib/claims";
 import { claimNumber } from "@/lib/claim-format";
 import { applyPatientCredit } from "@/lib/checkout";
+import { creditRecovery, recordDenial, resolveDenials } from "@/lib/denials";
 
 // X12 835 (Health Care Claim Payment/Advice) reading, claim matching and auto-posting.
 
@@ -76,7 +77,10 @@ export const CARC: Record<string, string> = {
   "3": "Co-payment amount",
   "4": "Procedure code inconsistent with the modifier used",
   "5": "Procedure code/type of bill inconsistent with place of service",
+  "6": "Procedure/revenue code inconsistent with the patient's age",
+  "9": "Diagnosis inconsistent with the patient's age",
   "11": "Diagnosis inconsistent with the procedure",
+  "15": "Authorization number is missing, invalid or does not apply to the billed services",
   "16": "Claim lacks information or has submission/billing error(s)",
   "18": "Exact duplicate claim/service",
   "22": "May be covered by another payer (coordination of benefits)",
@@ -86,22 +90,44 @@ export const CARC: Record<string, string> = {
   "27": "Expenses incurred after coverage terminated",
   "29": "Time limit for filing has expired",
   "31": "Patient cannot be identified as our insured",
+  "32": "Our records indicate the patient is not an eligible dependent",
+  "33": "Insured has no dependent coverage",
+  "35": "Lifetime benefit maximum has been reached",
+  "39": "Services denied at the time authorization/pre-certification was requested",
   "45": "Charge exceeds fee schedule / maximum allowable",
+  "49": "Non-covered routine/preventive service",
   "50": "Not deemed a medical necessity by the payer",
+  "55": "Procedure/treatment is deemed experimental or investigational",
+  "56": "Procedure/treatment has not been deemed proven to be effective",
   "59": "Processed based on multiple or concurrent procedure rules",
   "96": "Non-covered charge(s)",
   "97": "Payment included in the allowance for another service",
   "109": "Claim not covered by this payer — send to the correct payer",
   "119": "Benefit maximum for this time period has been reached",
+  "129": "Prior processing information appears incorrect",
+  "150": "Information submitted does not support this level of service",
+  "151": "Information submitted does not support this many/frequency of services",
+  "152": "Information submitted does not support this length of service",
   "167": "Diagnosis is not covered",
   "170": "Payment denied when performed by this type of provider",
+  "181": "Procedure code was invalid on the date of service",
+  "182": "Procedure modifier was invalid on the date of service",
+  "185": "Rendering provider is not eligible to perform the service billed",
   "197": "Precertification/authorization/notification absent",
   "198": "Precertification/authorization exceeded",
+  "200": "Expenses incurred during a lapse in coverage",
   "204": "Service not covered under the patient's current benefit plan",
+  "226": "Information requested from the billing/rendering provider was not provided or was incomplete",
+  "227": "Information requested from the patient/insured was not provided or was incomplete",
+  "234": "Procedure is not paid separately",
   "236": "Procedure or modifier not compatible with another procedure on the same day",
   "242": "Services not provided by network/primary care providers",
+  "243": "Services not authorized by network/primary care providers",
+  "251": "Attachment/other documentation received was incomplete or deficient",
+  "252": "An attachment/other documentation is required to adjudicate this claim",
   "253": "Sequestration — reduction of federal payment",
   "B7": "Provider not certified/eligible to be paid for this procedure on this date",
+  "B13": "Previously paid — payment for this claim/service may have been provided in a previous payment",
   "B15": "Qualifying service/procedure not received/adjudicated",
 };
 
@@ -395,6 +421,22 @@ async function postOne(eraClaimId: string, depositId: string, userId: string | n
   if (patientResp) parts.push(`patient resp. $${(patientResp / 100).toFixed(2)}`);
   if (denied) parts.push(`denied: ${reasonText || "see ERA"}`);
   await logClaimEvent(claim.id, userId, denied ? "DENIED" : "PAYMENT", { note: parts.join(" · ") });
+  if (denied) {
+    // The denial is filed under the reason carrying the most money (ignoring patient share and fee-schedule reductions).
+    const main = adjustments.filter((a) => a.group !== "PR" && a.reason !== "45").sort((a, b) => b.cents - a.cents)[0];
+    await recordDenial({
+      claimId: claim.id,
+      source: "ERA",
+      reason: reasonText || CLP_STATUS[ec.statusCode] || "Denied",
+      groupCode: main?.group,
+      code: main?.reason,
+      remarks: ec.remarks,
+      userId,
+    });
+  } else {
+    await creditRecovery(claim.id, ec.paidCents);
+    await resolveDenials(claim.id, ec.paidCents > 0 ? "PAID" : status === "PAID" ? "WRITTEN_OFF" : "PATIENT", userId);
+  }
   await refreshVisitBillingStatus(claim.encounterId);
   return null;
 }

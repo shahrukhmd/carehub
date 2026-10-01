@@ -17,6 +17,8 @@ import {
   recomputeClaimTotals,
   refreshVisitBillingStatus,
 } from "@/lib/claims";
+import { creditRecovery, recordDenial, resolveDenials } from "@/lib/denials";
+import { CARC } from "@/lib/era";
 import { markBilledIfComplete } from "@/lib/visit-guard";
 import { SIGNED_STATUSES } from "@/lib/visit-workflow";
 import { placeOfServiceLabel } from "@/lib/superbill";
@@ -334,13 +336,22 @@ export async function setClaimStatus(claimId: string, fd: FormData) {
     if (!status || !MANUAL_STATUSES.includes(status)) fail("Pick a status.");
     if (EDITABLE_CLAIM_STATUSES.includes(claim.status)) fail("Submit the claim before recording a payer outcome.");
     const note = text(fd, "note");
-    if (["DENIED", "WRITTEN_OFF"].includes(status) && !note) fail("A reason is required.");
+    // A denial can be keyed with the payer's reason code (from a paper EOB) instead of, or as well as, a note.
+    const code = status === "DENIED" ? text(fd, "denialCode") : null;
+    if (code && !CARC[code]) fail("Unknown denial reason code.");
+    const reason = code ? `CO-${code} ${CARC[code]}${note ? ` — ${note}` : ""}` : note;
+    if (["DENIED", "WRITTEN_OFF"].includes(status) && !reason) fail("A reason is required.");
     await prisma.claim.update({
       where: { id: claim.id },
-      data: { status, statusNote: note, denialReason: status === "DENIED" ? note : claim.denialReason },
+      data: { status, statusNote: note, denialReason: status === "DENIED" ? reason : claim.denialReason },
     });
-    await logClaimEvent(claim.id, user.id, "STATUS", { field: "status", oldValue: claim.status, newValue: status, note });
+    await logClaimEvent(claim.id, user.id, "STATUS", { field: "status", oldValue: claim.status, newValue: status, note: reason });
     await logAudit(user.practiceId, user.id, "SET_CLAIM_STATUS", "Claim", claim.id, status);
+    if (status === "DENIED") await recordDenial({ claimId: claim.id, source: "MANUAL", reason: reason!, groupCode: code ? "CO" : null, code, userId: user.id });
+    else if (status === "APPEAL") {
+      const marked = await prisma.claimDenial.updateMany({ where: { claimId: claim.id, status: "OPEN" }, data: { status: "APPEALED" } });
+      if (!marked.count) await recordDenial({ claimId: claim.id, source: "MANUAL", reason: claim.denialReason ?? note ?? "No reason recorded", status: "APPEALED", userId: user.id, task: false });
+    } else await resolveDenials(claim.id, status === "WRITTEN_OFF" ? "WRITTEN_OFF" : status === "ACCEPTED" ? "RESUBMITTED" : "PATIENT", user.id);
     await refreshVisitBillingStatus(claim.encounterId);
     refreshAll(claim.id, claim.encounterId);
   });
@@ -383,6 +394,7 @@ export async function resubmitDenied(claimId: string) {
       data: { status: "SUBMITTED", submittedAt: new Date(), denialReason: null, attempt: claim.attempt + 1 },
     });
     await logClaimEvent(claim.id, user.id, "RESUBMITTED", { note: `Attempt ${claim.attempt + 1}` });
+    await resolveDenials(claim.id, "RESUBMITTED", user.id);
     await refreshVisitBillingStatus(claim.encounterId);
     refreshAll(claim.id, claim.encounterId);
   });
@@ -437,6 +449,7 @@ export async function correctClaim(claimId: string, frequency: "7" | "8") {
     await prisma.claim.update({ where: { id: c.id }, data: { status: "VOID", statusNote: `Replaced by frequency ${frequency} claim` } });
     await logClaimEvent(c.id, user.id, "STATUS", { field: "status", oldValue: c.status, newValue: "VOID", note: `Replaced by ${copy.id}` });
     await logClaimEvent(copy.id, user.id, "CREATED", { note: `${frequency === "7" ? "Corrected" : "Void"} claim for ${c.id}` });
+    await resolveDenials(c.id, frequency === "7" ? "CORRECTED" : "VOIDED", user.id);
     await refreshVisitBillingStatus(c.encounterId);
     refreshAll(copy.id, c.encounterId);
     return `/billing/claims/${copy.id}`;
@@ -481,6 +494,10 @@ export async function applyPayment(claimId: string, fd: FormData) {
       note: `${deposit.payerName} · $${(amountCents / 100).toFixed(2)}${status !== claim.status ? ` · ${claimStatusLabel[status]}` : ""}`,
     });
     await logAudit(user.practiceId, user.id, type === "ADJUSTMENT" ? "POST_ADJUSTMENT" : "POST_PAYMENT", "Claim", claim.id, `$${(amountCents / 100).toFixed(2)}`);
+    if (type === "PAYMENT" && deposit.payerType === "INSURANCE") {
+      await creditRecovery(claim.id, amountCents);
+      await resolveDenials(claim.id, "PAID", user.id);
+    } else await resolveDenials(claim.id, type === "ADJUSTMENT" && balance <= 0 ? "WRITTEN_OFF" : "PATIENT", user.id);
     await refreshVisitBillingStatus(claim.encounterId);
     refreshAll(claim.id, claim.encounterId);
   });

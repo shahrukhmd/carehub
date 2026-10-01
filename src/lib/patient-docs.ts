@@ -15,7 +15,27 @@ export const DOC_TYPES: Record<string, string> = {
   LETTER: "Letter",
   PRESCRIPTION: "Prescription",
   CCDA: "Care summary (C-CDA)",
+  PROGRESS_NOTES: "Progress notes",
   OTHER: "Other",
+};
+
+// Groups on the patient's Scans page: the document types, with anything unclassified shown as "Unsorted".
+export const SCAN_GROUPS: Record<string, string> = {
+  CONSENT: "Consents",
+  PROGRESS_NOTES: "Progress notes",
+  REFERRAL: "Referrals",
+  INSURANCE_CARD: "Insurance cards",
+  PHOTO_ID: "Photo ID",
+  FACE_SHEET: "Face sheets / demographics",
+  H_AND_P: "History & physical",
+  ORDERS: "Physician orders",
+  MEDICATION_LIST: "Medication lists",
+  LAB_RESULTS: "Lab / test results",
+  INTAKE_PACKET: "Patient intake packets",
+  LETTER: "Letters",
+  PRESCRIPTION: "Prescriptions",
+  CCDA: "Care summaries (C-CDA)",
+  OTHER: "Unsorted",
 };
 
 export const DOC_STATUS: Record<string, string> = {
@@ -32,7 +52,7 @@ export const READ_METHODS: Record<string, string> = {
   PATIENT: "Entered by the patient",
 };
 
-export type FieldGroup = "patient" | "insurance" | "secondary" | "referral" | "pcp";
+export type FieldGroup = "patient" | "insurance" | "secondary" | "referral" | "pcp" | "pharmacy" | "homeHealth";
 
 export const FIELD_GROUPS: Record<FieldGroup, string> = {
   patient: "Patient demographics",
@@ -40,6 +60,8 @@ export const FIELD_GROUPS: Record<FieldGroup, string> = {
   secondary: "Secondary insurance",
   referral: "Referral",
   pcp: "Primary care physician",
+  pharmacy: "Pharmacy",
+  homeHealth: "Home health",
 };
 
 export type FieldDef = { key: string; group: FieldGroup; label: string; kind?: "date" | "sex" | "state" | "phone" | "zip" | "long" };
@@ -48,16 +70,24 @@ export type FieldDef = { key: string; group: FieldGroup; label: string; kind?: "
 export const DOC_FIELDS: FieldDef[] = [
   { key: "patient.firstName", group: "patient", label: "First name" },
   { key: "patient.lastName", group: "patient", label: "Last name" },
+  { key: "patient.middleName", group: "patient", label: "Middle name" },
   { key: "patient.dob", group: "patient", label: "Date of birth", kind: "date" },
   { key: "patient.sex", group: "patient", label: "Sex", kind: "sex" },
+  { key: "patient.ssnLast4", group: "patient", label: "SSN (last 4 digits)" },
   { key: "patient.phone", group: "patient", label: "Phone", kind: "phone" },
+  { key: "patient.phone2", group: "patient", label: "Second phone", kind: "phone" },
   { key: "patient.email", group: "patient", label: "Email" },
   { key: "patient.addressLine1", group: "patient", label: "Street address" },
+  { key: "patient.addressLine2", group: "patient", label: "Apartment / unit" },
   { key: "patient.city", group: "patient", label: "City" },
   { key: "patient.state", group: "patient", label: "State", kind: "state" },
   { key: "patient.zip", group: "patient", label: "ZIP", kind: "zip" },
+  { key: "patient.county", group: "patient", label: "County" },
   { key: "patient.preferredLanguage", group: "patient", label: "Preferred language" },
   { key: "patient.maritalStatus", group: "patient", label: "Marital status" },
+  { key: "patient.race", group: "patient", label: "Race" },
+  { key: "patient.ethnicity", group: "patient", label: "Ethnicity" },
+  { key: "patient.occupation", group: "patient", label: "Occupation" },
   { key: "patient.emergencyContactName", group: "patient", label: "Emergency contact" },
   { key: "patient.emergencyContactPhone", group: "patient", label: "Emergency contact phone", kind: "phone" },
   { key: "patient.emergencyContactRelationship", group: "patient", label: "Emergency contact relationship" },
@@ -65,7 +95,12 @@ export const DOC_FIELDS: FieldDef[] = [
   { key: "insurance.memberId", group: "insurance", label: "Member ID" },
   { key: "insurance.groupNumber", group: "insurance", label: "Group number" },
   { key: "insurance.planName", group: "insurance", label: "Plan name" },
+  { key: "insurance.groupName", group: "insurance", label: "Group name" },
+  { key: "insurance.copay", group: "insurance", label: "Copay" },
+  { key: "insurance.effectiveDate", group: "insurance", label: "Effective date", kind: "date" },
   { key: "insurance.subscriberName", group: "insurance", label: "Subscriber (if not the patient)" },
+  { key: "insurance.subscriberDob", group: "insurance", label: "Subscriber date of birth", kind: "date" },
+  { key: "insurance.subscriberRelationship", group: "insurance", label: "Patient relationship to subscriber" },
   { key: "secondary.payerName", group: "secondary", label: "Payer" },
   { key: "secondary.memberId", group: "secondary", label: "Member ID" },
   { key: "secondary.groupNumber", group: "secondary", label: "Group number" },
@@ -78,9 +113,16 @@ export const DOC_FIELDS: FieldDef[] = [
   { key: "referral.contactFax", group: "referral", label: "Referral fax", kind: "phone" },
   { key: "referral.servicesRequested", group: "referral", label: "Services requested", kind: "long" },
   { key: "referral.diagnoses", group: "referral", label: "Diagnoses (ICD-10)", kind: "long" },
+  { key: "referral.onsetDate", group: "referral", label: "Onset of symptoms", kind: "date" },
   { key: "pcp.name", group: "pcp", label: "PCP name" },
   { key: "pcp.phone", group: "pcp", label: "PCP phone", kind: "phone" },
   { key: "pcp.fax", group: "pcp", label: "PCP fax", kind: "phone" },
+  { key: "pharmacy.name", group: "pharmacy", label: "Pharmacy" },
+  { key: "pharmacy.phone", group: "pharmacy", label: "Pharmacy phone", kind: "phone" },
+  { key: "pharmacy.fax", group: "pharmacy", label: "Pharmacy fax", kind: "phone" },
+  { key: "pharmacy.address", group: "pharmacy", label: "Pharmacy address" },
+  { key: "homeHealth.company", group: "homeHealth", label: "Home health company" },
+  { key: "homeHealth.nurse", group: "homeHealth", label: "Home health nurse" },
 ];
 
 export const DOC_FIELD_KEYS = DOC_FIELDS.map((f) => f.key);

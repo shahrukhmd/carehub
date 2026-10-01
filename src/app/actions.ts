@@ -13,6 +13,8 @@ import { placeOfServiceLabel } from "@/lib/superbill";
 import { buildOccurrences, findConflicts } from "@/lib/schedule-conflicts";
 import { PATIENT_EDIT_ROLES, canWorkTeam } from "@/lib/gateway";
 import { openIntakeCase } from "@/lib/intake";
+import { RegistrationError, readPatientForm, readPatientPhoto, saveInsuranceBlocks } from "@/lib/patient-registration";
+import { ScanError, fileScan, saveScanFiles, uploadedFiles } from "@/lib/scans";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -24,152 +26,87 @@ function nextMrn() {
   return `CH-${Math.floor(100000 + Math.random() * 899999)}`;
 }
 
+// Registration problems come back as a banner on the form instead of an error screen.
+function registrationFailed(back: string, err: unknown): never {
+  if (!(err instanceof RegistrationError)) throw err;
+  redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent(err.message.slice(0, 300))}`);
+}
+
 export async function createPatient(formData: FormData) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE"]);
-  const firstName = required(formData, "firstName");
-  const lastName = required(formData, "lastName");
-  const dob = required(formData, "dob");
-  const sex = required(formData, "sex");
-
-  const payerId = String(formData.get("payerId") ?? "") || null;
-  const referringPhysicianId = String(formData.get("referringPhysicianId") ?? "") || null;
-  const guarantorPatientId = String(formData.get("guarantorPatientId") ?? "") || null;
-
-  if (payerId) {
-    await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: user.practiceId } });
-  }
-  if (referringPhysicianId) {
-    await prisma.renderingProvider.findFirstOrThrow({
-      where: { id: referringPhysicianId, practiceId: user.practiceId, isReferring: true },
+  const readIds = [...new Set(String(formData.get("docs") ?? "").split(",").filter((id) => /^[a-z0-9]{10,40}$/.test(id)))].slice(0, 40);
+  let patientId: string;
+  try {
+    const data = await readPatientForm(formData, user.practiceId);
+    const guarantorPatientId = String(formData.get("guarantorPatientId") ?? "") || null;
+    if (guarantorPatientId && !(await prisma.patient.findFirst({ where: { id: guarantorPatientId, practiceId: user.practiceId } }))) {
+      throw new RegistrationError("Guarantor account not found.");
+    }
+    const photoPath = await readPatientPhoto(formData, user.practiceId);
+    const patient = await prisma.patient.create({
+      data: { ...data, practiceId: user.practiceId, mrn: nextMrn(), guarantorPatientId, photoPath: photoPath ?? null },
     });
+    patientId = patient.id;
+    try {
+      await saveInsuranceBlocks(patient.id, user.practiceId, formData);
+    } catch (err) {
+      // Keep the chart; the coverage can be fixed from the edit screen.
+      if (!(err instanceof RegistrationError)) throw err;
+      await openIntakeCase(user, patient.id);
+      await logAudit(user.practiceId, user.id, "CREATE_PATIENT", "Patient", patient.id, `${data.firstName} ${data.lastName}`);
+      redirect(`/patients/${patient.id}/edit?error=${encodeURIComponent(`The patient was saved, but: ${err.message}`.slice(0, 300))}`);
+    }
+    await logAudit(user.practiceId, user.id, "CREATE_PATIENT", "Patient", patient.id, `${data.firstName} ${data.lastName}`);
+  } catch (err) {
+    // Keep the documents that were read, so the form comes back filled in.
+    registrationFailed(readIds.length ? `/patients/new?docs=${readIds.join(",")}` : "/patients/new", err);
   }
-  if (guarantorPatientId) {
-    await prisma.patient.findFirstOrThrow({ where: { id: guarantorPatientId, practiceId: user.practiceId } });
-  }
-
-  const patient = await prisma.patient.create({
-    data: {
-      practiceId: user.practiceId,
-      mrn: nextMrn(),
-      firstName,
-      lastName,
-      dob: new Date(dob),
-      sex,
-      phone: String(formData.get("phone") ?? "") || null,
-      email: String(formData.get("email") ?? "") || null,
-      addressLine1: String(formData.get("addressLine1") ?? "") || null,
-      city: String(formData.get("city") ?? "") || null,
-      state: String(formData.get("state") ?? "") || null,
-      zip: String(formData.get("zip") ?? "") || null,
-      race: String(formData.get("race") ?? "") || null,
-      ethnicity: String(formData.get("ethnicity") ?? "") || null,
-      maritalStatus: String(formData.get("maritalStatus") ?? "") || null,
-      employmentStatus: String(formData.get("employmentStatus") ?? "") || null,
-      smokingStatus: String(formData.get("smokingStatus") ?? "") || null,
-      emergencyContactName: String(formData.get("emergencyContactName") ?? "") || null,
-      emergencyContactPhone: String(formData.get("emergencyContactPhone") ?? "") || null,
-      emergencyContactRelationship: String(formData.get("emergencyContactRelationship") ?? "") || null,
-      guarantorName: String(formData.get("guarantorName") ?? "") || null,
-      guarantorRelationship: String(formData.get("guarantorRelationship") ?? "") || null,
-      guarantorPhone: String(formData.get("guarantorPhone") ?? "") || null,
-      guarantorPatientId,
-      referringPhysicianId,
-      insurances: payerId
-        ? {
-            create: {
-              payerId,
-              memberId: String(formData.get("memberId") ?? "PENDING"),
-              planName: String(formData.get("planName") ?? "") || null,
-              isPrimary: true,
-            },
-          }
-        : undefined,
-    },
-  });
 
   // Every new registration starts a Patient Gateway case for the data entry team.
-  const intake = await openIntakeCase(user, patient.id);
-  await logAudit(user.practiceId, user.id, "CREATE_PATIENT", "Patient", patient.id, `${firstName} ${lastName}`);
+  const intake = await openIntakeCase(user, patientId);
 
+  // The documents read to fill the form now belong to the patient: filed under Scans, named after what they are.
+  if (readIds.length) {
+    const mine = await prisma.patientDocument.findMany({ where: { id: { in: readIds }, practiceId: user.practiceId, patientId: null }, select: { id: true } });
+    await prisma.patientDocument.updateMany({ where: { id: { in: mine.map((d) => d.id) } }, data: { patientId, intakeCaseId: intake.id } });
+    for (const d of mine) await fileScan(d.id, { rename: true, reviewedById: user.id });
+    if (mine.length) await logAudit(user.practiceId, user.id, "FILE_REGISTRATION_DOCUMENTS", "Patient", patientId, `${mine.length} document(s) filed under Scans`);
+  }
+  // Documents chosen but not read first are stored now, then read, classified and named in the background.
+  const documents = uploadedFiles(formData, "documents");
+  let scanProblem: string | null = null;
+  if (documents.length > 0) {
+    try {
+      await saveScanFiles({ user, patientId, files: documents, group: "OTHER" });
+    } catch (err) {
+      if (!(err instanceof ScanError)) throw err;
+      scanProblem = err.message;
+    }
+  }
   revalidatePath("/");
-  redirect(canWorkTeam(user.role, "DATA_ENTRY") ? `/gateway/${intake.id}` : `/patients/${patient.id}`);
+  revalidatePath("/patients");
+  // The chart is saved either way; a document that couldn't be stored is reported on the Scans page.
+  if (scanProblem) redirect(`/patients/${patientId}/scans?error=${encodeURIComponent(`The patient was saved, but a document wasn't: ${scanProblem}`.slice(0, 300))}`);
+  if (formData.get("intent") === "schedule") redirect(`/schedule?patientId=${patientId}`);
+  redirect(canWorkTeam(user.role, "DATA_ENTRY") ? `/gateway/${intake.id}` : `/patients/${patientId}`);
 }
 
 export async function updatePatient(patientId: string, formData: FormData) {
   const user = await requireUser(PATIENT_EDIT_ROLES);
-  const patient = await prisma.patient.findFirstOrThrow({
-    where: { id: patientId, practiceId: user.practiceId },
-    include: { insurances: { where: { isPrimary: true } } },
-  });
-
-  const firstName = required(formData, "firstName");
-  const lastName = required(formData, "lastName");
-  const dob = required(formData, "dob");
-  const sex = required(formData, "sex");
-
-  const payerId = String(formData.get("payerId") ?? "") || null;
-  const referringPhysicianId = String(formData.get("referringPhysicianId") ?? "") || null;
-
-  if (payerId) {
-    await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: user.practiceId } });
+  const patient = await prisma.patient.findFirstOrThrow({ where: { id: patientId, practiceId: user.practiceId } });
+  try {
+    const data = await readPatientForm(formData, user.practiceId);
+    const photoPath = await readPatientPhoto(formData, user.practiceId);
+    await prisma.patient.update({ where: { id: patient.id }, data: { ...data, ...(photoPath === undefined ? {} : { photoPath }) } });
+    await saveInsuranceBlocks(patient.id, user.practiceId, formData);
+    await logAudit(user.practiceId, user.id, "UPDATE_PATIENT", "Patient", patient.id, `${data.firstName} ${data.lastName}`);
+  } catch (err) {
+    registrationFailed(`/patients/${patient.id}/edit`, err);
   }
-  if (referringPhysicianId) {
-    await prisma.renderingProvider.findFirstOrThrow({
-      where: { id: referringPhysicianId, practiceId: user.practiceId, isReferring: true },
-    });
-  }
-
-  await prisma.patient.update({
-    where: { id: patient.id },
-    data: {
-      firstName,
-      lastName,
-      dob: new Date(dob),
-      sex,
-      phone: String(formData.get("phone") ?? "") || null,
-      email: String(formData.get("email") ?? "") || null,
-      addressLine1: String(formData.get("addressLine1") ?? "") || null,
-      city: String(formData.get("city") ?? "") || null,
-      state: String(formData.get("state") ?? "") || null,
-      zip: String(formData.get("zip") ?? "") || null,
-      race: String(formData.get("race") ?? "") || null,
-      ethnicity: String(formData.get("ethnicity") ?? "") || null,
-      maritalStatus: String(formData.get("maritalStatus") ?? "") || null,
-      employmentStatus: String(formData.get("employmentStatus") ?? "") || null,
-      smokingStatus: String(formData.get("smokingStatus") ?? "") || null,
-      emergencyContactName: String(formData.get("emergencyContactName") ?? "") || null,
-      emergencyContactPhone: String(formData.get("emergencyContactPhone") ?? "") || null,
-      emergencyContactRelationship: String(formData.get("emergencyContactRelationship") ?? "") || null,
-      guarantorName: String(formData.get("guarantorName") ?? "") || null,
-      guarantorRelationship: String(formData.get("guarantorRelationship") ?? "") || null,
-      guarantorPhone: String(formData.get("guarantorPhone") ?? "") || null,
-      referringPhysicianId,
-    },
-  });
-
-  const existingPrimary = patient.insurances[0];
-  const memberId = String(formData.get("memberId") ?? "").trim() || null;
-  const planName = String(formData.get("planName") ?? "").trim() || null;
-
-  if (payerId) {
-    if (existingPrimary) {
-      await prisma.insurance.update({
-        where: { id: existingPrimary.id },
-        data: { payerId, memberId: memberId ?? existingPrimary.memberId, planName },
-      });
-    } else {
-      await prisma.insurance.create({
-        data: { patientId: patient.id, payerId, memberId: memberId ?? "PENDING", planName, isPrimary: true },
-      });
-    }
-  } else if (existingPrimary) {
-    await prisma.insurance.delete({ where: { id: existingPrimary.id } });
-  }
-
-  await logAudit(user.practiceId, user.id, "UPDATE_PATIENT", "Patient", patient.id, `${firstName} ${lastName}`);
 
   revalidatePath(`/patients/${patient.id}`);
   revalidatePath("/patients");
+  if (formData.get("intent") === "schedule") redirect(`/schedule?patientId=${patient.id}`);
   redirect(`/patients/${patient.id}`);
 }
 

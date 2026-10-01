@@ -10,17 +10,23 @@ import {
   type ExtractedField,
 } from "@/lib/patient-docs";
 
-type Section = "patient" | "insurance" | "secondary" | "referral" | "emergency" | "pcp";
+type Section = "patient" | "insurance" | "secondary" | "referral" | "emergency" | "pcp" | "pharmacy";
 
 // Label → what it means. Order matters: longer / more specific labels first.
 const LABELS: { re: RegExp; field: string }[] = [
   { re: /patient'?s?\s+first\s+name|first\s+name/i, field: "firstName" },
   { re: /patient'?s?\s+last\s+name|last\s+name|surname/i, field: "lastName" },
   { re: /middle\s+(?:name|initial)/i, field: "middle" },
+  { re: /social\s+security(?:\s+(?:number|no\.?|#))?|ssn|ss\s?#/i, field: "ssn" },
+  { re: /(?:subscriber|insured|policy\s*holder)(?:'s)?\s+(?:date\s+of\s+birth|dob)/i, field: "subscriberDob" },
+  { re: /(?:date\s+of\s+onset|onset\s+date|onset(?:\s+of\s+(?:symptoms|illness|wound))?)/i, field: "onset" },
   { re: /date\s+of\s+birth|birth\s*date|d\.?\s?o\.?\s?b\.?/i, field: "dob" },
   { re: /sex|gender/i, field: "sex" },
   { re: /secondary\s+(?:insurance|payer|carrier|plan)/i, field: "secondaryPayer" },
   { re: /primary\s+(?:insurance|payer|carrier)|insurance\s+(?:company|carrier|name|plan)|insurance|payer|carrier|health\s+plan/i, field: "payer" },
+  { re: /group\s+name|employer\s+group/i, field: "groupName" },
+  { re: /co-?pay(?:ment)?(?:\s+amount)?|office\s+visit\s+co-?pay/i, field: "copay" },
+  { re: /(?:coverage\s+)?effective\s+date|eff\.?\s+date/i, field: "effective" },
   { re: /plan\s+name|plan\s+type|plan/i, field: "plan" },
   { re: /(?:member|subscriber|policy|insured)\s*(?:id|i\.d\.|#|number|no\.?)|id\s*(?:#|number)|identification\s+number/i, field: "memberId" },
   { re: /group\s*(?:#|number|no\.?)?|grp\s*#?/i, field: "group" },
@@ -33,7 +39,15 @@ const LABELS: { re: RegExp; field: string }[] = [
   { re: /services?\s+requested|reason\s+for\s+(?:referral|visit|consult)|requested\s+services?|referral\s+for|order(?:ed)?\s+services?/i, field: "services" },
   { re: /diagnos[ie]s(?:\s+codes?)?|dx(?:\s+codes?)?|icd[-\s]?10(?:\s+codes?)?/i, field: "diagnoses" },
   { re: /emergency\s+contact(?:\s+name)?|next\s+of\s+kin|nok/i, field: "emergencyName" },
-  { re: /relationship(?:\s+to\s+patient)?/i, field: "relationship" },
+  { re: /relationship(?:\s+to\s+(?:patient|insured|subscriber))?/i, field: "relationship" },
+  { re: /(?:preferred\s+)?pharmacy(?:\s+name)?/i, field: "pharmacy" },
+  { re: /home\s+health(?:\s+(?:agency|company|care|provider))?/i, field: "homeHealth" },
+  { re: /(?:home\s+health\s+)?nurse(?:\s+name)?/i, field: "nurse" },
+  { re: /county/i, field: "county" },
+  { re: /race/i, field: "race" },
+  { re: /ethnicity/i, field: "ethnicity" },
+  { re: /occupation/i, field: "occupation" },
+  { re: /address\s+(?:line\s*)?2|apt\.?|apartment|unit|suite/i, field: "address2" },
   { re: /pcp(?:\s+name)?|primary\s+care\s+(?:physician|provider|doctor)(?:\s+name)?/i, field: "pcp" },
   { re: /(?:street\s+|home\s+|mailing\s+)?address(?:\s+line\s*1)?/i, field: "address" },
   { re: /city/i, field: "city" },
@@ -82,6 +96,7 @@ function sectionOf(line: string, current: Section): Section {
   if (/referr(al|ing) (information|source|physician|provider)|referred by|ordering physician/.test(l) && !/\d/.test(l)) return "referral";
   if (/emergency contact|next of kin/.test(l) && !/\d/.test(l)) return "emergency";
   if (/primary care|pcp/.test(l) && !/\d/.test(l)) return "pcp";
+  if (/pharmacy/.test(l) && !/\d/.test(l)) return "pharmacy";
   if (/patient (information|demographics)|demographics|resident information/.test(l)) return "patient";
   return current;
 }
@@ -112,6 +127,7 @@ function labelHits(lines: string[]) {
       if (/emergency|next of kin|nok/i.test(labelText)) sec = "emergency";
       if (/pcp|primary care/i.test(labelText)) sec = "pcp";
       if (/secondary/i.test(labelText)) sec = "secondary";
+      if (/pharmacy/i.test(labelText)) sec = "pharmacy";
       hits.push({ field: def.field, value, section: sec, line });
     });
   }
@@ -169,6 +185,9 @@ export function extractFromText(text: string, opts: { ocr: boolean; knownPayers?
     const { first: f, last: l } = splitName(nameHit.value);
     put("patient.firstName", f, base, nameHit.line);
     put("patient.lastName", l, base, nameHit.line);
+    // "DOE, JANE M" / "Jane M. Doe": the middle name or initial.
+    const m = nameHit.value.includes(",") ? nameHit.value.split(",")[1]?.trim().split(/\s+/)[1] : nameHit.value.trim().split(/\s+/).length === 3 ? nameHit.value.trim().split(/\s+/)[1] : undefined;
+    if (f && l && m && /^[A-Za-z]{1,20}\.?$/.test(m)) put("patient.middleName", titleCase(m.replace(/\.$/, "")), lower(base), nameHit.line);
   }
   const dob = first("dob");
   if (dob) {
@@ -206,6 +225,24 @@ export function extractFromText(text: string, opts: { ocr: boolean; knownPayers?
   if (state && STATES.has(state.value.slice(0, 2).toUpperCase())) put("patient.state", state.value.slice(0, 2).toUpperCase(), base, state.line);
   const zip = first("zip", ["patient"]);
   if (zip) put("patient.zip", zip.value.match(/\d{5}(?:-\d{4})?/)?.[0], base, zip.line);
+  const middle = first("middle", ["patient"]);
+  if (middle && /^[A-Za-z.' -]{1,30}$/.test(middle.value.split(/\s{2,}/)[0])) put("patient.middleName", titleCase(middle.value.split(/\s{2,}/)[0].replace(/\.$/, "")), base, middle.line);
+  // Only the last four digits are ever kept.
+  const ssn = first("ssn");
+  const ssnDigits = ssn?.value.match(/(?:\d{3}|[X*x]{3})[- ]?(?:\d{2}|[X*x]{2})[- ]?(\d{4})\b/)?.[1];
+  if (ssn && ssnDigits) put("patient.ssnLast4", ssnDigits, base, "SSN on file in the document");
+  const phone2 = hits.find((h) => h.field === "phone" && h.section === "patient" && normalizePhone(h.value) && h !== patientPhone && normalizePhone(h.value) !== normalizePhone(patientPhone?.value ?? ""));
+  if (phone2) put("patient.phone2", normalizePhone(phone2.value), base, phone2.line);
+  const addr2 = first("address2", ["patient"]);
+  if (addr2 && addr2.value.length <= 30) put("patient.addressLine2", addr2.line.match(/(?:apt\.?|apartment|unit|suite)\s*#?\s*[A-Za-z0-9-]+/i)?.[0] ?? addr2.value.split(/\s{2,}/)[0], lower(base), addr2.line);
+  const county = first("county", ["patient"]);
+  if (county) put("patient.county", titleCase(county.value.split(/\s{2,}/)[0]), base, county.line);
+  const race = first("race");
+  if (race) put("patient.race", titleCase(race.value.split(/\s{2,}/)[0]), base, race.line);
+  const ethnicity = first("ethnicity");
+  if (ethnicity) put("patient.ethnicity", titleCase(ethnicity.value.split(/\s{2,}/)[0]), base, ethnicity.line);
+  const occupation = first("occupation");
+  if (occupation) put("patient.occupation", titleCase(occupation.value.split(/\s{2,}/)[0]), base, occupation.line);
   const lang = first("language");
   if (lang) put("patient.preferredLanguage", titleCase(lang.value.split(/\s{2,}/)[0]), base, lang.line);
   const marital = first("marital");
@@ -227,6 +264,16 @@ export function extractFromText(text: string, opts: { ocr: boolean; knownPayers?
   if (group) put("insurance.groupNumber", group.value.match(/[A-Z0-9][A-Z0-9-]{1,24}/i)?.[0]?.toUpperCase(), base, group.line);
   const plan = first("plan", ["patient", "insurance"]);
   if (plan) put("insurance.planName", plan.value.split(/\s{2,}/)[0], base, plan.line);
+  const groupName = first("groupName", ["patient", "insurance"]);
+  if (groupName) put("insurance.groupName", groupName.value.split(/\s{2,}/)[0], base, groupName.line);
+  const copay = first("copay", ["patient", "insurance"]);
+  if (copay) put("insurance.copay", copay.value.match(/\$?\s?(\d{1,4}(?:\.\d{2})?)/)?.[1], base, copay.line);
+  const effective = first("effective", ["patient", "insurance"]);
+  if (effective) put("insurance.effectiveDate", normalizeDate(effective.value.match(/[\d/.-]{6,10}/)?.[0] ?? ""), base, effective.line);
+  const subDob = first("subscriberDob");
+  if (subDob) put("insurance.subscriberDob", normalizeDate(subDob.value.match(/[\d/.-]{6,10}/)?.[0] ?? ""), base, subDob.line);
+  const subRel = first("relationship", ["insurance"]);
+  if (subRel) put("insurance.subscriberRelationship", titleCase(subRel.value.split(/\s{2,}/)[0]), lower(base), subRel.line);
   const sub = first("subscriber", ["insurance"]);
   if (sub && !/\d{4,}/.test(sub.value)) put("insurance.subscriberName", cleanPersonName(sub.value.split(/\s{2,}/)[0]), lower(base), sub.line);
   if (!fields["insurance.payerName"] && opts.knownPayers?.length) {
@@ -253,7 +300,7 @@ export function extractFromText(text: string, opts: { ocr: boolean; knownPayers?
   if (contact && !normalizePhone(contact.value)) put("referral.contactName", cleanPersonName(contact.value.split(/\s{2,}/)[0]), lower(base), contact.line);
   const refPhone = hits.find((h) => h.field === "phone" && h.section === "referral" && normalizePhone(h.value));
   if (refPhone) put("referral.contactPhone", normalizePhone(refPhone.value), base, refPhone.line);
-  const refFax = hits.find((h) => h.field === "fax" && h.section !== "pcp" && normalizePhone(h.value));
+  const refFax = hits.find((h) => h.field === "fax" && h.section !== "pcp" && h.section !== "pharmacy" && normalizePhone(h.value));
   if (refFax) put("referral.contactFax", normalizePhone(refFax.value), base, refFax.line);
   const services = first("services");
   if (services) put("referral.servicesRequested", services.value, base, services.line);
@@ -264,6 +311,23 @@ export function extractFromText(text: string, opts: { ocr: boolean; knownPayers?
     if (m[2] || /diagnos|dx|icd/i.test(line)) dxCodes.add(m[2] ? `${m[1]}.${m[2]}` : m[1]);
   }
   if (dxCodes.size) put("referral.diagnoses", [...dxCodes].slice(0, 12).join(", "), lower(base), first("diagnoses")?.line);
+
+  const onset = first("onset");
+  if (onset) put("referral.onsetDate", normalizeDate(onset.value.match(/[\d/.-]{6,10}/)?.[0] ?? ""), base, onset.line);
+
+  // ---- Pharmacy and home health ----
+  const pharmacy = first("pharmacy");
+  if (pharmacy && /[A-Za-z]{3}/.test(pharmacy.value)) put("pharmacy.name", pharmacy.value.split(/\s{2,}/)[0].slice(0, 100), base, pharmacy.line);
+  const pharmPhone = hits.find((h) => h.field === "phone" && h.section === "pharmacy" && normalizePhone(h.value));
+  if (pharmPhone) put("pharmacy.phone", normalizePhone(pharmPhone.value), base, pharmPhone.line);
+  const pharmFax = hits.find((h) => h.field === "fax" && h.section === "pharmacy" && normalizePhone(h.value));
+  if (pharmFax) put("pharmacy.fax", normalizePhone(pharmFax.value), base, pharmFax.line);
+  const pharmAddr = first("address", ["pharmacy"]);
+  if (pharmAddr) put("pharmacy.address", pharmAddr.value.slice(0, 160), base, pharmAddr.line);
+  const homeHealth = first("homeHealth");
+  if (homeHealth && /[A-Za-z]{3}/.test(homeHealth.value) && !/^(yes|no|n\/a|none)$/i.test(homeHealth.value.trim())) put("homeHealth.company", homeHealth.value.split(/\s{2,}/)[0].slice(0, 100), base, homeHealth.line);
+  const nurse = first("nurse");
+  if (nurse) put("homeHealth.nurse", cleanPersonName(nurse.value.split(/\s{2,}/)[0]), lower(base), nurse.line);
 
   // ---- PCP ----
   const pcp = first("pcp");

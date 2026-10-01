@@ -88,6 +88,18 @@ export async function createClaimFromVisit(user: { id: string; practiceId: strin
     (e.appointment?.intakeCase?.authStatus === "APPROVED" ? e.appointment.intakeCase.authNumber : null) ??
     e.patient.intakeCases.find((c) => (!c.authStartDate || c.authStartDate <= dos) && (!c.authEndDate || c.authEndDate >= dos))
       ?.authNumber ??
+    // Otherwise an encounter authorization on this coverage that covers the date of service.
+    (
+      await prisma.insuranceAuthorization.findFirst({
+        where: {
+          insuranceId: insurance.id,
+          kind: "ENCOUNTER",
+          authNumber: { not: null },
+          AND: [{ OR: [{ startDate: null }, { startDate: { lte: dos } }] }, { OR: [{ endDate: null }, { endDate: { gte: new Date(dos.getTime() - 86_400_000) } }] }],
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    )?.authNumber ??
     null;
 
   const lines = e.charges.map((c, i) => ({

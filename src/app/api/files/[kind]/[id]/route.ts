@@ -14,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
   const allowed =
     kind === "attachment"
       ? ENCOUNTER_VIEW_ROLES.includes(user.role)
-      : kind === "patientdoc"
+      : kind === "patientdoc" || kind === "patientphoto"
         ? GATEWAY_ROLES.includes(user.role) || ENCOUNTER_VIEW_ROLES.includes(user.role)
         : CREDENTIALING_ROLES.includes(user.role);
   if (!allowed) return new Response("Forbidden", { status: 403 });
@@ -24,6 +24,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
   if (kind === "patientdoc") {
     const d = await prisma.patientDocument.findFirst({ where: { id, practiceId: user.practiceId } });
     if (d) file = { path: d.filePath, name: d.name, mimeType: d.mimeType };
+  } else if (kind === "patientphoto") {
+    const p = await prisma.patient.findFirst({ where: { id, practiceId: user.practiceId }, select: { photoPath: true } });
+    if (p?.photoPath) file = { path: p.photoPath, name: "patient-photo", mimeType: mimeFromStoredPath(p.photoPath) };
   } else if (kind === "attachment") {
     const a = await prisma.encounterAttachment.findFirst({ where: { id, encounter: { practiceId: user.practiceId } } });
     if (a) file = { path: a.filePath, name: a.fileName, mimeType: a.mimeType };
