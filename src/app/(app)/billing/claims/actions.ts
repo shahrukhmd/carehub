@@ -269,9 +269,11 @@ export async function saveClaim(claimId: string, fd: FormData) {
 
 // ---- Submit ----
 
-export async function submitClaim(claimId: string) {
+// nextClaimId: where to go when the clearinghouse accepts the claim ("Submit and next").
+export async function submitClaim(claimId: string, nextClaimId?: string | null) {
   const user = await requireUser(BILLING_ROLES);
   return guarded(`/billing/claims/${claimId}`, async () => {
+    let accepted = false;
     const claim = await loadClaimForEdits(claimId, user.practiceId);
     if (!claim) fail("Claim not found");
     if (!["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status)) fail(`A ${claimStatusLabel[claim.status]?.toLowerCase()} claim can't be submitted.`);
@@ -291,6 +293,7 @@ export async function submitClaim(claimId: string) {
     });
 
     if (result.status === "ACCEPTED") {
+      accepted = true;
       await prisma.claim.update({
         where: { id: claim.id },
         data: {
@@ -321,6 +324,9 @@ export async function submitClaim(claimId: string) {
     }
     await refreshVisitBillingStatus(claim.encounterId);
     refreshAll(claim.id, claim.encounterId);
+    if (accepted && typeof nextClaimId === "string" && /^[a-z0-9]{10,40}$/.test(nextClaimId)) {
+      return `/billing/claims/${nextClaimId}?ok=${encodeURIComponent("Previous claim submitted and accepted by the clearinghouse.")}`;
+    }
   });
 }
 

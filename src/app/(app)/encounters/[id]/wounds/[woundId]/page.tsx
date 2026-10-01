@@ -4,7 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { ENCOUNTER_VIEW_ROLES, canEditClinical, visitStatusLabel } from "@/lib/visit-workflow";
 import { saveWoundAssessment, updateWoundStatus } from "@/app/(app)/wounds/actions";
+import { analyzeWoundPhoto } from "@/app/(app)/wounds/analyze";
 import { WoundTrendChart } from "@/components/WoundTrendChart";
+import { WoundPhotoAnalyzer } from "@/components/WoundPhotoAnalyzer";
+import { areaChange, changeText } from "@/lib/wound-analysis";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatDate, patientName } from "@/lib/format";
 import {
@@ -48,7 +51,14 @@ export default async function WoundPage({
     .reverse()
     .map((a) => ({ date: a.assessedAt, areaCm2: a.areaCm2 }));
 
-  const latestPhoto = wound.assessments.find((a) => a.photoUrl)?.photoUrl;
+  // The two most recent photos, newest first, for the side-by-side comparison.
+  const withPhotos = wound.assessments.filter((a) => a.photoUrl);
+  const [latest, earlier] = withPhotos;
+  const change = latest && earlier ? areaChange(earlier.areaCm2, latest.areaCm2) : null;
+  const first = withPhotos.length > 2 ? withPhotos[withPhotos.length - 1] : null;
+  const sinceFirst = latest && first ? areaChange(first.areaCm2, latest.areaCm2) : null;
+  const size = (a: { lengthCm: number | null; widthCm: number | null; areaCm2: number | null }) =>
+    `${a.lengthCm ?? "—"} × ${a.widthCm ?? "—"} cm${a.areaCm2 ? ` · ${a.areaCm2.toFixed(1)} cm²` : ""}`;
 
   return (
     <>
@@ -135,11 +145,53 @@ export default async function WoundPage({
             </table>
           </section>
 
-          {latestPhoto && (
+          {latest && (
             <section className="panel">
-              <h2>Most recent photo</h2>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={latestPhoto} alt={`${wound.label} wound photo`} style={{ maxWidth: "100%", borderRadius: "0.6rem" }} />
+              <div className="gw-section-head">
+                <h2>{earlier ? "Photo comparison" : "Most recent photo"}</h2>
+                <span>
+                  {change !== null && <span className={`gw-tag gw-tag-${change < 0 ? "ok" : change > 0 ? "bad" : "muted"}`}>Area {changeText(change)} since {formatDate(earlier.assessedAt)}</span>}{" "}
+                  {sinceFirst !== null && first && (
+                    <span className={`gw-tag gw-tag-${sinceFirst < 0 ? "ok" : sinceFirst > 0 ? "bad" : "muted"}`}>
+                      {changeText(sinceFirst)} since {formatDate(first.assessedAt)}
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="wpa-photos">
+                {earlier && (
+                  <figure>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={earlier.photoUrl!} alt={`${wound.label} on ${formatDate(earlier.assessedAt)}`} />
+                    <figcaption>
+                      {formatDate(earlier.assessedAt)} · {size(earlier)}
+                    </figcaption>
+                  </figure>
+                )}
+                <figure>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={latest.photoUrl!} alt={`${wound.label} on ${formatDate(latest.assessedAt)}`} />
+                  <figcaption>
+                    {formatDate(latest.assessedAt)} · {size(latest)}
+                  </figcaption>
+                </figure>
+              </div>
+              {withPhotos.length > 2 && (
+                <details>
+                  <summary className="muted">All photos ({withPhotos.length})</summary>
+                  <div className="wpa-photos wpa-strip">
+                    {withPhotos.map((a) => (
+                      <figure key={a.id}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={a.photoUrl!} alt={`${wound.label} on ${formatDate(a.assessedAt)}`} />
+                        <figcaption>
+                          {formatDate(a.assessedAt)} · {size(a)}
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                </details>
+              )}
             </section>
           )}
         </div>
@@ -148,6 +200,9 @@ export default async function WoundPage({
         <fieldset className="gw-fieldset" disabled={!editable}>
         <form className="panel stack" action={saveWoundAssessment.bind(null, wound.id, encounterId)}>
           <h2>New assessment</h2>
+
+          <h3>Photo &amp; AI analysis</h3>
+          <WoundPhotoAnalyzer action={analyzeWoundPhoto.bind(null, wound.id, encounterId)} />
 
           <h3>Measurements</h3>
           <div className="form-grid">
@@ -294,12 +349,6 @@ export default async function WoundPage({
               </label>
             ))}
           </div>
-
-          <h3>Photo</h3>
-          <label>
-            Upload wound photo
-            <input name="photo" type="file" accept="image/*" />
-          </label>
 
           <label>
             Notes

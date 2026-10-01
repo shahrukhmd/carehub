@@ -26,6 +26,7 @@ export function QuickActions({
     ...(caseId ? [{ href: `/gateway/${caseId}/report`, label: "Patient authorization report" }] : []),
     ...(latestEncounterId ? [{ href: `/encounters/${latestEncounterId}/print`, label: "Latest visit report" }] : []),
     ...(canSchedule ? [{ href: `/schedule?patientId=${patientId}`, label: "Book appointment" }] : []),
+    ...(canBill ? [{ href: `/patients/${patientId}/claims`, label: "Claims" }] : []),
     ...(canBill ? [{ href: `/patients/${patientId}/statement`, label: "Patient statement" }] : []),
   ];
 

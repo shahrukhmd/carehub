@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { BillingTabs } from "./tabs";
 import type { Prisma } from "@prisma/client";
 import { createDeposit } from "@/app/actions";
 import { createClaim } from "./claims/actions";
@@ -7,12 +9,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { agingBucket, depositPayerTypeLabel, formatDate, formatMoney, patientName } from "@/lib/format";
 import { SIGNED_STATUSES, visitStatusLabel, visitStatusTone } from "@/lib/visit-workflow";
-import { claimEdits } from "@/lib/claims";
-import { getPracticeSettings } from "@/lib/chart-setup";
 import {
   EDITABLE_CLAIM_STATUSES,
   OPEN_AR_STATUSES,
-  claimNumber,
   claimStatusLabel,
   claimStatusTone,
   payerRankLabel,
@@ -20,24 +19,17 @@ import {
 } from "@/lib/claim-format";
 
 const AGING_BUCKETS = ["0-30 days", "31-60 days", "61-90 days", "90+ days"] as const;
-const TABS = [
-  { key: "visits", label: "Visits to bill" },
-  { key: "claims", label: "Claims" },
-  { key: "deposits", label: "Deposits" },
-  { key: "era", label: "ERA / 835 posting" },
-  { key: "ar", label: "AR & denials" },
-  { key: "denials", label: "Denial worklist" },
-  { key: "reports", label: "Financial reports" },
-];
-// Tabs that are their own pages.
-const TAB_PAGES: Record<string, string> = { reports: "/billing/reports", denials: "/billing/denials" };
+// Tabs rendered on this page; the others (claims dashboard, denial worklist, reports) are their own pages.
+const LOCAL_TABS = ["visits", "deposits", "era", "ar"];
 
 type Search = { tab?: string; imported?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string };
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const sp = await searchParams;
-  const tab = TABS.some((t) => t.key === sp.tab && !TAB_PAGES[t.key]) ? sp.tab! : "visits";
+  // Old links to the claims tab land on the dashboard.
+  if (sp.tab === "claims") redirect(`/billing/claims${sp.status === "UNSENT" ? "?bucket=UNBILLED" : sp.status === "PROBLEM" ? "?bucket=DENIED" : ""}`);
+  const tab = sp.tab && LOCAL_TABS.includes(sp.tab) ? sp.tab : "visits";
 
   const claims = await prisma.claim.findMany({
     where: { practiceId: user.practiceId, status: { not: "VOID" } },
@@ -73,11 +65,11 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           <span>Visits ready for claim</span>
           <strong>{readyVisits}</strong>
         </Link>
-        <Link className="stat" href="/billing?tab=claims&status=UNSENT">
+        <Link className="stat" href="/billing/claims?bucket=UNBILLED">
           <span>Claims not yet sent</span>
           <strong>{unsent}</strong>
         </Link>
-        <Link className="stat" href="/billing?tab=claims&status=PROBLEM">
+        <Link className="stat" href="/billing/claims?bucket=DENIED">
           <span>Denied / rejected</span>
           <strong>{problems}</strong>
         </Link>
@@ -89,16 +81,9 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         </div>
       </section>
 
-      <nav className="view-tabs" style={{ margin: "0.9rem 0", width: "fit-content" }}>
-        {TABS.map((t) => (
-          <Link key={t.key} href={TAB_PAGES[t.key] ?? `/billing?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
-            {t.label}
-          </Link>
-        ))}
-      </nav>
+      <BillingTabs active={tab} />
 
       {tab === "visits" && <VisitsTab practiceId={user.practiceId} sp={sp} />}
-      {tab === "claims" && <ClaimsTab practiceId={user.practiceId} sp={sp} />}
       {tab === "deposits" && <DepositsTab practiceId={user.practiceId} />}
       {tab === "era" && <EraTab practiceId={user.practiceId} imported={sp.imported} />}
       {tab === "ar" && <ArTab claims={claims} />}
@@ -237,174 +222,6 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
 }
 
 // ---------------------------------------------------------------- Claims
-
-async function ClaimsTab({ practiceId, sp }: { practiceId: string; sp: Search }) {
-  const settings = await getPracticeSettings(practiceId);
-  const ruleOptions = { rulesEnabled: settings.enableClaimRules, allowZeroCharge: settings.allowZeroChargeClaims };
-  const q = sp.q?.trim();
-  const statusFilter: Prisma.ClaimWhereInput =
-    sp.status === "UNSENT"
-      ? { status: { in: EDITABLE_CLAIM_STATUSES } }
-      : sp.status === "PROBLEM"
-        ? { status: { in: ["DENIED", "EDI_REJECTED"] } }
-        : sp.status && sp.status in claimStatusLabel
-          ? { status: sp.status }
-          : { status: { not: "VOID" } };
-  const claims = await prisma.claim.findMany({
-    where: {
-      practiceId,
-      ...statusFilter,
-      ...(sp.rank ? { payerRank: sp.rank } : {}),
-      ...(q
-        ? {
-            OR: [
-              { patient: { lastName: { contains: q } } },
-              { patient: { firstName: { contains: q } } },
-              { patient: { mrn: { contains: q } } },
-              { payerName: { contains: q } },
-              { clearinghouseClaimId: { contains: q } },
-            ],
-          }
-        : {}),
-    },
-    include: {
-      lines: { orderBy: { lineNumber: "asc" } },
-      diagnoses: true,
-      insurance: true,
-      payer: true,
-      billingProvider: true,
-      renderingProvider: true,
-      patient: true,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 300,
-  });
-
-  return (
-    <>
-      <form method="get" className="panel gw-filters">
-        <input type="hidden" name="tab" value="claims" />
-        <input name="q" defaultValue={q} placeholder="Patient, MRN, payer or clearinghouse ID" aria-label="Search" />
-        <select name="status" defaultValue={sp.status ?? ""} aria-label="Status">
-          <option value="">All (except voided)</option>
-          <option value="UNSENT">Not yet sent</option>
-          <option value="PROBLEM">Denied / rejected</option>
-          {Object.entries(claimStatusLabel).map(([k, l]) => (
-            <option key={k} value={k}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <select name="rank" defaultValue={sp.rank ?? ""} aria-label="Payer rank">
-          <option value="">Any payer rank</option>
-          {Object.entries(payerRankLabel).map(([k, l]) => (
-            <option key={k} value={k}>
-              {l}
-            </option>
-          ))}
-        </select>
-        <button className="btn secondary" type="submit">
-          Filter
-        </button>
-        <Link className="btn ghost" href="/billing?tab=claims">
-          Clear
-        </Link>
-      </form>
-
-      <section className="panel gw-table vw-worklist">
-        <table>
-          <thead>
-            <tr>
-              <th>Claim #</th>
-              <th>Form</th>
-              <th>DOS</th>
-              <th>Patient</th>
-              <th>Payer</th>
-              <th>Lines</th>
-              <th>Billed</th>
-              <th>Paid</th>
-              <th>Balance</th>
-              <th>Status</th>
-              <th>Edits</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {claims.map((c) => {
-              const edits = EDITABLE_CLAIM_STATUSES.includes(c.status) ? claimEdits(c, ruleOptions) : [];
-              const errors = edits.filter((e) => e.severity === "error").length;
-              const dos = c.lines.map((l) => l.dosFrom.getTime());
-              const balance = c.billedCents - c.paidCents - c.adjustedCents;
-              return (
-                <tr key={c.id}>
-                  <td>
-                    <Link href={`/billing/claims/${c.id}`}>
-                      <strong>{claimNumber(c)}</strong>
-                    </Link>
-                    <div className="muted">
-                      {formatDate(c.createdAt)}
-                      {c.frequencyCode !== "1" ? ` · freq ${c.frequencyCode}` : ""}
-                    </div>
-                  </td>
-                  <td>{c.formType === "CMS1500" ? "HCFA" : "UB04"}</td>
-                  <td>{dos.length ? formatDate(new Date(Math.min(...dos))) : "—"}</td>
-                  <td>
-                    <Link href={`/patients/${c.patientId}`}>{patientName(c.patient)}</Link>
-                    <div className="muted">{c.patient.mrn}</div>
-                  </td>
-                  <td>
-                    {c.payerName}
-                    <div className="muted">
-                      {payerRankLabel[c.payerRank]}
-                      {c.payer?.payerCode ? ` · ${c.payer.payerCode}` : ""}
-                    </div>
-                  </td>
-                  <td>{c.lines.map((l) => l.cptCode).join(", ")}</td>
-                  <td>{formatMoney(c.billedCents)}</td>
-                  <td>{formatMoney(c.paidCents)}</td>
-                  <td>{formatMoney(balance)}</td>
-                  <td>
-                    <span className={`gw-tag gw-tag-${claimStatusTone(c.status)}`}>{claimStatusLabel[c.status] ?? c.status}</span>
-                    {c.rejectionReason && c.status === "EDI_REJECTED" && <div className="gw-missing">{c.rejectionReason}</div>}
-                    {c.denialReason && c.status === "DENIED" && <div className="gw-missing">{c.denialReason}</div>}
-                  </td>
-                  <td>
-                    {EDITABLE_CLAIM_STATUSES.includes(c.status) ? (
-                      errors ? (
-                        <span className="gw-tag gw-tag-bad">{errors} error(s)</span>
-                      ) : (
-                        <span className="gw-tag gw-tag-ok">Clean</span>
-                      )
-                    ) : (
-                      <span className="muted">—</span>
-                    )}
-                  </td>
-                  <td className="gw-actions">
-                    <Link className="btn secondary gw-mini" href={`/billing/claims/${c.id}`}>
-                      Open
-                    </Link>
-                    <a className="btn ghost gw-mini" href={`/api/claims/${c.id}/cms1500`} target="_blank" rel="noopener">
-                      CMS-1500
-                    </a>
-                  </td>
-                </tr>
-              );
-            })}
-            {claims.length === 0 && (
-              <tr>
-                <td colSpan={12} className="muted">
-                  No claims match.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------- Deposits
 
 async function DepositsTab({ practiceId }: { practiceId: string }) {
   const deposits = await prisma.deposit.findMany({

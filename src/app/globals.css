@@ -6307,3 +6307,420 @@ form.fb-room input {
   background: var(--panel-alt);
   color: var(--ink);
 }
+
+/* ---- Wound photo analyzer and photo comparison ---- */
+.wpa {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.wpa-row {
+  display: flex;
+  gap: 0.8rem;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.wpa-thumb {
+  width: 11rem;
+  max-height: 9rem;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+}
+
+.wpa-side {
+  display: grid;
+  gap: 0.4rem;
+  flex: 1 1 14rem;
+}
+
+.wpa-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.wpa-metrics span {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.wpa-result p {
+  margin: 0;
+}
+
+.wpa-compare {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+}
+
+.wpa-compare-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.wpa-photos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.wpa-photos figure {
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.wpa-photos img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--panel-alt);
+}
+
+.wpa-photos figcaption {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.wpa-strip {
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  margin-top: 0.5rem;
+}
+
+/* Quick actions inside the narrow patient summary column: keep the whole menu inside the column. */
+.pd-side .quick-actions ul {
+  left: auto;
+  right: 0;
+  min-width: 0;
+  width: 16.5rem;
+}
+
+.pd-side .quick-actions li a {
+  white-space: normal;
+}
+
+/* ---- Patient account (Quick actions -> Claims) ---- */
+.acct-section > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--navy);
+  font-size: 0.98rem;
+}
+
+.acct-section[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.acct-info {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.acct-id {
+  display: flex;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.acct-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 1rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--panel-alt);
+  border-radius: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.acct-who {
+  display: grid;
+  gap: 0.2rem;
+  align-content: start;
+}
+
+.acct-who strong {
+  color: var(--info);
+}
+
+.acct-who em {
+  font-style: normal;
+  color: var(--muted);
+  display: inline-block;
+  min-width: 5.5rem;
+}
+
+.acct-balances {
+  display: grid;
+  grid-template-columns: auto auto auto auto;
+  gap: 0.15rem 1rem;
+  margin: 0;
+}
+
+.acct-balances dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.acct-strong {
+  font-weight: 700;
+}
+
+.acct-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.acct-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 16rem)) auto;
+  gap: 0.5rem 1rem;
+  align-items: end;
+  justify-content: start;
+}
+
+.acct-totals {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  justify-content: start;
+  gap: 0.2rem 1.2rem;
+  margin: 0.7rem 0 0;
+  font-size: 0.86rem;
+}
+
+.acct-totals dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.acct-ledger th {
+  background: var(--chrome);
+  color: #fff;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 0.86rem;
+}
+
+.acct-ledger td,
+.acct-section td {
+  white-space: nowrap;
+}
+
+.acct-ledger td:last-child {
+  white-space: normal;
+}
+
+.acct-ledger tbody tr:nth-child(even) {
+  background: var(--panel-alt);
+}
+
+th.num,
+td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.acct-ledger .acct-due td,
+.acct-ledger .acct-due a {
+  color: var(--danger);
+}
+
+.acct-note {
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.acct-note p {
+  margin: 0.2rem 0;
+}
+
+@media (max-width: 1100px) {
+  .acct-info,
+  .acct-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  .acct-section:not([open]) {
+    display: none;
+  }
+}
+
+/* ---- Claims dashboard ---- */
+.cd-go {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.cd-go input {
+  width: 17rem;
+}
+
+.cd-tiles {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.cd-tiles .stat {
+  text-align: center;
+}
+
+.cd-tiles .stat.cd-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 -3px 0 var(--accent);
+}
+
+.cd-warn {
+  color: var(--amber) !important;
+}
+
+.cd-bad {
+  color: var(--danger) !important;
+}
+
+.cd-layout {
+  display: grid;
+  grid-template-columns: minmax(19rem, 26rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.cd-filters {
+  grid-column: 1 / -1;
+}
+
+.cd-filters > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.cd-filter-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 0.55rem 0.8rem;
+  margin-top: 0.7rem;
+  align-items: end;
+}
+
+.cd-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+}
+
+.cd-overview td a {
+  display: block;
+  color: var(--ink);
+}
+
+.cd-overview tbody tr {
+  cursor: pointer;
+}
+
+.cd-overview .cd-row-on td {
+  background: var(--info-soft);
+  font-weight: 700;
+}
+
+.cd-overview .cd-empty td,
+.cd-overview .cd-empty a {
+  color: var(--muted);
+}
+
+.cd-overview .cd-split td {
+  border-top: 2px solid var(--line);
+}
+
+.cd-list {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.cd-list-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0.9rem;
+  background: var(--chrome);
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.cd-scroll {
+  max-height: calc(100vh - 21rem);
+  min-height: 16rem;
+  overflow: auto;
+}
+
+.cd-scroll th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.cd-scroll tbody tr:nth-child(even) {
+  background: var(--panel-alt);
+}
+
+.cd-list td .gw-tag {
+  margin-left: 0.4rem;
+}
+
+.cd-list > p {
+  padding: 0.5rem 0.9rem;
+  margin: 0;
+}
+
+/* Claim screen: status strip with previous / next */
+.cd-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.6rem;
+  align-items: center;
+}
+
+.cd-strip > div span {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cd-prevnext {
+  margin-left: auto;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cd-disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+@media (max-width: 1100px) {
+  .cd-layout {
+    grid-template-columns: 1fr;
+  }
+  .cd-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

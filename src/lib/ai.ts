@@ -1,5 +1,7 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 
@@ -64,4 +66,59 @@ export async function aiDraft(input: { practiceId: string; system: string; promp
   const clean = text.trim();
   if (!clean) throw new Error("The AI returned an empty answer. Try again.");
   return { text: clean, provider: documentAiLabel[provider] };
+}
+
+const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/;
+
+// A structured answer about one or more images (e.g. a wound photo and the previous one), validated against `schema`.
+// Images are data URLs (PNG, JPEG or WebP). Throws AiUnavailable when AI assistance is off or has no key.
+export async function aiVision<T extends z.ZodType>(input: { practiceId: string; system: string; prompt: string; images: string[]; schema: T; name: string }): Promise<{ data: z.infer<T>; provider: string }> {
+  const provider = await aiProviderFor(input.practiceId);
+  const images = input.images.map((url) => {
+    const m = url.match(IMAGE_DATA_URL);
+    if (!m) throw new Error("Only PNG, JPEG or WebP photos can be analysed.");
+    return { url, mediaType: m[1] as "image/png" | "image/jpeg" | "image/webp", data: m[2] };
+  });
+
+  if (provider === "OPENAI") {
+    const res = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_VISION_MODEL || process.env.OPENAI_DOCUMENT_MODEL || "gpt-6-luna",
+        store: false,
+        instructions: input.system,
+        input: [{ role: "user", content: [...images.map((i) => ({ type: "input_image", image_url: i.url, detail: "high" })), { type: "input_text", text: input.prompt }] }],
+        text: { format: { type: "json_schema", name: input.name, strict: true, schema: z.toJSONSchema(input.schema) } },
+      }),
+      signal: AbortSignal.timeout(150_000),
+    });
+    const body = (await res.json().catch(() => null)) as {
+      error?: { message?: string };
+      output?: { type: string; content?: { type: string; text?: string }[] }[];
+    } | null;
+    if (!res.ok) throw new Error(body?.error?.message || `OpenAI returned ${res.status}`);
+    const parts = (body?.output ?? []).flatMap((o) => (o.type === "message" ? (o.content ?? []) : []));
+    if (parts.some((p) => p.type === "refusal")) throw new Error("The AI declined to analyse this image.");
+    const parsed = input.schema.safeParse(JSON.parse(parts.find((p) => p.type === "output_text")?.text || "null"));
+    if (!parsed.success) throw new Error("The AI's answer couldn't be read. Try again.");
+    return { data: parsed.data, provider: documentAiLabel[provider] };
+  }
+
+  const client = new Anthropic();
+  const response = await client.beta.messages.parse({
+    model: process.env.CAREHUB_VISION_MODEL || process.env.CAREHUB_DOCUMENT_MODEL || "claude-opus-5-5",
+    max_tokens: 8000,
+    system: input.system,
+    output_config: { format: betaZodOutputFormat(input.schema) },
+    messages: [
+      {
+        role: "user",
+        content: [...images.map((i) => ({ type: "image" as const, source: { type: "base64" as const, media_type: i.mediaType, data: i.data } })), { type: "text" as const, text: input.prompt }],
+      },
+    ],
+  });
+  if (response.stop_reason === "refusal") throw new Error("The AI declined to analyse this image.");
+  if (!response.parsed_output) throw new Error("The AI's answer couldn't be read. Try again.");
+  return { data: response.parsed_output as z.infer<T>, provider: documentAiLabel[provider] };
 }

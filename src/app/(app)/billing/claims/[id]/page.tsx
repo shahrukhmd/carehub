@@ -1,3 +1,4 @@
+import { claimNeighbours } from "@/lib/claims-dashboard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -90,6 +91,8 @@ export default async function ClaimPage({
   ]);
 
   const denialData = await loadDenialPanel(claim.id, user.practiceId);
+  const nav = await claimNeighbours(user.practiceId, claim);
+  const lastSaved = claim.events[0] ?? null;
   const editable = EDITABLE_CLAIM_STATUSES.includes(claim.status);
   const edits = claimEdits(claim, await claimRuleOptions(user.practiceId, claim));
   const errors = edits.filter((e) => e.severity === "error");
@@ -105,7 +108,7 @@ export default async function ClaimPage({
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">
-            <Link href="/billing?tab=claims">« Claims</Link> · Visit <Link href={`/encounters/${claim.encounterId}`}>{formatDate(claim.encounter.date)}</Link> ·{" "}
+            <Link href={`/billing/claims?bucket=${claim.status}`}>« Claims dashboard</Link> · Visit <Link href={`/encounters/${claim.encounterId}`}>{formatDate(claim.encounter.date)}</Link> ·{" "}
             {visitBillingStatusLabel[claim.encounter.billingStatus] ?? claim.encounter.billingStatus}
           </p>
           <h1>
@@ -135,9 +138,16 @@ export default async function ClaimPage({
             Summary
           </Link>
           {["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status) && (
-            <form action={submitClaim.bind(null, claim.id)}>
+            <form action={submitClaim.bind(null, claim.id, null)}>
               <button className="btn" type="submit" disabled={errors.length > 0}>
                 {claim.status === "EDI_REJECTED" ? "Resubmit to clearinghouse" : "Submit claim"}
+              </button>
+            </form>
+          )}
+          {["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status) && (nav.next ?? nav.previous) && (
+            <form action={submitClaim.bind(null, claim.id, nav.next ?? nav.previous)}>
+              <button className="btn secondary" type="submit" disabled={errors.length > 0} title="Submit this claim and open the next one in the same list">
+                Submit and next
               </button>
             </form>
           )}
@@ -157,6 +167,50 @@ export default async function ClaimPage({
           )}
         </div>
       </div>
+
+      <section className="panel cd-strip">
+        <div>
+          <span>Status</span>
+          <strong>{claimStatusLabel[claim.status] ?? claim.status}</strong>
+        </div>
+        <div>
+          <span>Outstanding balance</span>
+          <strong>{formatMoney(balance)}</strong>
+        </div>
+        <div>
+          <span>Billed · paid · adjusted</span>
+          <strong>
+            {formatMoney(claim.billedCents)} · {formatMoney(claim.paidCents)} · {formatMoney(claim.adjustedCents)}
+          </strong>
+        </div>
+        <div>
+          <span>Created</span>
+          <strong>{formatDate(claim.createdAt)}</strong>
+        </div>
+        <div>
+          <span>Last saved</span>
+          <strong>{lastSaved ? `${lastSaved.user?.name ?? "System"} · ${formatDate(lastSaved.createdAt)}` : "—"}</strong>
+        </div>
+        <nav className="cd-prevnext" aria-label="Claims in this list">
+          {nav.previous ? (
+            <Link className="btn secondary gw-mini" href={`/billing/claims/${nav.previous}`}>
+              ‹ Previous
+            </Link>
+          ) : (
+            <span className="btn secondary gw-mini cd-disabled">‹ Previous</span>
+          )}
+          <span className="muted">
+            {nav.position} of {nav.total} {claimStatusLabel[claim.status]?.toLowerCase()}
+          </span>
+          {nav.next ? (
+            <Link className="btn secondary gw-mini" href={`/billing/claims/${nav.next}`}>
+              Next ›
+            </Link>
+          ) : (
+            <span className="btn secondary gw-mini cd-disabled">Next ›</span>
+          )}
+        </nav>
+      </section>
 
       {error && (
         <p className="gw-error" role="alert">
