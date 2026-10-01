@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { STANDARD_TEMPLATES, STANDARD_VIEWS, STANDARD_WORKFLOWS } from "@/lib/document-catalog";
+import { REVISED_TEMPLATES, STANDARD_TEMPLATES, STANDARD_VIEWS, STANDARD_WORKFLOWS } from "@/lib/document-catalog";
 import { PATIENT_TEMPLATES } from "@/lib/connect/patient-forms";
 import { finalizeGaps, parseFields, type DocState, type StepInput } from "@/lib/chart-forms";
 
@@ -69,13 +69,58 @@ async function setup(practiceId: string) {
     }
   }
 
-  if ((await prisma.documentationView.count({ where: { practiceId } })) === 0) {
+  await reviseTemplates(practiceId);
+
+  // Standard views a practice doesn't have yet are added by name; its own views are left alone.
+  const views = new Set((await prisma.documentationView.findMany({ where: { practiceId }, select: { name: true } })).map((v) => v.name));
+  const newViews = STANDARD_VIEWS.map((v, i) => ({ v, i })).filter(({ v }) => !views.has(v.name) && (views.size === 0 || v.name === "Visit Report"));
+  if (newViews.length) {
     await prisma.documentationView.createMany({
-      data: STANDARD_VIEWS.map((v, i) => ({ practiceId, name: v.name, description: v.description, parts: JSON.stringify(v.parts), sortOrder: (i + 1) * 10 })),
+      data: newViews.map(({ v, i }) => ({ practiceId, name: v.name, description: v.description, parts: JSON.stringify(v.parts), sortOrder: (i + 1) * 10 })),
     });
   }
 
   await prisma.practiceSettings.upsert({ where: { practiceId }, update: {}, create: { practiceId } });
+}
+
+// Standard layouts that changed in the catalog. A template the practice never edited (version 1) and never
+// documented with takes the new layout in place. One it has used or changed is kept as it is, and the new
+// layout is added next to it as "<name> (new layout)" so nothing already charted changes meaning.
+async function reviseTemplates(practiceId: string) {
+  for (const key of REVISED_TEMPLATES) {
+    const latest = STANDARD_TEMPLATES.find((t) => t.key === key);
+    const current = await prisma.documentTemplate.findUnique({ where: { practiceId_key: { practiceId, key } }, include: { _count: { select: { documents: true } } } });
+    if (!latest || !current) continue;
+    const fields = JSON.stringify(latest.fields ?? []);
+    if (current.fields === fields) continue;
+    if (current.standard && current.version === 1 && current._count.documents === 0) {
+      await prisma.documentTemplate.update({
+        where: { id: current.id },
+        data: { name: latest.name, fields, section: latest.section, perWound: Boolean(latest.perWound), signatureRequired: Boolean(latest.signatureRequired) },
+      });
+      continue;
+    }
+    const newKey = `${key}_v2`;
+    const added = await prisma.documentTemplate.findUnique({ where: { practiceId_key: { practiceId, key: newKey } } });
+    if (added) continue;
+    await prisma.documentTemplate.create({
+      data: {
+        practiceId,
+        key: newKey,
+        name: `${latest.name} (new layout)`,
+        description: latest.description ?? null,
+        section: latest.section,
+        kind: "FORM",
+        perWound: Boolean(latest.perWound),
+        fields,
+        standard: true,
+        signatureRequired: Boolean(latest.signatureRequired),
+        inProgressNote: current.inProgressNote,
+        noteOrder: current.noteOrder + 1,
+        sortOrder: current.sortOrder + 1,
+      },
+    });
+  }
 }
 
 export async function getPracticeSettings(practiceId: string) {

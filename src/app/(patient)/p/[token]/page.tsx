@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { DocumentFields } from "@/components/DocumentForm";
-import { SignaturePad } from "@/components/SignaturePad";
-import { displayValue, parseFields, type FieldDef } from "@/lib/chart-forms";
+import { TypedSignature } from "@/components/TypedSignature";
+import { displayValue, parseFields, typedSignature, withClinic, type FieldDef } from "@/lib/chart-forms";
 import { formatDate, formatTime } from "@/lib/format";
 import { isPortalVerified, loadPortalRequest, portalState } from "@/lib/connect/portal";
 import { packetTemplates, parseAnswers } from "@/lib/connect/submit";
@@ -139,7 +139,7 @@ export default async function PatientFormsPage({
   }
 
   const t = templates[step];
-  const fields = parseFields(t.fields);
+  const fields = withClinic(parseFields(t.fields), brand?.displayName || r.practice.name);
   const values = answers[t.key] ?? {};
   const plain = fields.filter((f) => f.type !== "signature" && f.type !== "file");
   return shell(
@@ -174,15 +174,14 @@ export default async function PatientFormsPage({
           );
         }
         if (f.type === "signature") {
-          const existing = typeof values[f.id] === "string" ? (values[f.id] as string) : null;
+          const signed = typedSignature(values[f.id]);
           return (
             <div key={f.id} className="pp-label">
               <span>
                 {f.label}
                 {f.required && <span className="df-req"> *</span>}
               </span>
-              <span className="pp-muted">Sign with your finger or mouse.</span>
-              <SignaturePad name={`f_${f.id}`} initial={existing} />
+              <TypedSignature name={`f_${f.id}`} initial={signed?.name} signedAt={signed ? `${formatDate(signed.at)} ${formatTime(signed.at)}` : null} />
             </div>
           );
         }

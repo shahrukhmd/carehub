@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { uploadPatientDocuments } from "../documents/actions";
 import { DOC_STATUS, DOC_TYPES } from "@/lib/patient-docs";
 import { notFound } from "next/navigation";
@@ -7,6 +8,9 @@ import { requireUser } from "@/lib/auth";
 import { QuickActions } from "@/components/QuickActions";
 import { PatientFormsPanel } from "../../connect/patient-forms-panel";
 import { networkStatusForPayer } from "@/lib/credentialing";
+import { publicBase } from "@/lib/connect/core";
+import { compareBenefits, loadBenefitContext } from "@/lib/eligibility-apply";
+import { suggestionForCase } from "@/lib/vob";
 import { ageFromDob, enrollmentStatusLabel, formatDate, formatTime, patientName, planSegmentLabel } from "@/lib/format";
 import {
   CONSENTS,
@@ -23,7 +27,10 @@ import {
   referralStatusLabel,
   schedulingGaps,
   teamForStage,
-  verificationGaps,
+  vobDecisionLabel,
+  vobDecisionShort,
+  vobDecisionTone,
+  vobDenyReasonLabel,
   yesNoUnknownLabel,
 } from "@/lib/gateway";
 import {
@@ -37,6 +44,7 @@ import {
   takeCase,
 } from "../actions";
 import { NetworkTag, SexMark, Tag, authTone, eligibilityTone } from "../views";
+import { DataEntrySteps, EligibilityBlock, VobDecisionPanel, type ConsentRequestInfo } from "./workflow";
 
 function d(value: Date | null | undefined) {
   return value ? value.toISOString().slice(0, 10) : "";
@@ -59,9 +67,9 @@ function Options({ labels }: { labels: Record<string, string> }) {
 }
 
 const STEPS = [
-  { team: "DATA_ENTRY" as const, title: "Data entry", detail: "Demographics & referral source" },
-  { team: "VERIFICATION" as const, title: "Verification", detail: "EVBV · prior auth · PCC referral" },
-  { team: "SCHEDULING" as const, title: "Scheduling", detail: "Consents · PCP · appointment" },
+  { team: "DATA_ENTRY" as const, title: "Data entry", detail: "Documents · eligibility · verification · consents" },
+  { team: "VERIFICATION" as const, title: "VOB", detail: "Benefits vs credentialing · auth / referral · decision" },
+  { team: "SCHEDULING" as const, title: "Scheduling", detail: "Signed consents · PCP · appointment" },
 ];
 
 export default async function IntakeCasePage({
@@ -69,11 +77,11 @@ export default async function IntakeCasePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; docApplied?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; docApplied?: string }>;
 }) {
   const user = await requireUser(GATEWAY_ROLES);
   const { id } = await params;
-  const { error, docApplied } = await searchParams;
+  const { error, ok, docApplied } = await searchParams;
   const c = await prisma.intakeCase.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -126,8 +134,37 @@ export default async function IntakeCasePage({
   const canTeam3 = canWorkTeam(user.role, "SCHEDULING");
   const closed = c.stage === "CLOSED";
   const t1Gaps = dataEntryGaps(patient, c);
-  const t2Gaps = verificationGaps(c);
   const t3Gaps = schedulingGaps(c);
+
+  // Everything the workflow panels show is loaded here; the panels themselves are plain components.
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const [benefit, suggestion, consentRequest, signers] = await Promise.all([
+    c.eligibilityCheckId ? loadBenefitContext(c.eligibilityCheckId, user.practiceId) : null,
+    suggestionForCase(user.practiceId, { ...c, payerName: c.payer?.name }, network),
+    c.consentRequestId ? prisma.intakeRequest.findFirst({ where: { id: c.consentRequestId, practiceId: user.practiceId } }) : null,
+    prisma.user.findMany({
+      where: { id: { in: [c.dataVerifiedById, c.vobDecisionById].filter((x): x is string => Boolean(x)) } },
+      select: { id: true, name: true },
+    }),
+  ]);
+  const check = benefit?.check ?? null;
+  const benefitFields = benefit ? compareBenefits(benefit.ctx, benefit.check) : [];
+  const consent: ConsentRequestInfo = consentRequest
+    ? {
+        status: consentRequest.status,
+        sentTo: consentRequest.sentTo,
+        createdAt: consentRequest.createdAt,
+        completedAt: consentRequest.completedAt,
+        link: `${publicBase(host ? `${h.get("x-forwarded-proto") ?? "http"}://${host}` : null)}/p/${consentRequest.token}`,
+      }
+    : null;
+  const nameOf = (id: string | null) => signers.find((u) => u.id === id)?.name ?? null;
+  const hasInsurance = patient.insurances.some((i) => i.active);
+  const directProviders =
+    c.eligibilityStatus === "SELF_PAY"
+      ? providers.map((p) => ({ id: p.id, name: p.name }))
+      : network.filter((n) => n.network === "IN_NETWORK").map((n) => ({ id: n.providerId, name: n.providerName }));
   const assignedNetwork = network.find((n) => n.providerId === c.assignedProviderId);
   const needsOverride =
     Boolean(c.payerId && c.assignedProviderId) && c.eligibilityStatus !== "SELF_PAY" && assignedNetwork?.network !== "IN_NETWORK";
@@ -172,6 +209,11 @@ export default async function IntakeCasePage({
           <dd>{c.assignedProvider?.name ?? "Not assigned"}</dd>
           <dt>Referring physician</dt>
           <dd>{patient.referringPhysician?.name ?? "—"}</dd>
+          <dt>VOB decision</dt>
+          <dd>
+            {c.vobDecision ? <Tag tone={vobDecisionTone(c.vobDecision)}>{vobDecisionShort[c.vobDecision]}</Tag> : "Not decided"}
+            {c.vobDecisionSource === "DIRECT" && <div className="muted">Taken directly by data entry</div>}
+          </dd>
           <dt>Care status</dt>
           <dd>{c.careStatus ? careStatusLabel[c.careStatus] : "—"}</dd>
           <dt>Case owner</dt>
@@ -197,7 +239,8 @@ export default async function IntakeCasePage({
             <h1>
               {patientName(patient)}{" "}
               <span className={`gw-stage gw-stage-${c.stage.toLowerCase()}`}>{intakeStageLabel[c.stage]}</span>{" "}
-              {c.priority === "URGENT" && <Tag tone="bad">Urgent</Tag>}
+              {c.priority === "URGENT" && <Tag tone="bad">Urgent</Tag>}{" "}
+              {c.vobDecision && c.vobDecision !== "HOLD" && <Tag tone={vobDecisionTone(c.vobDecision)}>{vobDecisionShort[c.vobDecision]}</Tag>}
             </h1>
           </div>
         </div>
@@ -207,6 +250,7 @@ export default async function IntakeCasePage({
             {error}
           </p>
         )}
+        {ok && <p className="notice-ok">{ok}</p>}
 
         <ol className="gw-stepper">
           {STEPS.map((s, i) => (
@@ -238,49 +282,24 @@ export default async function IntakeCasePage({
         )}
 
         {/* ---------------- Hand-off bar for the team that owns the current stage ---------------- */}
-        {c.stage === "DATA_ENTRY" && canTeam1 && (
-          <section className="panel gw-handoff">
-            <div>
-              <strong>Hand off to verification</strong>
-              {t1Gaps.length ? <p className="muted">Still missing: {t1Gaps.join(", ")}</p> : <p className="muted">Everything Team 2 needs is entered.</p>}
-            </div>
-            <form action={moveCase.bind(null, c.id, "SEND_TO_VERIFICATION")}>
-              <button className="btn" type="submit" disabled={t1Gaps.length > 0}>
-                Send to verification →
-              </button>
-            </form>
-          </section>
+        {c.stage === "DATA_ENTRY" && (
+          <DataEntrySteps
+            c={c}
+            gaps={t1Gaps}
+            documents={{ total: documents.length, read: documents.filter((d) => ["READ", "APPLIED"].includes(d.status)).length }}
+            check={check}
+            fields={benefitFields}
+            hasInsurance={hasInsurance}
+            suggestion={suggestion}
+            consent={consent}
+            directProviders={directProviders}
+            verifiedBy={nameOf(c.dataVerifiedById)}
+            canWork={canTeam1}
+          />
         )}
 
         {["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"].includes(c.stage) && canTeam2 && (
-          <section className="panel gw-handoff">
-            <div>
-              <strong>Approve for service</strong>
-              {t2Gaps.length ? <p className="muted">Open items: {t2Gaps.join(", ")}</p> : <p className="muted">Verification is complete.</p>}
-            </div>
-            <form action={moveCase.bind(null, c.id, "APPROVE_FOR_SERVICE")} className="gw-handoff-form">
-              {needsOverride && t2Gaps.length === 0 && (
-                <label>
-                  <span>
-                    Provider is not credentialed with this payer — document the override <span className="req">*</span>
-                  </span>
-                  <input name="override" required placeholder="e.g. single-case agreement approved by payer, ref #…" />
-                </label>
-              )}
-              <button className="btn" type="submit" disabled={t2Gaps.length > 0 || c.stage !== "VERIFICATION"}>
-                Approve → scheduling
-              </button>
-            </form>
-            <details className="gw-inline-form">
-              <summary>Return to data entry</summary>
-              <form action={moveCase.bind(null, c.id, "RETURN_TO_DATA_ENTRY")}>
-                <input name="note" required placeholder="What needs correcting?" />
-                <button className="btn secondary" type="submit">
-                  Return
-                </button>
-              </form>
-            </details>
-          </section>
+          <VobDecisionPanel c={c} suggestion={suggestion} consent={consent} needsOverride={needsOverride} network={assignedNetwork} decidedBy={nameOf(c.vobDecisionById)} />
         )}
 
         {c.stage === "SCHEDULING" && canTeam3 && (
@@ -315,7 +334,7 @@ export default async function IntakeCasePage({
         {docApplied && <p className="notice-ok">Document details were applied to the patient and this case.</p>}
 
         {/* ---------------- Patient documents ---------------- */}
-        <section className="panel">
+        <section className="panel" id="documents">
           <div className="gw-section-head">
             <h2>Patient documents ({documents.length})</h2>
             <Link className="muted" href="/gateway/documents">
@@ -468,12 +487,26 @@ export default async function IntakeCasePage({
         {/* ---------------- Team 2 ---------------- */}
         <section className="panel">
           <div className="gw-section-head">
-            <h2>2 · Eligibility &amp; benefits (EVBV)</h2>
+            <h2>2 · VOB — eligibility &amp; benefits</h2>
             <Tag tone={eligibilityTone(c.eligibilityStatus)}>{eligibilityStatusLabel[c.eligibilityStatus]}</Tag>
           </div>
+          {c.vobDecision && c.vobDecision !== "HOLD" && (
+            <p className={`gw-decision gw-decision-${vobDecisionTone(c.vobDecision)}`}>
+              <strong>{vobDecisionLabel[c.vobDecision]}</strong>
+              {c.vobDenyReason ? ` — ${vobDenyReasonLabel[c.vobDenyReason] ?? c.vobDenyReason}` : ""}
+              {" · "}
+              {c.vobDecisionSource === "DIRECT" ? "taken directly by data entry on the system's suggestion" : "decided by VOB"}
+              {nameOf(c.vobDecisionById) ? ` (${nameOf(c.vobDecisionById)})` : ""}
+              {c.vobDecisionAt ? ` on ${formatDate(c.vobDecisionAt)}` : ""}
+              {c.vobDecisionNote ? ` · ${c.vobDecisionNote}` : ""}
+            </p>
+          )}
+          {c.stage !== "DATA_ENTRY" && (check || hasInsurance) && (
+            <EligibilityBlock c={c} check={check} fields={benefitFields} canRun={canTeam2 && !closed} hasInsurance={hasInsurance} />
+          )}
           <form action={saveVerification.bind(null, c.id)}>
             <fieldset disabled={!canTeam2 || closed || c.stage === "DATA_ENTRY"} className="gw-fieldset">
-              {c.stage === "DATA_ENTRY" && <p className="muted">Opens once data entry hands the case off.</p>}
+              {c.stage === "DATA_ENTRY" && <p className="muted">The VOB team works this section once data entry shares the case. Fields fill in from the eligibility check.</p>}
               <div className="form-grid gw-grid-3">
                 <label>
                   Insurance payer
@@ -770,10 +803,13 @@ export default async function IntakeCasePage({
         <section className="panel">
           <div className="gw-section-head">
             <h2>3 · Scheduling &amp; ongoing status</h2>
-            {c.careStatus && <Tag tone="info">{careStatusLabel[c.careStatus]}</Tag>}
+            <span>
+              {schedulingOpen && c.vobDecision && <Tag tone={vobDecisionTone(c.vobDecision)}>{vobDecisionLabel[c.vobDecision]}</Tag>}{" "}
+              {c.careStatus && <Tag tone="info">{careStatusLabel[c.careStatus]}</Tag>}
+            </span>
           </div>
           {!schedulingOpen ? (
-            <p className="muted">Opens once verification approves the patient for service.</p>
+            <p className="muted">Opens once the patient is approved — by the VOB team, or taken directly by data entry.</p>
           ) : (
             <form action={saveScheduling.bind(null, c.id)}>
               <fieldset disabled={!canTeam3 || closed} className="gw-fieldset">
@@ -785,6 +821,11 @@ export default async function IntakeCasePage({
                     </label>
                   ))}
                   {c.consentsCompletedAt && <span className="muted">All signed {formatDate(c.consentsCompletedAt)}</span>}
+                  {!c.consentsCompletedAt && consent && (
+                    <span className="muted">
+                      E-signature request {consent.status === "COMPLETED" ? "completed" : `sent ${formatDate(consent.createdAt)} — boxes tick themselves when the patient signs`}
+                    </span>
+                  )}
                 </div>
                 <div className="form-grid gw-grid-3">
                   <label>

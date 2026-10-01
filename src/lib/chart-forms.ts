@@ -16,7 +16,7 @@ export const FIELD_TYPES = {
   score: "Score total (calculated)",
   // Patient Connect (patient-facing forms)
   consent: "Consent (patient agrees to the help text)",
-  signature: "Signature (drawn by the patient)",
+  signature: "Signature (patient types their name)",
   file: "Photo / file upload (patient)",
 } as const;
 
@@ -158,8 +158,11 @@ export function collectValues(fields: FieldDef[], fd: FormData) {
     } else if (f.type === "consent") {
       if (fd.get(key)) values[f.id] = `Agreed ${new Date().toISOString()}`;
     } else if (f.type === "signature") {
-      const v = String(fd.get(key) ?? "");
+      const v = String(fd.get(key) ?? "").trim();
+      // A drawn signature from before typed signatures is kept as it is; otherwise the typed name is the signature.
       if (/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(v) && v.length < 400_000) values[f.id] = v;
+      else if (typedSignature(v)) values[f.id] = v;
+      else if (/\p{L}/u.test(v) && v.length >= 2) values[f.id] = `${TYPED_SIGNATURE}${new Date().toISOString()}|${v.replace(/\s+/g, " ").slice(0, 120)}`;
     } else {
       let v = String(fd.get(key) ?? "").trim().slice(0, 8000);
       if (f.type === "number" && v && !Number.isFinite(Number(v))) v = "";
@@ -174,10 +177,29 @@ export function collectValues(fields: FieldDef[], fd: FormData) {
   return { values, missing, answered, score: computeScore(fields, values) };
 }
 
+// A typed signature is stored as "typed:<ISO time>|<name>": the name the signer typed and when they signed.
+const TYPED_SIGNATURE = "typed:";
+
+export function typedSignature(value: string | string[] | undefined | null) {
+  if (typeof value !== "string" || !value.startsWith(TYPED_SIGNATURE)) return null;
+  const bar = value.indexOf("|");
+  const at = new Date(value.slice(TYPED_SIGNATURE.length, bar));
+  const name = value.slice(bar + 1).trim();
+  return bar > 0 && name && !Number.isNaN(at.getTime()) ? { name, at } : null;
+}
+
+// Patient forms can name the clinic the form is signed for: "{clinic}" in a label or help text.
+export function withClinic(fields: FieldDef[], clinic: string): FieldDef[] {
+  return fields.map((f) => ({ ...f, label: f.label.replaceAll("{clinic}", clinic), help: f.help?.replaceAll("{clinic}", clinic) }));
+}
+
 export function displayValue(field: FieldDef, value: string | string[] | undefined) {
   if (!hasValue(value)) return "";
   if (Array.isArray(value)) return value.join(", ");
-  if (field.type === "signature") return "Signed";
+  if (field.type === "signature") {
+    const typed = typedSignature(value);
+    return typed ? `Signed electronically by ${typed.name} (${typed.at.toLocaleString()})` : "Signed";
+  }
   if (field.type === "consent") return `Agreed${value!.length > 7 ? ` (${new Date(value!.slice(7)).toLocaleString()})` : ""}`;
   if (field.type === "file") return "File uploaded";
   if (field.type === "date") {

@@ -12,7 +12,7 @@ import {
   teamStages,
   type GatewayTeam,
 } from "@/lib/gateway";
-import { BoardTab, RegistryTab, TeamQueueTab, TodayTab, type GatewaySearch } from "./gateway/views";
+import { BoardTab, RegistryTab, TeamQueueTab, TodayTab, VobLearningTab, type GatewaySearch } from "./gateway/views";
 
 const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
   { key: "data-entry", team: "DATA_ENTRY" },
@@ -46,6 +46,7 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
   const tabs = [
     ...TEAM_TABS.map((t) => ({ key: t.key, label: `${teamLabel[t.team]} (${teamCount(t.team)})` })),
     { key: "board", label: "Pipeline board" },
+    { key: "vob-learning", label: "VOB learning" },
     { key: "registry", label: "Patient registry" },
     { key: "today", label: "Today" },
   ];
@@ -54,7 +55,7 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
     <>
       <div className="page-head">
         <div>
-          <p className="muted">Pre-scheduling console · Data entry → Verification → Scheduling</p>
+          <p className="muted">Pre-scheduling console · Data entry → VOB → Scheduling</p>
           <h1>Patient Gateway</h1>
         </div>
         {canWorkTeam(user.role, "DATA_ENTRY") && (
@@ -92,6 +93,7 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
         <TeamQueueTab key={t.key} team={t.team} tabKey={t.key} user={user} sp={sp} />
       ))}
       {tab === "board" && <BoardTab user={user} />}
+      {tab === "vob-learning" && <VobLearningTab user={user} />}
       {tab === "registry" && <RegistryTab user={user} sp={sp} />}
       {tab === "today" && <TodayTab user={user} />}
     </>

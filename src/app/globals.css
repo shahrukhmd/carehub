@@ -1695,6 +1695,263 @@ h1 .gw-stage {
   min-width: 18rem;
 }
 
+/* Data entry checklist: documents -> details -> eligibility -> manual verification -> consents & hand-off */
+.gw-checklist {
+  border-left: 4px solid var(--navy);
+}
+
+.gw-steps {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.gw-step {
+  display: grid;
+  grid-template-columns: 1.9rem minmax(0, 1fr);
+  gap: 0.7rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.gw-step:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.gw-step p {
+  margin: 0.25rem 0;
+}
+
+.gw-step-mark {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.gw-step-done .gw-step-mark {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.gw-step-wait .gw-step-mark {
+  background: var(--amber-soft);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.gw-step .gw-actions,
+.gw-elig .gw-actions {
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+
+.gw-elig .gw-facts {
+  margin: 0.5rem 0;
+}
+
+.gw-mismatch {
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--amber);
+  border-radius: 0.55rem;
+  background: var(--amber-soft);
+  font-size: 0.86rem;
+}
+
+.gw-mismatch table {
+  margin-top: 0.4rem;
+  background: var(--panel);
+}
+
+.gw-waiting,
+.gw-verify,
+.gw-consent-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 0.4rem;
+  font-size: 0.86rem;
+}
+
+.gw-waiting {
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: var(--panel-alt);
+}
+
+.gw-handoff-steps {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.gw-handoff-steps select {
+  max-width: 24rem;
+}
+
+.gw-suggest {
+  display: grid;
+  gap: 0.15rem;
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 0.55rem;
+  border-left: 4px solid var(--muted);
+  background: var(--panel-alt);
+  font-size: 0.86rem;
+}
+
+.gw-suggest p {
+  margin: 0;
+}
+
+.gw-suggest strong {
+  font-size: 0.98rem;
+}
+
+.gw-suggest-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.gw-suggest-ok {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.gw-suggest-warn {
+  border-left-color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.gw-suggest-bad {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.gw-hold,
+.gw-decision {
+  margin: 0;
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.5rem;
+  background: var(--amber-soft);
+  font-size: 0.86rem;
+}
+
+.gw-decision {
+  margin-top: 0.7rem;
+}
+
+.gw-decision-ok {
+  background: var(--accent-soft);
+}
+
+.gw-decision-info {
+  background: var(--info-soft);
+}
+
+.gw-decision-bad {
+  background: var(--danger-soft);
+}
+
+.gw-raw {
+  white-space: pre-wrap;
+  font-size: 0.78rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--panel-alt);
+  border-radius: 0.5rem;
+}
+
+/* VOB decision form: the extra fields appear for the decision they belong to. */
+.vob-form {
+  flex: 1 1 100%;
+  display: grid;
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+.vob-choices {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem 0.6rem;
+  width: 100%;
+}
+
+.vob-choices legend {
+  font-weight: 700;
+  font-size: 0.86rem;
+  margin-bottom: 0.4rem;
+}
+
+.vob-choice {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.vob-choice input {
+  width: auto;
+}
+
+.vob-choice:has(input:checked) {
+  border-color: var(--navy);
+  box-shadow: inset 0 0 0 1px var(--navy);
+}
+
+.vob-when {
+  display: none;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.vob-form:has(input[value="DENIED"]:checked) .vob-when-denied,
+.vob-form:has(input[value="APPROVED_ALL"]:checked) .vob-when-approved,
+.vob-form:has(input[value="APPROVED_LIMITED"]:checked) .vob-when-approved {
+  display: grid;
+  width: 100%;
+  max-width: 34rem;
+}
+
+.vob-form:has(input[value="HOLD"]:checked) .vob-when-hold {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.vob-note {
+  width: 100%;
+  max-width: 44rem;
+}
+
+@media (max-width: 800px) {
+  .vob-choices {
+    grid-template-columns: 1fr;
+  }
+}
+
 .gw-inline-form summary {
   cursor: pointer;
   color: var(--info);
@@ -5530,4 +5787,43 @@ form.fb-room input {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
   background: var(--accent-soft);
+}
+
+/* Typed-name electronic signature on patient forms */
+.sig-typed {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.sig-typed-preview {
+  min-height: 3.4rem;
+  padding: 0.5rem 0.9rem;
+  border-bottom: 2px solid #111b4a;
+  background: #fbfbfd;
+  border-radius: 8px 8px 0 0;
+  font-family: "Segoe Script", "Brush Script MT", "Lucida Handwriting", "Snell Roundhand", cursive;
+  font-size: 1.7rem;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #111b4a;
+  overflow-wrap: anywhere;
+}
+
+.sig-typed-preview.empty {
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: #9aa1ad;
+  display: grid;
+  align-items: center;
+}
+
+.sig-typed-note {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: #5b6472;
+}
+
+/* Long consent wording gets most of the screen to read in. */
+.pp-card .df-consent-text {
+  max-height: 55vh;
 }

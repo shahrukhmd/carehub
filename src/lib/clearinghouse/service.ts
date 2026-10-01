@@ -9,11 +9,13 @@ export async function runEligibilityCheck(params: {
   // A specific coverage (defaults to the active primary) and who asked for the check.
   insuranceId?: string | null;
   checkedById?: string | null;
+  // Gateway case the check belongs to (data entry runs it before hand-off).
+  intakeCaseId?: string | null;
 }) {
   const insurance = await prisma.insurance.findFirst({
     where: params.insuranceId ? { id: params.insuranceId, patientId: params.patientId } : { patientId: params.patientId, isPrimary: true },
     orderBy: { active: "desc" },
-    include: { payer: true },
+    include: { payer: true, patient: { select: { firstName: true, lastName: true, dob: true, sex: true } } },
   });
   if (!insurance) return null;
 
@@ -30,10 +32,16 @@ export async function runEligibilityCheck(params: {
   const result = await adapter.checkEligibility({
     patientId: params.patientId,
     payerId: insurance.payerId,
-    payerCode: insurance.payer.payerCode,
+    payerCode: insurance.payer.eligibilityPayerId || insurance.payer.payerCode,
     memberId: insurance.memberId,
     providerNpi,
     serviceDate: new Date(),
+    // The policy holder when the patient isn't the subscriber.
+    subscriber:
+      insurance.relationshipToInsured !== "18" && insurance.insuredFirstName && insurance.insuredLastName
+        ? { firstName: insurance.insuredFirstName, lastName: insurance.insuredLastName, dob: insurance.insuredDob, sex: insurance.insuredSex }
+        : insurance.patient,
+    groupNumber: insurance.groupNumber,
   });
 
   const check = await prisma.eligibilityCheck.create({
@@ -51,6 +59,9 @@ export async function runEligibilityCheck(params: {
       payerMessage: result.payerMessage ?? null,
       insuranceId: insurance.id,
       checkedById: params.checkedById ?? null,
+      intakeCaseId: params.intakeCaseId ?? null,
+      benefits: result.benefits ? JSON.stringify(result.benefits) : null,
+      raw: result.raw ?? null,
     },
   });
   // The visit's expected copay follows the latest eligibility response.

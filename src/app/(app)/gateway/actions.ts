@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { IntakeCase, Prisma } from "@prisma/client";
@@ -8,6 +9,10 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { networkStatusForPayer } from "@/lib/credentialing";
 import { openIntakeCase } from "@/lib/intake";
+import { runEligibilityCheck } from "@/lib/clearinghouse/service";
+import { applyBenefits, compareBenefits, loadBenefitContext } from "@/lib/eligibility-apply";
+import { sendCaseConsents } from "@/lib/intake-consents";
+import { suggestionForCase } from "@/lib/vob";
 import {
   CONSENTS,
   GATEWAY_ROLES,
@@ -23,7 +28,9 @@ import {
   referralStatusLabel,
   schedulingGaps,
   teamForStage,
-  verificationGaps,
+  verificationStage,
+  vobDecisionLabel,
+  vobDenyReasonLabel,
   yesNoUnknownLabel,
   type GatewayTeam,
 } from "@/lib/gateway";
@@ -39,16 +46,24 @@ function fail(message: string): never {
 }
 
 // Case-page actions land back on the case, clearing any earlier error; queue actions (take) stay put on success.
-async function guarded(caseId: string, work: () => Promise<void>, { returnToCase = true } = {}) {
+// Work that returns a sentence has it shown as a confirmation on the case.
+async function guarded(caseId: string, work: () => Promise<void | string>, { returnToCase = true } = {}) {
   let message: string | null = null;
+  let ok: string | void = undefined;
   try {
-    await work();
+    ok = await work();
   } catch (err) {
     if (!(err instanceof GatewayError)) throw err;
     message = err.message;
   }
   if (message) redirect(`/gateway/${caseId}?error=${encodeURIComponent(message.slice(0, 300))}`);
-  if (returnToCase) redirect(`/gateway/${caseId}`);
+  if (returnToCase) redirect(`/gateway/${caseId}${ok ? `?ok=${encodeURIComponent(ok.slice(0, 400))}` : ""}`);
+}
+
+async function origin() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  return host ? `${h.get("x-forwarded-proto") ?? "http"}://${host}` : null;
 }
 
 function text(fd: FormData, key: string) {
@@ -185,7 +200,240 @@ export async function saveReferral(caseId: string, fd: FormData) {
   });
 }
 
-// ---- Team 2: eligibility & benefits, authorization, PCC referral ----
+// Details data entry is waiting on from the BD / referral source (updated insurance, previous records...).
+export async function requestMissingInfo(caseId: string, fd: FormData) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    requireTeam(user, "DATA_ENTRY");
+    const c = await loadCase(user, caseId);
+    if (fd.get("received") === "1") {
+      await prisma.intakeCase.update({ where: { id: c.id }, data: { infoRequestedAt: null, infoRequestedFrom: null, infoRequestNote: null } });
+      await log(user, c, "INFO_RECEIVED", `Received from ${c.infoRequestedFrom ?? "referral source"}: ${c.infoRequestNote ?? ""}`);
+    } else {
+      const note = text(fd, "note");
+      if (!note) fail("Say what is missing");
+      const from = text(fd, "from") ?? c.referralSourceName ?? "BD / referral source";
+      await prisma.intakeCase.update({ where: { id: c.id }, data: { infoRequestedAt: new Date(), infoRequestedFrom: from, infoRequestNote: note } });
+      await log(user, c, "INFO_REQUESTED", `Requested from ${from}: ${note}`);
+    }
+    refresh(c.id, c.patientId);
+  });
+}
+
+// Real-time eligibility through the clearinghouse. The payer's answer is kept in full (view / print), fills every
+// field that was still empty, and anything that differs from what was entered is listed for correction.
+export async function checkCaseEligibility(caseId: string) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    if (!canWorkTeam(user.role, "DATA_ENTRY") && !canWorkTeam(user.role, "VERIFICATION")) fail("Your role cannot check eligibility on a gateway case");
+    const c = await loadCase(user, caseId);
+    if (c.stage === "CLOSED") fail("The case is closed");
+    const insurance = await prisma.insurance.findFirst({
+      where: { patientId: c.patientId, active: true },
+      orderBy: [{ isPrimary: "desc" }, { rank: "asc" }],
+      include: { payer: true },
+    });
+    if (!insurance) fail("Add the patient's insurance first (Edit demographics & insurance), then check eligibility");
+    if (!insurance.memberId || insurance.memberId === "PENDING") fail("Enter the member ID on the patient's insurance before checking eligibility");
+
+    const check = await runEligibilityCheck({ practiceId: user.practiceId, patientId: c.patientId, insuranceId: insurance.id, checkedById: user.id, intakeCaseId: c.id });
+    if (!check) fail("The eligibility check could not be run");
+    const answered = check.status === "ACTIVE" || check.status === "INACTIVE";
+    await prisma.intakeCase.update({
+      where: { id: c.id },
+      data: {
+        // The case follows the patient's primary coverage.
+        payerId: insurance.payerId,
+        memberId: insurance.memberId,
+        eligibilityCheckId: check.id,
+        eligibilityCheckedAt: check.checkedAt,
+        ...(answered ? { eligibilityStatus: check.status, verifiedAt: check.checkedAt, verifiedWith: "Clearinghouse eligibility (271)" } : {}),
+      },
+    });
+    const filled = await applyBenefits(check.id, user.practiceId, "AUTO");
+    const loaded = await loadBenefitContext(check.id, user.practiceId);
+    const differ = loaded ? compareBenefits(loaded.ctx, loaded.check).filter((f) => f.state === "MISMATCH").length : 0;
+    const summary =
+      check.status === "ACTIVE"
+        ? `Active coverage${check.planName ? ` · ${check.planName}` : ""} — ${filled.length} field${filled.length === 1 ? "" : "s"} filled from the payer's response${differ ? `, ${differ} ${differ === 1 ? "differs" : "differ"} from what was entered` : ""}`
+        : `${insurance.payer.name}: ${check.payerMessage ?? check.status}`;
+    await log(user, c, "ELIGIBILITY_CHECKED", summary);
+    refresh(c.id, c.patientId);
+    if (!answered) fail(`${summary} Run the check again, or send the case to VOB to verify by phone or portal.`);
+    return `Eligibility checked: ${summary}.`;
+  });
+}
+
+// Corrects the fields the user ticked with the payer's values.
+export async function applyCaseBenefits(caseId: string, fd: FormData) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    if (!canWorkTeam(user.role, "DATA_ENTRY") && !canWorkTeam(user.role, "VERIFICATION")) fail("Your role cannot update this case");
+    const c = await loadCase(user, caseId);
+    const keys = fd.getAll("keys").map(String);
+    if (!c.eligibilityCheckId) fail("Run the eligibility check first");
+    if (keys.length === 0) fail("Tick the fields to update with the payer's values");
+    const applied = await applyBenefits(c.eligibilityCheckId, user.practiceId, keys);
+    await log(user, c, "BENEFITS_APPLIED", `Updated from the payer's response: ${applied.map((f) => `${f.label} (${f.current || "blank"} → ${f.payer})`).join("; ")}`);
+    refresh(c.id, c.patientId);
+    return `${applied.length} field${applied.length === 1 ? "" : "s"} updated with the payer's values.`;
+  });
+}
+
+export async function markSelfPay(caseId: string) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    requireTeam(user, "DATA_ENTRY");
+    const c = await loadCase(user, caseId);
+    if (c.stage !== "DATA_ENTRY") fail("Only while the case is in data entry");
+    await prisma.intakeCase.update({ where: { id: c.id }, data: { eligibilityStatus: "SELF_PAY", payerId: null, memberId: null } });
+    await log(user, c, "SELF_PAY", "Patient marked self-pay");
+    refresh(c.id, c.patientId);
+  });
+}
+
+// Data entry's sign-off that the demographics, insurance and benefits were checked against the documents.
+export async function markDataVerified(caseId: string, fd: FormData) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    requireTeam(user, "DATA_ENTRY");
+    const c = await loadCase(user, caseId);
+    if (c.stage !== "DATA_ENTRY") fail("Only while the case is in data entry");
+    if (fd.get("undo") === "1") {
+      await prisma.intakeCase.update({ where: { id: c.id }, data: { dataVerifiedAt: null, dataVerifiedById: null } });
+      await log(user, c, "DATA_UNVERIFIED", "Manual verification reopened");
+    } else {
+      const gaps = dataEntryGaps(c.patient, c);
+      if (gaps.length) fail(`Complete before verifying: ${gaps.join(", ")}`);
+      if (fd.get("confirm") !== "on") fail("Tick the box to confirm you checked the details");
+      await prisma.intakeCase.update({ where: { id: c.id }, data: { dataVerifiedAt: new Date(), dataVerifiedById: user.id } });
+      await log(user, c, "DATA_VERIFIED", `Demographics, insurance and benefits verified by ${user.name}`);
+    }
+    refresh(c.id, c.patientId);
+  });
+}
+
+async function consentNote(user: User, c: { id: string }) {
+  const sent = await sendCaseConsents({ caseId: c.id, practiceId: user.practiceId, userId: user.id, origin: await origin() });
+  if (!sent) return "No consent packet is set up in Patient Connect — consent forms were not sent";
+  if (sent.sentTo.length) return `Consent forms ${sent.reused ? "re-sent" : "sent"} for e-signature to ${sent.sentTo.join(", ")}`;
+  return sent.channel === "LINK"
+    ? "The patient has no mobile number or email — copy the consent link from Patient forms and pass it on"
+    : "Consent forms could not be delivered — check the patient's mobile number and email, or copy the link from Patient forms";
+}
+
+// (Re)sends the consent forms without moving the case.
+export async function sendConsents(caseId: string) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    const c = await loadCase(user, caseId);
+    if (c.stage === "CLOSED") fail("The case is closed");
+    if (CONSENTS.every((x) => c[x.key])) fail("All consents are already signed");
+    const note = await consentNote(user, c);
+    await log(user, c, "CONSENTS_SENT", note);
+    refresh(c.id, c.patientId);
+    return `${note}.`;
+  });
+}
+
+// Data entry's hand-off. Consent forms go to the patient at the same moment; the signed copy files itself under Scans.
+// VOB: the case joins the VOB queue. DIRECT: allowed only when the learned record says this plan is approved without
+// an authorization or referral — the patient goes straight to scheduling and the VOB team never sees the case.
+export async function handOffCase(caseId: string, route: "VOB" | "DIRECT", fd: FormData) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    requireTeam(user, "DATA_ENTRY");
+    const c = await loadCase(user, caseId);
+    if (c.stage !== "DATA_ENTRY") fail(`Cannot do that from ${intakeStageLabel[c.stage]}`);
+    const gaps = dataEntryGaps(c.patient, c);
+    if (gaps.length) fail(`Complete before hand-off: ${gaps.join(", ")}`);
+    if (!c.dataVerifiedAt) fail("Mark the data as verified before handing the case off");
+
+    const data: Prisma.IntakeCaseUncheckedUpdateInput = {
+      dataEntryCompletedAt: new Date(),
+      stageChangedAt: new Date(),
+      ownerId: null,
+      infoRequestedAt: null,
+      infoRequestedFrom: null,
+      infoRequestNote: null,
+    };
+    let label = "Sent to the VOB team";
+    if (route === "DIRECT") {
+      const payer = c.payerId ? await prisma.payer.findFirst({ where: { id: c.payerId }, select: { name: true } }) : null;
+      const network = c.payerId ? await networkStatusForPayer(user.practiceId, c.payerId, c.planSegment) : [];
+      const suggestion = await suggestionForCase(user.practiceId, { ...c, payerName: payer?.name }, network);
+      const scope = suggestion.kind === "TAKE_DIRECT" ? suggestion.scope : null;
+      if (!scope) fail("This patient can't be taken directly — send the case to the VOB team");
+      const providerId = text(fd, "assignedProviderId") ?? c.assignedProviderId;
+      if (!providerId) fail("Choose the rendering provider who will see the patient");
+      const provider = await prisma.renderingProvider.findFirst({ where: { id: providerId, practiceId: user.practiceId, isRendering: true, status: "ACTIVE" } });
+      if (!provider) fail("Choose an active rendering provider");
+      const row = network.find((n) => n.providerId === provider.id);
+      if (c.payerId && row?.network !== "IN_NETWORK") fail(`${provider.name} is not credentialed with this payer — pick an in-network provider or send the case to VOB`);
+
+      Object.assign(data, {
+        stage: "SCHEDULING",
+        assignedProviderId: provider.id,
+        authRequired: "NO",
+        authStatus: "NOT_REQUIRED",
+        referralRequired: "NO",
+        referralStatus: "NOT_REQUIRED",
+        vobDecision: scope,
+        vobDecisionAt: new Date(),
+        vobDecisionById: user.id,
+        vobDecisionSource: "DIRECT",
+        vobDecisionNote: suggestion.reasons[0] ?? suggestion.headline,
+        approvedForServiceAt: new Date(),
+        ...(scope === "APPROVED_LIMITED" ? { careStatus: "LIMITED" } : {}),
+      });
+      await prisma.vobDecision.create({
+        data: {
+          practiceId: user.practiceId,
+          caseId: c.id,
+          payerId: c.payerId,
+          planSegment: c.planSegment,
+          providerId: provider.id,
+          network: row?.network ?? null,
+          decision: scope,
+          note: suggestion.headline,
+          source: "DIRECT",
+          decidedById: user.id,
+        },
+      });
+      label = `Taken directly to scheduling (${vobDecisionLabel[scope]}) — VOB review skipped: ${suggestion.reasons[0] ?? suggestion.headline}`;
+    } else {
+      data.stage = "VERIFICATION";
+    }
+
+    const consents = fd.get("sendConsents") === "on" && !CONSENTS.every((x) => c[x.key]) ? await consentNote(user, c) : null;
+    await prisma.intakeCase.update({ where: { id: c.id }, data });
+    const note = text(fd, "note");
+    await log(user, c, route === "DIRECT" ? "TAKEN_DIRECT" : "SEND_TO_VERIFICATION", [label, consents, note].filter(Boolean).join(" · "));
+    refresh(c.id, c.patientId);
+    return [route === "DIRECT" ? "Patient taken directly — the case is now with scheduling" : "Case shared with the VOB team", consents].filter(Boolean).join(". ") + ".";
+  });
+}
+
+// ---- Team 2 (VOB): eligibility & benefits, authorization, PCC referral ----
+
+const VOB_STAGES = ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"];
+
+// Moves a case between the VOB queue and the auth / referral waiting queues to match what was just saved.
+function restage(c: IntakeCase, data: Prisma.IntakeCaseUpdateInput) {
+  if (!VOB_STAGES.includes(c.stage)) return;
+  const pick = (key: "authRequired" | "authStatus" | "referralRequired" | "referralStatus") => (typeof data[key] === "string" ? (data[key] as string) : c[key]);
+  const next = verificationStage({
+    authRequired: pick("authRequired"),
+    authStatus: pick("authStatus"),
+    referralRequired: pick("referralRequired"),
+    referralStatus: pick("referralStatus"),
+    vobDecision: c.vobDecision,
+  });
+  if (next !== c.stage) {
+    data.stage = next;
+    data.stageChangedAt = new Date();
+  }
+}
 
 export async function saveVerification(caseId: string, fd: FormData) {
   return guarded(caseId, async () => {
@@ -233,6 +481,7 @@ export async function saveVerification(caseId: string, fd: FormData) {
     else if (c.authStatus === "NOT_REQUIRED") data.authStatus = "TO_SUBMIT";
     if (referralRequired !== "YES") data.referralStatus = "NOT_REQUIRED";
     else if (c.referralStatus === "NOT_REQUIRED") data.referralStatus = "TO_SEND";
+    restage(c, data);
 
     await prisma.intakeCase.update({ where: { id: c.id }, data });
     await log(user, c, "VERIFICATION_SAVED", `Eligibility: ${eligibilityStatusLabel[String(data.eligibilityStatus)]}`);
@@ -261,13 +510,8 @@ export async function saveAuthorization(caseId: string, fd: FormData) {
       authVisitsApproved: int(fd, "authVisitsApproved"),
       authNotes: text(fd, "authNotes"),
     };
-    // Submitted/pended auths sit in the auth queue; a decision brings the case back to verification.
-    if (["SUBMITTED", "PENDED"].includes(authStatus) && ["VERIFICATION", "AUTH_PENDING"].includes(c.stage)) {
-      data.stage = "AUTH_PENDING";
-    } else if (c.stage === "AUTH_PENDING" && !["SUBMITTED", "PENDED"].includes(authStatus)) {
-      data.stage = "VERIFICATION";
-    }
-    if (data.stage && data.stage !== c.stage) data.stageChangedAt = new Date();
+    // Auths being worked sit in the auth queue; the payer's decision brings the case back to VOB.
+    restage(c, data);
 
     await prisma.intakeCase.update({ where: { id: c.id }, data });
     await log(
@@ -294,16 +538,127 @@ export async function savePccReferral(caseId: string, fd: FormData) {
       pccNotes: text(fd, "pccNotes"),
       pccSentAt: referralStatus === "SENT_TO_PCC" && !c.pccSentAt ? new Date() : undefined,
     };
-    if (referralStatus === "SENT_TO_PCC" && ["VERIFICATION", "PCC_REFERRAL"].includes(c.stage)) {
-      data.stage = "PCC_REFERRAL";
-    } else if (c.stage === "PCC_REFERRAL" && referralStatus !== "SENT_TO_PCC") {
-      data.stage = "VERIFICATION";
-    }
-    if (data.stage && data.stage !== c.stage) data.stageChangedAt = new Date();
+    restage(c, data);
 
     await prisma.intakeCase.update({ where: { id: c.id }, data });
     await log(user, c, referralStatus === "SENT_TO_PCC" ? "SENT_TO_PCC" : "REFERRAL_UPDATED", referralStatusLabel[referralStatus]);
     refresh(c.id, c.patientId);
+  });
+}
+
+// The VOB decision: approved for all services, approved for E&M and debridements only, denied, or on hold until an
+// authorization / referral comes back. Each decision is kept so the gateway learns what this payer usually ends in.
+export async function decideVob(caseId: string, fd: FormData) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    requireTeam(user, "VERIFICATION");
+    const c = await loadCase(user, caseId);
+    if (!VOB_STAGES.includes(c.stage)) fail(`Cannot do that from ${intakeStageLabel[c.stage]}`);
+    const decision = text(fd, "decision") ?? "";
+    if (!(decision in vobDecisionLabel)) fail("Choose the VOB decision");
+    const note = text(fd, "note");
+    const selfPay = c.eligibilityStatus === "SELF_PAY";
+
+    const network = c.payerId ? await networkStatusForPayer(user.practiceId, c.payerId, c.planSegment) : [];
+    const row = network.find((n) => n.providerId === c.assignedProviderId);
+    const data: Prisma.IntakeCaseUncheckedUpdateInput = {
+      vobDecision: decision,
+      vobDecisionAt: new Date(),
+      vobDecisionById: user.id,
+      vobDecisionNote: note,
+      vobDecisionSource: "VOB",
+      vobDenyReason: null,
+    };
+    let authRequired = c.authRequired === "YES";
+    let referralRequired = c.referralRequired === "YES";
+    let denyReason: string | null = null;
+    let nextStage = c.stage;
+
+    if (decision === "APPROVED_ALL" || decision === "APPROVED_LIMITED") {
+      if (!["ACTIVE", "SELF_PAY"].includes(c.eligibilityStatus)) fail("Eligibility is not active — save the verified eligibility first, or deny the patient");
+      if (!c.assignedProviderId) fail("Choose the rendering provider in the VOB section and save before approving");
+      if (referralRequired && c.referralStatus !== "RECEIVED") fail("The referral has not been received — put the case on hold until it is");
+      // E&M and debridements can start while an authorization for other services is still out.
+      if (decision === "APPROVED_ALL" && authRequired && c.authStatus !== "APPROVED") {
+        fail("The authorization is not approved — put the case on hold, or approve for E&M and debridements only");
+      }
+      // Credentialing link: the rendering provider must be in network with this payer, or the override documented.
+      if (c.payerId && !selfPay && row?.network !== "IN_NETWORK") {
+        const override = text(fd, "override");
+        if (!override) fail("The assigned provider is not credentialed with this payer. Pick an in-network provider, document an override, or deny the patient.");
+        data.networkOverrideNote = override;
+      }
+      if (c.authRequired === "UNKNOWN") Object.assign(data, { authRequired: "NO", authStatus: "NOT_REQUIRED" });
+      if (c.referralRequired === "UNKNOWN") Object.assign(data, { referralRequired: "NO", referralStatus: "NOT_REQUIRED" });
+      data.approvedForServiceAt = new Date();
+      if (decision === "APPROVED_LIMITED") data.careStatus = "LIMITED";
+      else if (c.careStatus === "LIMITED") data.careStatus = null;
+      nextStage = "SCHEDULING";
+    } else if (decision === "DENIED") {
+      denyReason = text(fd, "denyReason");
+      if (!denyReason || !(denyReason in vobDenyReasonLabel)) fail("Choose why the patient is denied");
+      if (denyReason === "OTHER" && !note) fail("Add a note explaining the denial");
+      data.vobDenyReason = denyReason;
+      data.closedReason = `VOB denied: ${vobDenyReasonLabel[denyReason]}${note ? ` — ${note}` : ""}`;
+      nextStage = "CLOSED";
+    } else {
+      const holdAuth = fd.get("holdAuth") === "on";
+      const holdReferral = fd.get("holdReferral") === "on";
+      if (!holdAuth && !holdReferral) fail("Tick what the case is waiting for: authorization, referral or both");
+      if (holdAuth) {
+        authRequired = true;
+        Object.assign(data, { authRequired: "YES", authStatus: ["NOT_REQUIRED", "DENIED"].includes(c.authStatus) ? "TO_SUBMIT" : c.authStatus });
+      }
+      if (holdReferral) {
+        referralRequired = true;
+        Object.assign(data, { referralRequired: "YES", referralStatus: c.referralStatus === "NOT_REQUIRED" ? "TO_SEND" : c.referralStatus });
+      }
+      nextStage = verificationStage({
+        authRequired: String(data.authRequired ?? c.authRequired),
+        authStatus: String(data.authStatus ?? c.authStatus),
+        referralRequired: String(data.referralRequired ?? c.referralRequired),
+        referralStatus: String(data.referralStatus ?? c.referralStatus),
+        vobDecision: "HOLD",
+      });
+      if (nextStage === "VERIFICATION") fail("The authorization and referral are already complete — approve or deny the patient instead");
+    }
+
+    if (nextStage !== c.stage) Object.assign(data, { stage: nextStage, stageChangedAt: new Date(), ownerId: decision === "HOLD" ? c.ownerId : null });
+    const check = c.eligibilityCheckId ? await prisma.eligibilityCheck.findUnique({ where: { id: c.eligibilityCheckId }, select: { planName: true } }) : null;
+    await prisma.$transaction([
+      prisma.intakeCase.update({ where: { id: c.id }, data }),
+      prisma.vobDecision.create({
+        data: {
+          practiceId: user.practiceId,
+          caseId: c.id,
+          payerId: c.payerId,
+          planSegment: c.planSegment,
+          planName: check?.planName ?? null,
+          providerId: c.assignedProviderId,
+          network: row?.network ?? null,
+          decision,
+          authRequired,
+          referralRequired,
+          denyReason,
+          note,
+          source: "VOB",
+          decidedById: user.id,
+        },
+      }),
+    ]);
+    const detail =
+      decision === "DENIED"
+        ? vobDenyReasonLabel[denyReason!]
+        : decision === "HOLD"
+          ? [authRequired ? "authorization" : "", referralRequired ? "referral" : ""].filter(Boolean).join(" and ")
+          : null;
+    await log(user, c, `VOB_${decision}`, [`VOB decision: ${vobDecisionLabel[decision]}`, detail, note].filter(Boolean).join(" · "));
+    refresh(c.id, c.patientId);
+    return decision === "HOLD"
+      ? `On hold — waiting for the ${detail}. The case comes back to VOB when it is decided.`
+      : decision === "DENIED"
+        ? "Patient denied and the case closed."
+        : `${vobDecisionLabel[decision]} — the case is now with scheduling.`;
   });
 }
 
@@ -353,9 +708,7 @@ export async function saveScheduling(caseId: string, fd: FormData) {
 // ---- Hand-offs between teams ----
 
 const MOVES: Record<string, { team: GatewayTeam | "ANY"; from: string[]; label: string }> = {
-  SEND_TO_VERIFICATION: { team: "DATA_ENTRY", from: ["DATA_ENTRY"], label: "Sent to verification" },
   RETURN_TO_DATA_ENTRY: { team: "VERIFICATION", from: ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"], label: "Returned to data entry" },
-  APPROVE_FOR_SERVICE: { team: "VERIFICATION", from: ["VERIFICATION"], label: "Approved for service" },
   RETURN_TO_VERIFICATION: { team: "SCHEDULING", from: ["SCHEDULING"], label: "Returned to verification" },
   MARK_SCHEDULED: { team: "SCHEDULING", from: ["SCHEDULING"], label: "Scheduled" },
   CLOSE: { team: "ANY", from: OPEN_INTAKE_STAGES.concat("SCHEDULED"), label: "Closed" },
@@ -377,37 +730,14 @@ export async function moveCase(caseId: string, move: string, fd: FormData) {
     let nextStage = c.stage;
 
     switch (move) {
-      case "SEND_TO_VERIFICATION": {
-        const gaps = dataEntryGaps(c.patient, c);
-        if (gaps.length) fail(`Complete before hand-off: ${gaps.join(", ")}`);
-        nextStage = "VERIFICATION";
-        data.dataEntryCompletedAt = new Date();
-        break;
-      }
       case "RETURN_TO_DATA_ENTRY":
       case "RETURN_TO_VERIFICATION":
         if (!note) fail("Say what needs fixing");
         nextStage = move === "RETURN_TO_DATA_ENTRY" ? "DATA_ENTRY" : "VERIFICATION";
+        // The receiving team signs off again once it is fixed.
+        if (move === "RETURN_TO_DATA_ENTRY") Object.assign(data, { dataVerifiedAt: null, dataVerifiedById: null });
+        Object.assign(data, { vobDecision: null, vobDecisionAt: null, vobDecisionById: null, vobDecisionNote: null, vobDecisionSource: null, approvedForServiceAt: null });
         break;
-      case "APPROVE_FOR_SERVICE": {
-        const gaps = verificationGaps(c);
-        if (gaps.length) fail(`Not ready: ${gaps.join(", ")}`);
-        // Credentialing link: the rendering provider must be in network with this payer, or the override documented.
-        if (c.payerId && c.assignedProviderId && c.eligibilityStatus !== "SELF_PAY") {
-          const network = await networkStatusForPayer(user.practiceId, c.payerId, c.planSegment);
-          const row = network.find((n) => n.providerId === c.assignedProviderId);
-          if (row?.network !== "IN_NETWORK") {
-            const override = text(fd, "override");
-            if (!override) {
-              fail("The assigned provider is not credentialed with this payer. Pick an in-network provider or document an override.");
-            }
-            data.networkOverrideNote = override;
-          }
-        }
-        nextStage = "SCHEDULING";
-        data.approvedForServiceAt = new Date();
-        break;
-      }
       case "MARK_SCHEDULED": {
         const gaps = schedulingGaps(c);
         if (gaps.length) fail(`Not ready: ${gaps.join(", ")}`);
@@ -428,6 +758,7 @@ export async function moveCase(caseId: string, move: string, fd: FormData) {
       case "REOPEN":
         nextStage = "DATA_ENTRY";
         data.closedReason = null;
+        Object.assign(data, { dataVerifiedAt: null, dataVerifiedById: null, vobDecision: null, vobDecisionAt: null, vobDecisionById: null, vobDecisionNote: null, vobDecisionSource: null, vobDenyReason: null, approvedForServiceAt: null });
         break;
     }
 

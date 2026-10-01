@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/patient-docs";
 import { formatDate, formatTime } from "@/lib/format";
-import { DEFAULT_PACKETS, DEFAULT_RULES, PATIENT_TEMPLATES } from "@/lib/connect/patient-forms";
+import { DEFAULT_PACKETS, DEFAULT_RULES, PATIENT_TEMPLATES, RETIRED_TEMPLATES } from "@/lib/connect/patient-forms";
 
 export const CONNECT_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"];
 
@@ -52,7 +52,9 @@ async function setup(practiceId: string) {
       })),
     });
   }
-  if ((await prisma.intakePacket.count({ where: { practiceId } })) === 0) {
+  const firstSetup = (await prisma.intakePacket.count({ where: { practiceId } })) === 0;
+  if (!firstSetup && missing.length) await upgradePackets(practiceId, new Set(missing.map((t) => t.key)));
+  if (firstSetup) {
     for (const p of DEFAULT_PACKETS) {
       await prisma.intakePacket.create({ data: { practiceId, name: p.name, description: p.description, templateKeys: JSON.stringify(p.keys) } });
     }
@@ -82,6 +84,31 @@ async function setup(practiceId: string) {
   }
   const practice = await prisma.practice.findUnique({ where: { id: practiceId } });
   await prisma.connectSettings.upsert({ where: { practiceId }, update: {}, create: { practiceId, displayName: practice?.name ?? null } });
+}
+
+// A practice set up before a batch of forms was added: its packets swap retired stock forms for their replacements,
+// the retired forms are switched off, and the packets that come with the new forms are added (once, by name).
+async function upgradePackets(practiceId: string, installed: Set<string>) {
+  const retired = Object.entries(RETIRED_TEMPLATES).filter(([, to]) => !to || installed.has(to));
+  if (retired.length) {
+    const swap = new Map(retired);
+    for (const p of await prisma.intakePacket.findMany({ where: { practiceId } })) {
+      let keys: string[] = [];
+      try {
+        keys = JSON.parse(p.templateKeys);
+      } catch {
+        continue;
+      }
+      const next = [...new Set(keys.flatMap((k) => (swap.has(k) ? (swap.get(k) ? [swap.get(k)!] : []) : [k])))];
+      if (next.join() !== keys.join()) await prisma.intakePacket.update({ where: { id: p.id }, data: { templateKeys: JSON.stringify(next) } });
+    }
+    await prisma.documentTemplate.updateMany({ where: { practiceId, key: { in: retired.map(([from]) => from) }, standard: true }, data: { active: false } });
+  }
+  const have = new Set((await prisma.intakePacket.findMany({ where: { practiceId }, select: { name: true } })).map((p) => p.name));
+  for (const p of DEFAULT_PACKETS) {
+    if (have.has(p.name) || !p.keys.some((k) => installed.has(k))) continue;
+    await prisma.intakePacket.create({ data: { practiceId, name: p.name, description: p.description, templateKeys: JSON.stringify(p.keys) } });
+  }
 }
 
 export async function getConnectSettings(practiceId: string) {

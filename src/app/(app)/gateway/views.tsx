@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import type { requireUser } from "@/lib/auth";
 import { StatusBadge } from "@/components/StatusBadge";
 import { daysBetween, networkStatusForPayer, type NetworkStatus } from "@/lib/credentialing";
-import { ageFromDob, formatDate, formatMoney, formatTime, patientName } from "@/lib/format";
+import { ageFromDob, formatDate, formatMoney, formatTime, patientName, planSegmentLabel } from "@/lib/format";
 import {
   CONSENTS,
   OPEN_INTAKE_STAGES,
@@ -22,8 +22,11 @@ import {
   schedulingGaps,
   teamStages,
   verificationGaps,
+  vobDecisionShort,
+  vobDecisionTone,
   type GatewayTeam,
 } from "@/lib/gateway";
+import { VOB_HISTORY_DAYS, VOB_MIN_CASES, suggestionsForCases, vobInsights, type RouteSuggestion } from "@/lib/vob";
 import { startIntake, takeCase } from "./actions";
 
 type User = Awaited<ReturnType<typeof requireUser>>;
@@ -70,6 +73,29 @@ export function eligibilityTone(status: string) {
 
 export function authTone(status: string) {
   return status === "APPROVED" || status === "NOT_REQUIRED" ? "ok" : status === "DENIED" ? "bad" : "warn";
+}
+
+const SUGGEST_TAG: Record<RouteSuggestion["kind"], ["ok" | "warn" | "bad" | "muted", string]> = {
+  TAKE_DIRECT: ["ok", "Take directly"],
+  SEND_TO_VOB: ["warn", "Send to VOB"],
+  DECLINE: ["bad", "Likely not accepted"],
+  NOT_READY: ["muted", "Check eligibility first"],
+};
+
+export function SuggestionTag({ suggestion }: { suggestion: RouteSuggestion | undefined }) {
+  if (!suggestion) return null;
+  const [tone, label] = SUGGEST_TAG[suggestion.kind];
+  return (
+    <span title={[suggestion.headline, ...suggestion.reasons].join(" ")}>
+      <Tag tone={tone}>
+        {suggestion.kind === "TAKE_DIRECT" && suggestion.scope === "APPROVED_LIMITED"
+          ? "Take directly · E&M + debridement"
+          : suggestion.kind === "NOT_READY" && !suggestion.stats
+            ? "Add insurance first"
+            : label}
+      </Tag>
+    </span>
+  );
 }
 
 export function SexMark({ sex }: { sex: string }) {
@@ -147,6 +173,7 @@ export async function TeamQueueTab({
   const network = team === "VERIFICATION" ? await networkLookup(user.practiceId, cases) : null;
   const appts = team === "SCHEDULING" ? await nextAppointments(user.practiceId, cases.map((c) => c.patientId)) : null;
   const canWork = canWorkTeam(user.role, team);
+  const suggestions = team === "DATA_ENTRY" ? await suggestionsForCases(user.practiceId, cases.map((c) => ({ ...c, payerName: c.payer?.name }))) : null;
 
   return (
     <>
@@ -196,7 +223,8 @@ export async function TeamQueueTab({
                 <>
                   <th>Referral</th>
                   <th>Insurance</th>
-                  <th>Missing before hand-off</th>
+                  <th>Checklist</th>
+                  <th>Suggested route</th>
                 </>
               )}
               {team === "VERIFICATION" && (
@@ -256,8 +284,13 @@ export async function TeamQueueTab({
                       <td>
                         {(() => {
                           const gaps = dataEntryGaps(c.patient, c);
-                          return gaps.length ? <Tag tone="warn">{gaps.join(", ")}</Tag> : <Tag tone="ok">Ready</Tag>;
+                          if (c.infoRequestedAt) return <Tag tone="warn">Waiting on {c.infoRequestedFrom}</Tag>;
+                          if (gaps.length) return <Tag tone="warn">{gaps.join(", ")}</Tag>;
+                          return c.dataVerifiedAt ? <Tag tone="ok">Verified — ready to hand off</Tag> : <Tag tone="info">Needs manual verification</Tag>;
                         })()}
+                      </td>
+                      <td>
+                        <SuggestionTag suggestion={suggestions?.get(c.id)} />
                       </td>
                     </>
                   )}
@@ -304,6 +337,11 @@ export async function TeamQueueTab({
                     <>
                       <td>
                         {c.payer?.name ?? "Self-pay"}
+                        {c.vobDecision && (
+                          <div>
+                            <Tag tone={vobDecisionTone(c.vobDecision)}>{vobDecisionShort[c.vobDecision]}</Tag>
+                          </div>
+                        )}
                         <div className="muted">
                           {c.authStatus === "APPROVED"
                             ? `Auth #${c.authNumber}${c.authEndDate ? ` · thru ${formatDate(c.authEndDate)}` : ""}`
@@ -337,6 +375,11 @@ export async function TeamQueueTab({
 
                   <td>
                     <span className={`gw-stage gw-stage-${c.stage.toLowerCase()}`}>{intakeStageLabel[c.stage]}</span>
+                    {team === "VERIFICATION" && c.vobDecision === "HOLD" && (
+                      <div>
+                        <Tag tone="warn">{c.stage === "VERIFICATION" ? "Hold cleared — decide" : "On hold"}</Tag>
+                      </div>
+                    )}
                     <div className={days > 3 && c.stage !== "SCHEDULED" ? "gw-stale" : "muted"}>{days}d in stage</div>
                   </td>
                   <td>
@@ -359,8 +402,79 @@ export async function TeamQueueTab({
             })}
             {cases.length === 0 && (
               <tr>
-                <td colSpan={10} className="muted">
+                <td colSpan={11} className="muted">
                   Queue is clear.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------- VOB learning
+
+// What the gateway has learned from the VOB team's decisions, and what it now tells data entry for each plan.
+export async function VobLearningTab({ user }: { user: User }) {
+  const rows = await vobInsights(user.practiceId);
+  const direct = rows.filter((r) => r.suggestion.kind === "TAKE_DIRECT").length;
+  return (
+    <>
+      <section className="panel">
+        <p style={{ margin: 0 }}>
+          Every VOB decision is recorded per payer and plan segment. Once a plan has at least <strong>{VOB_MIN_CASES} decisions</strong> in the last {VOB_HISTORY_DAYS} days that are consistently approved with
+          no authorization or referral, data entry is told the patient can be taken directly and the case skips the VOB queue. New payers, mixed results and anything needing an authorization or referral
+          still go to VOB.
+        </p>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          {rows.length} plan{rows.length === 1 ? "" : "s"} with history · {direct} can currently be taken directly. Patients taken directly don&apos;t count towards the record — only the VOB team&apos;s own
+          decisions do.
+        </p>
+      </section>
+      <section className="panel gw-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Payer</th>
+              <th>Plan segment</th>
+              <th>Cases</th>
+              <th>All services</th>
+              <th>E&amp;M + debridement</th>
+              <th>Denied</th>
+              <th>Auth needed</th>
+              <th>Referral needed</th>
+              <th>Credentialing</th>
+              <th>Last decision</th>
+              <th>Data entry is told</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td>
+                  <strong>{r.payerName}</strong>
+                </td>
+                <td>{r.planSegment ? (planSegmentLabel[r.planSegment] ?? r.planSegment) : <span className="muted">Any</span>}</td>
+                <td>{r.stats.cases}</td>
+                <td>{r.stats.approvedAll}</td>
+                <td>{r.stats.approvedLimited}</td>
+                <td>{r.stats.denied}</td>
+                <td>{r.stats.needAuth}</td>
+                <td>{r.stats.needReferral}</td>
+                <td>{r.inNetwork ? <Tag tone="ok">In network</Tag> : <Tag tone="bad">No provider in network</Tag>}</td>
+                <td>{r.stats.lastDecisionAt ? formatDate(r.stats.lastDecisionAt) : "—"}</td>
+                <td>
+                  <SuggestionTag suggestion={r.suggestion} />
+                  <div className="muted">{r.suggestion.reasons[0]}</div>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={11} className="muted">
+                  No VOB decisions recorded yet. They appear here as the VOB team approves, limits, denies or holds cases.
                 </td>
               </tr>
             )}

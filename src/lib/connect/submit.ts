@@ -6,7 +6,7 @@ import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { openIntakeCase } from "@/lib/intake";
-import { displayValue, parseFields, type DocValues, type FieldDef } from "@/lib/chart-forms";
+import { displayValue, parseFields, typedSignature, withClinic, type DocValues, type FieldDef } from "@/lib/chart-forms";
 import { normalizeDate, normalizePhone, normalizeSex, type Extraction } from "@/lib/patient-docs";
 import { CONSENT_FLAGS } from "@/lib/connect/patient-forms";
 import { CONSENTS, OPEN_INTAKE_STAGES } from "@/lib/gateway";
@@ -40,7 +40,7 @@ const pdfSafe = (s: string) =>
     .replace(/[“”]/g, '"')
     .replace(/[–—]/g, "-")
     .replace(/…/g, "...")
-    .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF]/g, "");
+    .replace(/[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF\u2022]/g, "");
 
 class Writer {
   page: PDFPage;
@@ -136,6 +136,7 @@ export async function finalizeIntakeRequest(requestId: string) {
   pdf.setTitle(`${r.packet.name}`);
   pdf.setCreator("CareHub Patient Connect");
   const w = new Writer(pdf, await pdf.embedFont(StandardFonts.Helvetica), await pdf.embedFont(StandardFonts.HelveticaBold));
+  const script = await pdf.embedFont(StandardFonts.TimesRomanItalic);
   const clinic = r.practice.connectSettings?.displayName || r.practice.name;
   const demo = answers["pt_demographics"] ?? {};
   const nameFromForm = (() => {
@@ -158,7 +159,7 @@ export async function finalizeIntakeRequest(requestId: string) {
     const values = answers[t.key] ?? {};
     w.space(4);
     w.text(t.name, { size: 12, bold: true });
-    for (const f of parseFields(t.fields) as FieldDef[]) {
+    for (const f of withClinic(parseFields(t.fields), clinic) as FieldDef[]) {
       if (f.type === "heading") {
         w.space(2);
         w.text(f.label.toUpperCase(), { size: 8.5, bold: true, color: rgb(0.2, 0.25, 0.45) });
@@ -172,7 +173,17 @@ export async function finalizeIntakeRequest(requestId: string) {
         continue;
       }
       if (f.type === "signature") {
-        if (typeof v === "string" && v.startsWith("data:image/png;base64,")) {
+        const typed = typedSignature(v);
+        if (typed) {
+          // The typed name is the signature: shown in script, with who signed and when underneath.
+          const name = pdfSafe(typed.name);
+          w.ensure(48);
+          w.text(`${f.label}:`, { size: 9.5, bold: true });
+          w.page.drawText(name, { x: 60, y: w.y - 18, size: 18, font: script, color: rgb(0.07, 0.11, 0.29) });
+          w.page.drawLine({ start: { x: 60, y: w.y - 22 }, end: { x: 320, y: w.y - 22 }, thickness: 0.5, color: rgb(0.5, 0.5, 0.55) });
+          w.y -= 26;
+          w.text(`Electronically signed by ${name} on ${typed.at.toLocaleString()} - typed name adopted as signature`, { size: 8, x: 60, color: rgb(0.35, 0.35, 0.4) });
+        } else if (typeof v === "string" && v.startsWith("data:image/png;base64,")) {
           const img = await pdf.embedPng(Buffer.from(v.split(",")[1], "base64"));
           const scale = Math.min(200 / img.width, 55 / img.height);
           w.ensure(img.height * scale + 16);
@@ -194,7 +205,10 @@ export async function finalizeIntakeRequest(requestId: string) {
     }
     w.rule();
   }
-  w.text("Signatures above were drawn by the patient (or their representative) on the CareHub patient portal after verifying their date of birth.", { size: 8, color: rgb(0.4, 0.4, 0.45) });
+  w.text(
+    "Signed electronically on the CareHub patient portal after the signer's date of birth was verified: the patient (or their representative) agreed to each form and typed their full name as their signature.",
+    { size: 8, color: rgb(0.4, 0.4, 0.45) }
+  );
 
   const bytes = await pdf.save();
   const dir = path.resolve(process.cwd(), "uploads", r.practiceId);
@@ -221,18 +235,22 @@ export async function finalizeIntakeRequest(requestId: string) {
   }
   const today = new Date();
   const day = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  // A packet of signed consents with nothing to review goes straight into the patient's Scans under Consents;
+  // a packet that also carries answers waits for review before its details are applied.
+  const consentsOnly = consents.length > 0 && Object.keys(extraction.fields).length === 0;
   const doc = await prisma.patientDocument.create({
     data: {
       practiceId: r.practiceId,
       patientId: r.patientId,
       intakeCaseId,
-      name: `${day} ${r.packet.name} - ${who}.pdf`.slice(0, 180),
+      name: `${day} ${consentsOnly ? "Signed consents" : r.packet.name} - ${who}.pdf`.slice(0, 180),
       originalName: `${r.packet.name}.pdf`,
       filePath: path.posix.join(r.practiceId, stored),
       mimeType: "application/pdf",
       sizeBytes: bytes.length,
-      docType: "INTAKE_PACKET",
-      status: "READ",
+      docType: consentsOnly ? "CONSENT" : "INTAKE_PACKET",
+      status: consentsOnly && r.patientId ? "APPLIED" : "READ",
+      appliedAt: consentsOnly && r.patientId ? new Date() : null,
       readMethod: "PATIENT",
       pageCount: pdf.getPageCount(),
       extraction: JSON.stringify(extraction),
@@ -241,13 +259,19 @@ export async function finalizeIntakeRequest(requestId: string) {
 
   // Signed consents tick the Patient Gateway scheduling consents.
   if (intakeCaseId && consents.length) {
-    const flags = Object.fromEntries(consents.filter((c) => CONSENT_FLAGS[c]).map((c) => [CONSENT_FLAGS[c], true]));
+    const flags = Object.fromEntries(consents.flatMap((c) => CONSENT_FLAGS[c] ?? []).map((flag) => [flag, true]));
     const c = await prisma.intakeCase.update({ where: { id: intakeCaseId }, data: flags });
     if (CONSENTS.every((k) => c[k.key]) && !c.consentsCompletedAt) {
       await prisma.intakeCase.update({ where: { id: c.id }, data: { consentsCompletedAt: new Date() } });
     }
     await prisma.intakeActivity.create({
-      data: { caseId: c.id, userId: null, stage: c.stage, action: "PATIENT_FORMS", note: `Patient completed ${r.packet.name} online (${consents.length} consent${consents.length === 1 ? "" : "s"} signed)` },
+      data: {
+        caseId: c.id,
+        userId: null,
+        stage: c.stage,
+        action: "PATIENT_FORMS",
+        note: `Patient signed ${r.packet.name} online (${consents.length} consent${consents.length === 1 ? "" : "s"}) — saved to Scans as "${doc.name}"`,
+      },
     });
   }
   // Uploaded card / ID photos were filed as their own documents; link them to the case too.

@@ -44,6 +44,7 @@ model Practice {
   statements   Statement[]
   renderingProviders RenderingProvider[]
   intakeCases  IntakeCase[]
+  vobDecisions VobDecision[]
   claims       Claim[]
   codes        PracticeCode[]
   documentTemplates DocumentTemplate[]
@@ -1099,6 +1100,39 @@ model EligibilityCheck {
   checkedAt     DateTime     @default(now())
   insuranceId   String?
   checkedById   String?
+  // Gateway case the check was run for, and the full payer response.
+  intakeCaseId  String?
+  // JSON: subscriber, plan, deductible, out-of-pocket and per-service benefits as the payer returned them.
+  benefits      String?
+  raw           String?
+}
+
+// Every VOB decision is kept so the gateway can learn what each payer / plan usually ends in,
+// and tell data entry whether a new patient can be taken without waiting for the VOB team.
+model VobDecision {
+  id               String     @id @default(cuid())
+  practiceId       String
+  practice         Practice   @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  caseId           String
+  case             IntakeCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  payerId          String?
+  planSegment      String?
+  planName         String?
+  providerId       String?
+  // IN_NETWORK | PENDING | NOT_ENROLLED at the time of the decision
+  network          String?
+  // APPROVED_ALL | APPROVED_LIMITED | DENIED | HOLD
+  decision         String
+  authRequired     Boolean    @default(false)
+  referralRequired Boolean    @default(false)
+  denyReason       String?
+  note             String?
+  // VOB (decided by the VOB team) | DIRECT (taken by data entry on the system's suggestion)
+  source           String     @default("VOB")
+  decidedById      String?
+  createdAt        DateTime   @default(now())
+
+  @@index([practiceId, payerId, planSegment])
 }
 
 // Patient Gateway: the pre-scheduling case every new referral moves through.
@@ -1127,6 +1161,18 @@ model IntakeCase {
   servicesRequested     String?
   referralNotes         String?
   dataEntryCompletedAt  DateTime?
+  // Details data entry is waiting on from the BD / referral source.
+  infoRequestedAt       DateTime?
+  infoRequestedFrom     String?
+  infoRequestNote       String?
+  // Clearinghouse eligibility run by data entry, and their sign-off that the entered data was checked by hand.
+  eligibilityCheckId    String?
+  eligibilityCheckedAt  DateTime?
+  dataVerifiedAt        DateTime?
+  dataVerifiedById      String?
+  // Consent forms sent to the patient for e-signature.
+  consentRequestId      String?
+  consentsSentAt        DateTime?
 
   // Team 2: eligibility & benefits
   payerId               String?
@@ -1166,6 +1212,15 @@ model IntakeCase {
   assignedProvider      RenderingProvider? @relation("IntakeProvider", fields: [assignedProviderId], references: [id], onDelete: SetNull)
   networkOverrideNote   String?
   approvedForServiceAt  DateTime?
+  // VOB decision: APPROVED_ALL | APPROVED_LIMITED (E&M and debridements only) | DENIED | HOLD (auth / referral)
+  vobDecision           String?
+  vobDecisionAt         DateTime?
+  vobDecisionById       String?
+  vobDecisionNote       String?
+  vobDenyReason         String?
+  // VOB | DIRECT (data entry took the patient on the learned suggestion)
+  vobDecisionSource     String?
+  vobDecisions          VobDecision[]
 
   // Team 3: scheduling
   consentTreatment      Boolean   @default(false)

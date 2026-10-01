@@ -6,7 +6,7 @@ import { GATEWAY_ROLES, canWorkTeam } from "@/lib/gateway";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { formatDate, patientName } from "@/lib/format";
 import { DOC_STATUS, DOC_TYPES, READ_METHODS, parseExtraction } from "@/lib/patient-docs";
-import { claudeConfigured } from "@/lib/document-reader";
+import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 import { uploadPatientDocuments } from "./actions";
 
 const TABS: [string, string][] = [
@@ -44,7 +44,7 @@ export default async function PatientDocumentsPage({
   ]);
   const count = (s: string) => counts.find((c) => c.status === s)?._count._all ?? 0;
   const reading = docs.some((d) => d.status === "PROCESSING");
-  const aiOn = Boolean(settings?.documentAiEnabled && claudeConfigured());
+  const aiProvider = settings?.documentAiEnabled ? documentAiProvider() : null;
 
   return (
     <div className="stack">
@@ -69,7 +69,7 @@ export default async function PatientDocumentsPage({
           <h2>Upload documents</h2>
           <p className="muted">
             Referrals, face sheets, insurance cards, IDs, orders — PDF, PNG or JPG. Each document is read automatically (
-            {aiOn ? "with Claude AI" : "on this computer: PDF text, or OCR for scans and photos"}), then you review the details, rename it, and fill the
+            {aiProvider ? `with AI (${documentAiLabel[aiProvider]})` : "on this computer: PDF text, or OCR for scans and photos"}), then you review the details, rename it, and fill the
             patient&apos;s record in one step.
           </p>
           <form action={uploadPatientDocuments} className="form-grid gw-grid-3">

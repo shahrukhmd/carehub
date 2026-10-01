@@ -2,6 +2,7 @@ import type {
   ClaimSubmissionRequest,
   ClaimSubmissionResult,
   ClearinghouseAdapter,
+  EligibilityBenefits,
   EligibilityRequest,
   EligibilityResult,
 } from "./types";
@@ -23,6 +24,16 @@ const REJECTION_REASONS = [
   "Subscriber not found for this payer ID",
   "Invalid or missing rendering provider taxonomy code",
 ];
+
+const PLANS = [
+  { name: "PPO Gold", type: "PPO", segment: "COMMERCIAL", deductibleCents: 50000, oopMaxCents: 300000 },
+  { name: "HMO Standard", type: "HMO", segment: "COMMERCIAL", deductibleCents: 150000, oopMaxCents: 500000 },
+  { name: "Medicare Part B", type: "Medicare", segment: "MEDICARE", deductibleCents: 25700, oopMaxCents: 0 },
+  { name: "PPO Family", type: "PPO", segment: "COMMERCIAL", deductibleCents: 300000, oopMaxCents: 700000 },
+  { name: "EPO Select", type: "EPO", segment: "COMMERCIAL", deductibleCents: 200000, oopMaxCents: 600000 },
+];
+
+const PCPS = ["Dr. Samuel Ortega", "Dr. Priya Nair", "Dr. Helen Brooks"];
 
 // Simulated clearinghouse — stands in for a real EDI connection (270/271
 // eligibility, 837 claim submission). Swap `getClearinghouseAdapter()` in
@@ -55,16 +66,76 @@ export const mockClearinghouseAdapter: ClearinghouseAdapter = {
       return { status: "UNKNOWN", payerMessage: "Payer did not return a definitive response." };
     }
 
+    const plan = PLANS[Math.floor(f * PLANS.length)];
+    const copayCents = Math.round(20 + f * 30) * 100;
+    const coinsurancePercent = Math.round(10 + f * 20);
+    const deductibleRemainingCents = Math.round(f * 2000) * 100;
+    const outOfPocketRemainingCents = Math.round(f * 5000) * 100;
+    const deductibleTotal = Math.max(plan.deductibleCents, deductibleRemainingCents);
+    const oopMax = Math.max(plan.oopMaxCents, outOfPocketRemainingCents);
+    const year = req.serviceDate.getFullYear();
+    const groupNumber = req.groupNumber || `G${String(Math.round(f * 899999) + 100000)}`;
+    const isHmo = plan.type === "HMO";
+    const dob = req.subscriber?.dob ? req.subscriber.dob.toISOString().slice(0, 10) : undefined;
+
+    const benefits: EligibilityBenefits = {
+      subscriber: {
+        firstName: req.subscriber?.firstName.toUpperCase(),
+        lastName: req.subscriber?.lastName.toUpperCase(),
+        dob,
+        sex: req.subscriber?.sex ?? undefined,
+        memberId: req.memberId,
+      },
+      plan: {
+        name: plan.name,
+        type: plan.type,
+        segment: plan.segment,
+        groupNumber,
+        groupName: plan.segment === "MEDICARE" ? undefined : `${plan.name} Group ${groupNumber.slice(-3)}`,
+        effectiveDate: `${year}-01-01`,
+        terminationDate: plan.segment === "MEDICARE" ? undefined : `${year}-12-31`,
+      },
+      pcp: isHmo ? { name: PCPS[Math.floor(f * 100) % PCPS.length], phone: "(609) 555-0142" } : undefined,
+      deductible: { totalCents: deductibleTotal, metCents: deductibleTotal - deductibleRemainingCents, remainingCents: deductibleRemainingCents },
+      outOfPocket: { maxCents: oopMax, metCents: oopMax - outOfPocketRemainingCents, remainingCents: outOfPocketRemainingCents },
+      referralRequired: isHmo,
+      services: [
+        { code: "98", label: "Professional (physician) office visit — E&M", covered: true, copayCents },
+        { code: "2", label: "Surgical — wound debridement", covered: true, coinsurancePercent, authRequired: isHmo },
+        { code: "CTP", label: "Skin substitutes / cellular tissue products", covered: plan.type !== "EPO", coinsurancePercent, authRequired: true, note: plan.type === "EPO" ? "Not a covered benefit under this plan" : "Prior authorization required" },
+        { code: "12", label: "Durable medical equipment & wound supplies", covered: true, coinsurancePercent: 20 },
+        { code: "42", label: "Home health care", covered: true, coinsurancePercent: plan.segment === "MEDICARE" ? 0 : coinsurancePercent, authRequired: plan.segment !== "MEDICARE", limit: plan.segment === "MEDICARE" ? undefined : "60 visits per calendar year" },
+      ],
+      messages: [
+        isHmo ? "PCP referral required for specialist services." : "No referral required for specialist services.",
+        "Benefits are not a guarantee of payment.",
+      ],
+    };
+
     return {
       status: "ACTIVE",
-      planName: ["PPO Gold", "HMO Standard", "Medicare Part B", "PPO Family", "EPO Select"][
-        Math.floor(f * 5)
-      ],
-      copayCents: Math.round(20 + f * 30) * 100,
-      coinsurancePercent: Math.round(10 + f * 20),
-      deductibleRemainingCents: Math.round(f * 2000) * 100,
-      outOfPocketRemainingCents: Math.round(f * 5000) * 100,
-      raw: `271 response simulated for payer ${req.payerCode}, member ${req.memberId}`,
+      planName: plan.name,
+      copayCents,
+      coinsurancePercent,
+      deductibleRemainingCents,
+      outOfPocketRemainingCents,
+      benefits,
+      raw: [
+        `ISA*271*${req.payerCode}*CAREHUB~`,
+        `NM1*IL*1*${benefits.subscriber?.lastName ?? ""}*${benefits.subscriber?.firstName ?? ""}****MI*${req.memberId}~`,
+        dob ? `DMG*D8*${dob.replaceAll("-", "")}~` : "",
+        `REF*6P*${groupNumber}~`,
+        `DTP*346*D8*${year}0101~`,
+        `EB*1*IND*30**${plan.name}~`,
+        `EB*C*IND*30***23*${(deductibleTotal / 100).toFixed(2)}~`,
+        `EB*C*IND*30***29*${(deductibleRemainingCents / 100).toFixed(2)}~`,
+        `EB*G*IND*30***29*${(outOfPocketRemainingCents / 100).toFixed(2)}~`,
+        `EB*B*IND*98***27*${(copayCents / 100).toFixed(2)}~`,
+        `EB*A*IND*2****.${String(coinsurancePercent).padStart(2, "0")}~`,
+        "(simulated 271 — demo clearinghouse)",
+      ]
+        .filter(Boolean)
+        .join("\n"),
     };
   },
 

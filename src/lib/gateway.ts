@@ -1,9 +1,9 @@
-// Patient Gateway: the pre-scheduling console shared by the data entry, verification and scheduling teams.
+// Patient Gateway: the pre-scheduling console shared by the data entry, VOB (verification of benefits) and scheduling teams.
 import type { IntakeCase } from "@prisma/client";
 
 export const intakeStageLabel: Record<string, string> = {
   DATA_ENTRY: "Data entry",
-  VERIFICATION: "Verification (EVBV)",
+  VERIFICATION: "VOB review",
   AUTH_PENDING: "Auth pending",
   PCC_REFERRAL: "Referral with PCC",
   SCHEDULING: "Ready to schedule",
@@ -18,7 +18,7 @@ export type GatewayTeam = "DATA_ENTRY" | "VERIFICATION" | "SCHEDULING";
 
 export const teamLabel: Record<GatewayTeam, string> = {
   DATA_ENTRY: "Team 1 · Data entry",
-  VERIFICATION: "Team 2 · Verification",
+  VERIFICATION: "Team 2 · VOB",
   SCHEDULING: "Team 3 · Scheduling",
 };
 
@@ -125,13 +125,14 @@ export function consentsSigned(c: Pick<IntakeCase, (typeof CONSENTS)[number]["ke
 // What still stands between a case and the next team, shown on the worklist and enforced on hand-off.
 export function dataEntryGaps(
   patient: { phone: string | null; addressLine1: string | null; city: string | null; zip: string | null },
-  c: Pick<IntakeCase, "referralSourceName" | "referralSourceType" | "payerId" | "eligibilityStatus">
+  c: Pick<IntakeCase, "referralSourceName" | "referralSourceType" | "payerId" | "eligibilityStatus" | "eligibilityCheckedAt">
 ) {
   const gaps: string[] = [];
   if (!patient.phone) gaps.push("phone");
   if (!patient.addressLine1 || !patient.city || !patient.zip) gaps.push("address");
   if (!c.referralSourceType || !c.referralSourceName) gaps.push("referral source");
   if (!c.payerId && c.eligibilityStatus !== "SELF_PAY") gaps.push("insurance");
+  else if (c.payerId && c.eligibilityStatus === "PENDING" && !c.eligibilityCheckedAt) gaps.push("eligibility check");
   return gaps;
 }
 
@@ -157,6 +158,46 @@ export function schedulingGaps(c: Pick<IntakeCase, (typeof CONSENTS)[number]["ke
   if (signed < CONSENTS.length) gaps.push(`${CONSENTS.length - signed} consent(s) unsigned`);
   if (!["COMPLETE", "NOT_NEEDED"].includes(c.referralAppStatus)) gaps.push("referral application open");
   return gaps;
+}
+
+// ---- VOB decision ----
+
+export const vobDecisionLabel: Record<string, string> = {
+  APPROVED_ALL: "Approved for all services",
+  APPROVED_LIMITED: "Approved for E&M and debridements only",
+  DENIED: "Denied — do not take the patient",
+  HOLD: "On hold — authorization / referral needed",
+};
+
+export const vobDecisionShort: Record<string, string> = {
+  APPROVED_ALL: "All services",
+  APPROVED_LIMITED: "E&M + debridement only",
+  DENIED: "Denied",
+  HOLD: "On hold",
+};
+
+export const vobDenyReasonLabel: Record<string, string> = {
+  OUT_OF_NETWORK: "Out of network / not credentialed",
+  INACTIVE: "Coverage inactive or termed",
+  NOT_COVERED: "Wound care not a covered benefit",
+  AUTH_DENIED: "Authorization denied",
+  REFERRAL_DENIED: "Referral not obtained",
+  OTHER: "Other",
+};
+
+export function vobDecisionTone(decision: string | null) {
+  return decision === "APPROVED_ALL" ? "ok" : decision === "APPROVED_LIMITED" ? "info" : decision === "DENIED" ? "bad" : decision === "HOLD" ? "warn" : "muted";
+}
+
+// Where a case sits while the VOB team works it: waiting on the payer's auth, waiting on the PCC referral, or with VOB.
+// A case put on hold waits from the moment the requirement is recorded; otherwise only once the request is out.
+export function verificationStage(
+  c: Pick<IntakeCase, "authRequired" | "authStatus" | "referralRequired" | "referralStatus" | "vobDecision">
+): "AUTH_PENDING" | "PCC_REFERRAL" | "VERIFICATION" {
+  const hold = c.vobDecision === "HOLD";
+  const authWait = c.authRequired === "YES" && (["SUBMITTED", "PENDED"].includes(c.authStatus) || (hold && c.authStatus === "TO_SUBMIT"));
+  const referralWait = c.referralRequired === "YES" && (c.referralStatus === "SENT_TO_PCC" || (hold && c.referralStatus === "TO_SEND"));
+  return authWait ? "AUTH_PENDING" : referralWait ? "PCC_REFERRAL" : "VERIFICATION";
 }
 
 export const patientSearchByLabel: Record<string, string> = {

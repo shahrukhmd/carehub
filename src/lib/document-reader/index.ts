@@ -81,7 +81,7 @@ export async function readLocally(bytes: Buffer, mimeType: string) {
   throw new Error("Only PDF and image files can be read. Word documents can be stored but not read — save them as PDF to read them.");
 }
 
-// ---- Claude reading (Facility setup → "Read documents with Claude AI") ----
+// ---- AI reading (Facility setup → "Read documents with AI"): Claude or OpenAI, whichever key the server has ----
 
 const ClaudeExtraction = z.object({
   docType: z.enum(Object.keys(DOC_TYPES) as [string, ...string[]]),
@@ -135,6 +135,10 @@ async function readWithClaude(bytes: Buffer, mimeType: string): Promise<Extracti
   if (response.stop_reason === "refusal") throw new Error("Claude declined to read this document.");
   const parsed = response.parsed_output;
   if (!parsed) throw new Error("Claude's answer couldn't be read.");
+  return toExtraction(parsed);
+}
+
+function toExtraction(parsed: z.infer<typeof ClaudeExtraction>): Extraction {
   const fields: Extraction["fields"] = {};
   for (const f of parsed.fields) {
     let value = f.value.trim();
@@ -146,6 +150,48 @@ async function readWithClaude(bytes: Buffer, mimeType: string): Promise<Extracti
     if (!fields[f.key] || (!fields[f.key].value && value)) fields[f.key] = { value, confidence: f.confidence, source: f.source.slice(0, 160) };
   }
   return { docType: parsed.docType, fields, notes: parsed.notes };
+}
+
+// ---- OpenAI reading ----
+
+// CAREHUB_DOCUMENT_AI=openai|claude picks the provider when both keys are set; otherwise Claude is used if it has a key.
+export function documentAiProvider(): "CLAUDE" | "OPENAI" | null {
+  const openai = Boolean(process.env.OPENAI_API_KEY);
+  const forced = (process.env.CAREHUB_DOCUMENT_AI || "").toLowerCase();
+  if (forced === "openai") return openai ? "OPENAI" : null;
+  if (forced === "claude") return claudeConfigured() ? "CLAUDE" : null;
+  return claudeConfigured() ? "CLAUDE" : openai ? "OPENAI" : null;
+}
+
+export const documentAiLabel = { CLAUDE: "Claude", OPENAI: "OpenAI" } as const;
+
+// Same instructions and answer shape as the Claude reader, sent to OpenAI's Responses API with a strict JSON schema.
+async function readWithOpenAI(bytes: Buffer, mimeType: string): Promise<Extraction> {
+  const data = `data:${mimeType};base64,${bytes.toString("base64")}`;
+  const file = mimeType === "application/pdf" ? { type: "input_file", filename: "document.pdf", file_data: data } : { type: "input_image", image_url: data };
+  const res = await fetch(`${(process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "")}/responses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+    body: JSON.stringify({
+      model: process.env.OPENAI_DOCUMENT_MODEL || "gpt-6-luna",
+      // Patient documents are not kept on OpenAI's side after the answer comes back.
+      store: false,
+      input: [{ role: "user", content: [file, { type: "input_text", text: CLAUDE_INSTRUCTIONS }] }],
+      text: { format: { type: "json_schema", name: "document_extraction", strict: true, schema: z.toJSONSchema(ClaudeExtraction) } },
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    error?: { message?: string };
+    output?: { type: string; content?: { type: string; text?: string; refusal?: string }[] }[];
+  } | null;
+  if (!res.ok) throw new Error(body?.error?.message || `OpenAI returned ${res.status}`);
+  const parts = (body?.output ?? []).flatMap((o) => (o.type === "message" ? (o.content ?? []) : []));
+  if (parts.some((p) => p.type === "refusal")) throw new Error("OpenAI declined to read this document.");
+  const text = parts.find((p) => p.type === "output_text")?.text;
+  const parsed = ClaudeExtraction.safeParse(JSON.parse(text || "null"));
+  if (!parsed.success) throw new Error("OpenAI's answer couldn't be read.");
+  return toExtraction(parsed.data);
 }
 
 // ---- Pipeline ----
@@ -161,17 +207,18 @@ export async function processDocument(documentId: string) {
 
     let extraction: Extraction;
     let text: string | null = null;
-    let method: "TEXT" | "OCR" | "CLAUDE";
+    let method: "TEXT" | "OCR" | "CLAUDE" | "OPENAI";
     let pageCount: number | null = null;
     let note: string | null = null;
 
-    if (settings?.documentAiEnabled && claudeConfigured() && /^(application\/pdf|image\/(png|jpeg))$/.test(doc.mimeType)) {
+    const provider = documentAiProvider();
+    if (settings?.documentAiEnabled && provider && /^(application\/pdf|image\/(png|jpeg))$/.test(doc.mimeType)) {
       try {
-        extraction = await readWithClaude(bytes, doc.mimeType);
-        method = "CLAUDE";
+        extraction = provider === "OPENAI" ? await readWithOpenAI(bytes, doc.mimeType) : await readWithClaude(bytes, doc.mimeType);
+        method = provider;
       } catch (err) {
         // Fall back to reading on this machine so the team isn't blocked.
-        note = `Claude reading failed (${err instanceof Error ? err.message.slice(0, 120) : "error"}); read on this computer instead.`;
+        note = `${documentAiLabel[provider]} reading failed (${err instanceof Error ? err.message.slice(0, 120) : "error"}); read on this computer instead.`;
         const local = await readLocally(bytes, doc.mimeType);
         extraction = extractFromText(local.text, { ocr: local.method === "OCR", knownPayers: payers.map((p) => p.name) });
         ({ text, method, pageCount } = local);

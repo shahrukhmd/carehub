@@ -3,6 +3,7 @@
 import { slugId, type FieldDef, type FieldType } from "@/lib/chart-forms";
 import type { CatalogTemplate } from "@/lib/document-catalog";
 import { DOC_FIELDS, FIELD_GROUPS } from "@/lib/patient-docs";
+import { CONSENT_TEXT as T } from "@/lib/connect/consent-library";
 
 type Spec = Omit<FieldDef, "id">;
 type Opt = Partial<Pick<FieldDef, "required" | "help" | "unit" | "width" | "map">>;
@@ -37,9 +38,16 @@ const form = (key: string, name: string, specs: Spec[], description?: string): C
   fields: withIds(specs),
 });
 
-const SIGN = [sig("Signature", req), t("Printed name", { ...req, width: "half" }), t("Relationship to patient (if signing for the patient)", half)];
+// The patient signs by agreeing and typing their full legal name; no separate printed-name line is needed.
+const SIGNED = [sig("Signature of patient or representative", req), t("Relationship to patient (if signing for the patient)", half)];
+const SIGNED_ES = [sig("Firma del paciente o su representante", req), t("Relación con el paciente (si firma un representante)", half)];
 
-// Consent wording is a starting point; replace it with your practice's approved text in the form designer.
+const ROI_INTRO =
+  "The form authorizes release of information in accordance with the Health Insurance Portability and Accountability Act, 45 CFR Parts 160 and 164. Only information specified herein may be released as part of this authorization. Your request to disclose and release this information is voluntary. I authorize the organization below to disclose my healthcare treatment information as specified for Personic Advanced Wound Care.";
+
+const PATIENT_RIGHTS =
+  "I hereby acknowledge that I have received a copy of Whiterock Medical Center's Notice of Privacy Practices. I understand that I may address any questions or concerns I may have about the Notice to Whiterock Medical Center's Privacy Officer.\n\nFailure to sign this form will not result in a denial of services.";
+
 export const PATIENT_TEMPLATES: CatalogTemplate[] = [
   form(
     "pt_demographics",
@@ -147,81 +155,145 @@ export const PATIENT_TEMPLATES: CatalogTemplate[] = [
     ],
     "Wound location, cause, treatment and symptoms"
   ),
+  // ---- The practice's own consent forms and notices (wording in consent-library.ts) ----
   form(
-    "pt_hipaa",
+    "pc_hipaa",
     "HIPAA Notice of Privacy Practices",
-    [
-      consent(
-        "Acknowledgement of receipt",
-        "I acknowledge that I have been offered a copy of this practice's Notice of Privacy Practices, which describes how my health information may be used and disclosed and how I can get access to it.",
-        "consent.hipaa"
-      ),
-      t("People we may talk to about your care (name & relationship)", { help: "Optional" }),
-      ...SIGN,
-    ],
-    "Privacy notice acknowledgement"
+    [consent("Notice of Privacy Practices and HIPAA authorization — acknowledgment of receipt", T.hipaa, "consent.hipaa"), ...SIGNED],
+    "Notice of Privacy Practices, patient authorization and acknowledgment of receipt"
   ),
   form(
-    "pt_consent_treatment",
-    "Consent to Treatment",
-    [
-      consent(
-        "Consent to evaluation and treatment",
-        "I consent to evaluation and treatment by this practice's physicians, nurse practitioners and clinical staff, including wound assessment, cleaning, dressing changes, debridement, photographs of my wounds for my medical record, and other procedures that are explained to me. I understand I may ask questions and may refuse any treatment.",
-        "consent.treatment"
-      ),
-      ...SIGN,
-    ],
-    "General consent to treatment"
+    "pc_debridement",
+    "Debridement Consent",
+    [consent("Wound debridement — informed consent", T.debridement, "consent.treatment"), ...SIGNED],
+    "Informed consent for wound debridement"
   ),
   form(
-    "pt_financial",
-    "Financial Policy",
-    [
-      consent(
-        "Financial responsibility",
-        "I understand that I am responsible for copays, coinsurance, deductibles and any charges my insurance does not cover. I agree to keep my insurance information up to date and to pay balances according to this practice's financial policy.",
-        "consent.financial"
-      ),
-      ...SIGN,
-    ],
-    "Patient financial responsibility"
+    "pc_financial",
+    "Financial Policy and Consent",
+    [consent("Financial agreement / guarantee of payment", `Clinic: {clinic}\n\n${T.financial}`, "consent.financial+assignment"), ...SIGNED],
+    "Financial agreement, assignment of benefits and electronic invoices"
   ),
   form(
-    "pt_aob",
-    "Assignment of Benefits",
-    [
-      consent(
-        "Assignment of benefits and release of information",
-        "I authorize payment of medical benefits directly to this practice for services provided, and I authorize the release of any medical information needed to process my insurance claims.",
-        "consent.assignment"
-      ),
-      ...SIGN,
-    ],
-    "Assignment of benefits and claims release"
+    "pc_arbitration",
+    "Arbitration Agreement",
+    [consent("Arbitration agreement for claims arising out of or related to medical care and treatment", `${T.arbitration}\n\nClinic: {clinic}`), ...SIGNED],
+    "Binding arbitration agreement"
   ),
   form(
-    "pt_telehealth_consent",
+    "pc_telehealth",
     "Telehealth Consent",
     [
-      consent(
-        "Consent to telehealth visits",
-        "I consent to receive care by video or phone. I understand the benefits and limits of telehealth, that my information is protected, and that I may request an in-person visit instead.",
-        "consent.telehealth"
-      ),
-      t("State you are located in during visits", half),
-      ...SIGN,
+      consent("Telehealth / telemedicine consent", `${T.telehealth}\n\nClinic: {clinic}`, "consent.telehealth"),
+      ...SIGNED,
+      t("Interpreter name (if an interpreter was used)", { help: "The interpreter certifies they are fluent in the signer's language and interpreted this form accurately and completely." }),
     ],
     "Consent for video / phone visits"
   ),
+  form(
+    "pc_skin_substitute",
+    "Skin Substitute Consent",
+    [consent("Bioengineered skin substitute (amniotic membrane graft) — informed consent", T.skin_substitute), ...SIGNED],
+    "Informed consent for skin substitute application"
+  ),
+  form(
+    "pc_actigraft",
+    "ActiGraft Informed Consent",
+    [
+      consent("ActiGraft wound treatment — sections 1 to 13", T.actigraft_1),
+      t("Patient initials", { ...req, width: "half", help: "Your initials confirm you have read sections 1 to 13." }),
+      consent("Use of health information, acknowledgment and release, and consent", T.actigraft_2),
+      sel("I received the above information, and it has been explained to", ["Me, the patient", "The patient's designated decision maker"], req),
+      consent("Acknowledgment of receipt of Notice of Privacy Practices & HIPAA agreement", T.actigraft_npp),
+      ...SIGNED,
+    ],
+    "Informed consent for ActiGraft wound treatment"
+  ),
+  form("pc_abi", "ABI Consent", [consent("Lower extremity ankle brachial index evaluation — informed consent", T.abi), ...SIGNED], "Informed consent for the ankle brachial index (ABI) test"),
+  form(
+    "pc_roi",
+    "Release of Information (Medical Record Request)",
+    [
+      note(ROI_INTRO),
+      h("Organization that holds the records"),
+      t("Organization name", req),
+      t("Contact name", half),
+      t("Phone", half),
+      t("Address"),
+      t("City", half),
+      t("State", half),
+      t("Zip code", half),
+      h("Information to be released"),
+      cbs(
+        "I authorize the release of the following information",
+        ["Medical Reports", "Medications", "Psychological Reports", "Treatment Goals/Progress", "Drug or Alcohol Use", "Court Proceedings", "Diagnostic Test Results", "Assessments", "Diagnoses", "Other"],
+        req
+      ),
+      t("Other — specify"),
+      { label: "Emailing my medical records (optional) — tick only if you want your records sent by email", type: "consent", help: T.roi_email },
+      consent("Authorization", `${ROI_INTRO}\n\n${T.roi_auth}`),
+      ...SIGNED,
+    ],
+    "Authorization for another organization to release records to us"
+  ),
+  form(
+    "pc_white_rock",
+    "White Rock Consent Form",
+    [
+      consent("White Rock Medical Center — consent for treatment and conditions of admission", T.white_rock),
+      cbs("The following facility-specific addendums have been offered to me (item 11)", [
+        "Patient Rights and Responsibilities",
+        "Important Message from Medicare",
+        "Information regarding Advance Directives",
+        "Patient has not executed Advance Directives",
+        "Important Message from Champus",
+        "Notice of Privacy Practices",
+      ]),
+      t("Other specific items"),
+      yn("Have you executed Advance Directives?"),
+      yn("Would you like your name to be part of the Patient Directory?", req),
+      consent("Acknowledgement of receipt of White Rock Medical Center Notice of Health Information Practices", T.white_rock_ack),
+      ...SIGNED,
+      t("Translator name (if a translator was used)"),
+    ],
+    "White Rock Medical Center general consent and privacy acknowledgment"
+  ),
+  form(
+    "pc_patient_rights",
+    "Patient Rights and Privacy Notice",
+    [consent("Acknowledgment of receipt of Notice of Privacy Practices", PATIENT_RIGHTS), ...SIGNED],
+    "Whiterock Medical Center privacy notice acknowledgment"
+  ),
+  form("pc_imfm", "Important Message from Medicare", [consent("An Important Message from Medicare about your rights", T.imfm), ...SIGNED], "IMFM 2025 (CMS-10065), English"),
+  form("pc_imfm_es", "Important Message from Medicare (Spanish)", [consent("Un mensaje importante de Medicare", T.imfm_es), ...SIGNED_ES], "IMFM 2025 (CMS-10065), Spanish"),
+  form("pc_moon", "Medicare Outpatient Observation Notice", [consent("Medicare Outpatient Observation Notice", T.moon), ...SIGNED], "MOON (CMS-10611), English"),
+  form(
+    "pc_moon_es",
+    "Medicare Outpatient Observation Notice (Spanish)",
+    [consent("Aviso para los pacientes ambulatorios de Medicare sobre servicios de observación", T.moon_es), ...SIGNED_ES],
+    "MOON (CMS-10611), Spanish"
+  ),
 ];
 
-// Consent forms that tick the Patient Gateway scheduling consents.
-export const CONSENT_FLAGS: Record<string, "consentTreatment" | "consentHipaa" | "consentFinancial" | "consentAssignment"> = {
-  "consent.treatment": "consentTreatment",
-  "consent.hipaa": "consentHipaa",
-  "consent.financial": "consentFinancial",
-  "consent.assignment": "consentAssignment",
+type ConsentFlag = "consentTreatment" | "consentHipaa" | "consentFinancial" | "consentAssignment";
+
+// Consent forms that tick the Patient Gateway scheduling consents. The practice's financial policy carries the
+// assignment of benefits too, so signing it ticks both.
+export const CONSENT_FLAGS: Record<string, ConsentFlag[]> = {
+  "consent.treatment": ["consentTreatment"],
+  "consent.hipaa": ["consentHipaa"],
+  "consent.financial": ["consentFinancial"],
+  "consent.assignment": ["consentAssignment"],
+  "consent.financial+assignment": ["consentFinancial", "consentAssignment"],
+};
+
+// Stock consent forms from before the practice's own were loaded, and what replaced each (null: folded into another).
+export const RETIRED_TEMPLATES: Record<string, string | null> = {
+  pt_hipaa: "pc_hipaa",
+  pt_consent_treatment: "pc_debridement",
+  pt_financial: "pc_financial",
+  pt_aob: null,
+  pt_telehealth_consent: "pc_telehealth",
 };
 
 // What a patient-form answer can fill in (Documentation designer -> "Fills patient field").
@@ -231,29 +303,37 @@ export const MAP_TARGETS: [string, string][] = [
   ["consent.hipaa", "Consent: HIPAA acknowledgement"],
   ["consent.financial", "Consent: financial policy"],
   ["consent.assignment", "Consent: assignment of benefits"],
+  ["consent.financial+assignment", "Consent: financial policy and assignment of benefits"],
 ];
+
+// The consents sent from the Patient Gateway hand-off, in the order the patient signs them.
+export const CONSENT_PACKET_NAME = "Initial Encounter Packet";
 
 export const DEFAULT_PACKETS: { name: string; description: string; keys: string[] }[] = [
   {
     name: "New Patient Packet",
     description: "Everything we need before a first visit",
-    keys: [
-      "pt_demographics",
-      "pt_insurance",
-      "pt_photo_id",
-      "pt_pcp",
-      "pt_medical_history",
-      "pt_meds_allergies",
-      "pt_wound_history",
-      "pt_hipaa",
-      "pt_consent_treatment",
-      "pt_financial",
-      "pt_aob",
-    ],
+    keys: ["pt_demographics", "pt_insurance", "pt_photo_id", "pt_pcp", "pt_medical_history", "pt_meds_allergies", "pt_wound_history", "pc_hipaa", "pc_debridement", "pc_financial"],
   },
   { name: "Returning Patient Update", description: "Confirm details before a follow-up", keys: ["pt_demographics", "pt_insurance", "pt_meds_allergies"] },
-  { name: "Telehealth Visit Packet", description: "Consent and updates for a video visit", keys: ["pt_telehealth_consent", "pt_meds_allergies", "pt_wound_history"] },
-  { name: "Consents Only", description: "The four signed consents", keys: ["pt_hipaa", "pt_consent_treatment", "pt_financial", "pt_aob"] },
+  { name: "Telehealth Visit Packet", description: "Consent and updates for a video visit", keys: ["pc_telehealth", "pt_meds_allergies", "pt_wound_history"] },
+  { name: "Consents Only", description: "HIPAA, debridement consent and financial policy", keys: ["pc_hipaa", "pc_debridement", "pc_financial"] },
+  {
+    name: CONSENT_PACKET_NAME,
+    description: "HIPAA notice, debridement consent, financial policy, arbitration agreement and telehealth consent",
+    keys: ["pc_hipaa", "pc_debridement", "pc_financial", "pc_arbitration", "pc_telehealth"],
+  },
+  { name: "Skin Substitute Consent", description: "Informed consent before a skin substitute application", keys: ["pc_skin_substitute"] },
+  { name: "ActiGraft Consent", description: "Informed consent before ActiGraft treatment", keys: ["pc_actigraft"] },
+  { name: "ABI Consent", description: "Informed consent before an ankle brachial index test", keys: ["pc_abi"] },
+  { name: "Debridement Consent", description: "Debridement consent on its own (expires 30 days after signing)", keys: ["pc_debridement"] },
+  { name: "Arbitration Agreement", description: "Arbitration agreement on its own", keys: ["pc_arbitration"] },
+  { name: "Release of Information", description: "Medical record request from another organization", keys: ["pc_roi"] },
+  { name: "White Rock Consent Packet", description: "White Rock Medical Center consent and privacy notice acknowledgment", keys: ["pc_white_rock", "pc_patient_rights"] },
+  { name: "Important Message from Medicare", description: "IMFM 2025, English", keys: ["pc_imfm"] },
+  { name: "Important Message from Medicare (Spanish)", description: "IMFM 2025, Spanish", keys: ["pc_imfm_es"] },
+  { name: "Medicare Outpatient Observation Notice", description: "MOON, English", keys: ["pc_moon"] },
+  { name: "Medicare Outpatient Observation Notice (Spanish)", description: "MOON, Spanish", keys: ["pc_moon_es"] },
 ];
 
 export const DEFAULT_RULES: { name: string; kind: string; offsetHours: number; channel: string; packet?: string; onlyNewPatients?: boolean }[] = [

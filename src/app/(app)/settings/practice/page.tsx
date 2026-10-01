@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { getPracticeSettings } from "@/lib/chart-setup";
 import { CLEARINGHOUSES, MONTHS } from "@/lib/practice-settings";
 import { SettingsNav } from "../settings-nav";
-import { claudeConfigured } from "@/lib/document-reader";
+import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 import { FAX_PROVIDERS } from "@/lib/fax";
 import { savePracticeSettings } from "./actions";
 
@@ -188,16 +188,17 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
           <h2>Patient document reading</h2>
           <p className="muted">
             Uploaded referrals, face sheets and insurance cards are read on this computer by default (PDF text, or OCR for scans and photos) — nothing
-            leaves the practice. Claude AI reads handwriting, faxes and unusual layouts much better, but it sends each document to Anthropic: only turn it
-            on under a Business Associate Agreement (BAA) with Anthropic, with <code>ANTHROPIC_API_KEY</code> set on the server.
+            leaves the practice. AI reading (Claude or OpenAI) handles handwriting, faxes and unusual layouts much better, but it sends each document to
+            that company: only turn it on under a Business Associate Agreement (BAA) with them, with <code>ANTHROPIC_API_KEY</code> or{" "}
+            <code>OPENAI_API_KEY</code> set on the server.
           </p>
           <label className="checkbox-inline">
-            <input type="checkbox" name="documentAiEnabled" defaultChecked={s.documentAiEnabled} /> Read uploaded patient documents with Claude AI
+            <input type="checkbox" name="documentAiEnabled" defaultChecked={s.documentAiEnabled} /> Read uploaded patient documents with AI
           </label>
-          <p className={claudeConfigured() ? "muted" : "gw-missing"} style={{ margin: "0.4rem 0 0" }}>
-            {claudeConfigured()
-              ? "An Anthropic API key is configured on this server."
-              : "No Anthropic API key is configured on this server, so documents are read on this computer even when this is ticked."}
+          <p className={documentAiProvider() ? "muted" : "gw-missing"} style={{ margin: "0.4rem 0 0" }}>
+            {documentAiProvider()
+              ? `${documentAiLabel[documentAiProvider()!]} is configured on this server and will read the documents.`
+              : "No AI key is configured on this server, so documents are read on this computer even when this is ticked."}
           </p>
         </section>
 

@@ -425,6 +425,11 @@ function Eligibility({ patientId, ins, checks, nameOf }: { patientId: string; in
               Check eligibility
             </button>
           </form>
+          {latest?.benefits && (
+            <Link className="btn secondary" href={`/patients/${patientId}/insurance/benefits/${latest.id}`}>
+              View / print benefits
+            </Link>
+          )}
         </div>
       </div>
       {checks.length > 1 && (

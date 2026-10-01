@@ -12,7 +12,7 @@ import { runEligibilityCheck } from "@/lib/clearinghouse/service";
 import { placeOfServiceLabel } from "@/lib/superbill";
 import { buildOccurrences, findConflicts } from "@/lib/schedule-conflicts";
 import { PATIENT_EDIT_ROLES, canWorkTeam } from "@/lib/gateway";
-import { openIntakeCase } from "@/lib/intake";
+import { fillCaseFromDocuments, openIntakeCase } from "@/lib/intake";
 import { RegistrationError, readPatientForm, readPatientPhoto, saveInsuranceBlocks } from "@/lib/patient-registration";
 import { ScanError, fileScan, saveScanFiles, uploadedFiles } from "@/lib/scans";
 
@@ -70,6 +70,8 @@ export async function createPatient(formData: FormData) {
     const mine = await prisma.patientDocument.findMany({ where: { id: { in: readIds }, practiceId: user.practiceId, patientId: null }, select: { id: true } });
     await prisma.patientDocument.updateMany({ where: { id: { in: mine.map((d) => d.id) } }, data: { patientId, intakeCaseId: intake.id } });
     for (const d of mine) await fileScan(d.id, { rename: true, reviewedById: user.id });
+    // What the documents say about the referral source and PCP goes onto the gateway case.
+    await fillCaseFromDocuments(intake.id, mine.map((d) => d.id));
     if (mine.length) await logAudit(user.practiceId, user.id, "FILE_REGISTRATION_DOCUMENTS", "Patient", patientId, `${mine.length} document(s) filed under Scans`);
   }
   // Documents chosen but not read first are stored now, then read, classified and named in the background.

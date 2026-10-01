@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { collectValues, parseFields, type DocValues } from "@/lib/chart-forms";
+import { collectValues, parseFields, typedSignature, type DocValues } from "@/lib/chart-forms";
 import { saveUpload } from "@/lib/storage";
 import { processDocument } from "@/lib/document-reader";
 import { LOCK_MINUTES, MAX_DOB_ATTEMPTS, isPortalVerified, loadPortalRequest, portalState, startPortalSession } from "@/lib/connect/portal";
@@ -56,8 +56,11 @@ export async function saveStep(token: string, step: number, fd: FormData) {
   const previous: DocValues = answers[t.key] ?? {};
   const { values } = collectValues(fields, fd);
 
-  // Keep a signature already on file when the pad wasn't redrawn.
-  for (const f of fields.filter((x) => x.type === "signature")) if (!values[f.id] && previous[f.id]) values[f.id] = previous[f.id];
+  // A signature already on file keeps its original time unless the signer typed a different name.
+  for (const f of fields.filter((x) => x.type === "signature")) {
+    const before = typedSignature(previous[f.id]);
+    if (before && typedSignature(values[f.id])?.name === before.name) values[f.id] = previous[f.id];
+  }
   // Photos / files are filed straight into Patient documents and read automatically.
   let uploadError: string | null = null;
   for (const f of fields.filter((x) => x.type === "file")) {

@@ -49,6 +49,7 @@ export const READ_METHODS: Record<string, string> = {
   TEXT: "PDF text",
   OCR: "OCR (scanned)",
   CLAUDE: "Claude AI",
+  OPENAI: "OpenAI",
   PATIENT: "Entered by the patient",
 };
 
