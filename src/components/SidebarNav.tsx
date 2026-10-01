@@ -35,6 +35,30 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M3 10h18M8 3v4M16 3v4M8 14h2M14 14h2M8 17h2" {...s} />
     </>
   ),
+  tasks: (
+    <>
+      <path d="M4 5h16v11H8l-4 4z" {...s} />
+      <path d="M8 10l2 2 4-4" {...s} />
+    </>
+  ),
+  orders: (
+    <>
+      <path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4A2 2 0 0 0 19 18l-5-9V3" {...s} />
+      <path d="M7.5 14h9" {...s} />
+    </>
+  ),
+  referral: (
+    <>
+      <path d="M4 12h12M12 7l5 5-5 5" {...s} />
+      <path d="M20 4v16" {...s} />
+    </>
+  ),
+  reports: (
+    <>
+      <path d="M4 20V4M4 20h16" {...s} />
+      <path d="M8 16v-4M12 16V8M16 16v-6" {...s} />
+    </>
+  ),
   flow: (
     <>
       <rect x="3" y="4" width="5" height="16" rx="1.5" {...s} />

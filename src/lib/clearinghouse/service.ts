@@ -32,7 +32,7 @@ export async function runEligibilityCheck(params: {
     serviceDate: new Date(),
   });
 
-  return prisma.eligibilityCheck.create({
+  const check = await prisma.eligibilityCheck.create({
     data: {
       practiceId: params.practiceId,
       patientId: params.patientId,
@@ -47,4 +47,9 @@ export async function runEligibilityCheck(params: {
       payerMessage: result.payerMessage ?? null,
     },
   });
+  // The visit's expected copay follows the latest eligibility response.
+  if (params.appointmentId && result.copayCents !== undefined && result.copayCents !== null) {
+    await prisma.appointment.updateMany({ where: { id: params.appointmentId }, data: { copayDueCents: result.copayCents } });
+  }
+  return check;
 }

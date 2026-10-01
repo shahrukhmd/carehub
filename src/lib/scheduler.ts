@@ -51,6 +51,7 @@ export type ColorPair = { text: string; bg: string };
 
 // The status a visit shows on the calendar: the chart's workflow status once started, else the appointment's.
 export const CALENDAR_STATUSES: [string, string, ColorPair][] = [
+  ["REQUESTED", "Requested online (needs approval)", { text: "#000000", bg: "#fde68a" }],
   ["SCHEDULED", "Scheduled", { text: "#000000", bg: "#3cc39a" }],
   ["CONFIRMED", "Confirmed", { text: "#000000", bg: "#d77ba5" }],
   ["CHECKED_IN", "Check-In", { text: "#000000", bg: "#fcd8ae" }],

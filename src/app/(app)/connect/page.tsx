@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatTime, patientName } from "@/lib/format";
 import { parseFields } from "@/lib/chart-forms";
 import { CONNECT_ROLES, ensureConnectSetup, publicBase } from "@/lib/connect/core";
-import { getVisitTypes } from "@/lib/scheduler-setup";
+import { getVisitTypes, visitTypeNames } from "@/lib/scheduler-setup";
 import { CopyButton } from "@/components/CopyButton";
 import {
   cancelRequest,
@@ -21,9 +21,17 @@ import {
   saveRule,
   sendPacket,
   toggleKiosk,
+  cancelPaymentLink,
+  reviewBooking,
+  saveBookingSettings,
+  savePaymentSettings,
+  sendPaymentLink,
 } from "./actions";
+import { PAYMENT_PROVIDERS, PAYMENT_ROLES, patientBalance } from "@/lib/connect/payments";
+import { testPaymentsAllowed } from "@/lib/connect/pay-session";
+import { formatMoney } from "@/lib/format";
 
-type Search = { tab?: string; error?: string; saved?: string; sent?: string; ran?: string; reminded?: string; resent?: string; edit?: string; status?: string; patientId?: string; appointmentId?: string };
+type Search = { payLink?: string; tab?: string; error?: string; saved?: string; sent?: string; ran?: string; reminded?: string; resent?: string; edit?: string; status?: string; patientId?: string; appointmentId?: string };
 
 const TABS: [string, string, boolean][] = [
   ["overview", "Overview", false],
@@ -31,6 +39,8 @@ const TABS: [string, string, boolean][] = [
   ["reminders", "Reminders", false],
   ["messages", "Messages", false],
   ["surveys", "Surveys", false],
+  ["booking", "Online booking", false],
+  ["payments", "Payments", false],
   ["packets", "Packets", true],
   ["forms", "Patient forms", true],
   ["automations", "Automations", true],
@@ -110,6 +120,8 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
       {tab === "automations" && <Automations practiceId={user.practiceId} />}
       {tab === "kiosk" && <Kiosk practiceId={user.practiceId} />}
       {tab === "settings" && <Branding s={settings} />}
+      {tab === "booking" && <Booking practiceId={user.practiceId} admin={admin} s={settings} />}
+      {tab === "payments" && <Payments practiceId={user.practiceId} role={user.role} s={settings} payLink={sp.payLink} />}
     </div>
   );
 }
@@ -1022,5 +1034,319 @@ function Branding({ s }: { s: Awaited<ReturnType<typeof prisma.connectSettings.f
         </div>
       </form>
     </section>
+  );
+}
+
+// ---- Online booking ----
+
+type Settings = Awaited<ReturnType<typeof prisma.connectSettings.findUniqueOrThrow>>;
+
+async function Booking({ practiceId, admin, s }: { practiceId: string; admin: boolean; s: Settings }) {
+  const typeName = await visitTypeNames(practiceId);
+  const [requests, types, recent, url] = await Promise.all([
+    prisma.appointment.findMany({ where: { practiceId, status: "REQUESTED" }, include: { patient: true, provider: true, location: true }, orderBy: { startsAt: "asc" } }),
+    prisma.visitType.findMany({ where: { practiceId, active: true, onlineBooking: true }, orderBy: { name: "asc" } }),
+    prisma.appointment.findMany({ where: { practiceId, bookingSource: "ONLINE", status: { not: "REQUESTED" } }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 20 }),
+    base(),
+  ]);
+  const link = s.bookingToken ? `${url}/book/${s.bookingToken}` : null;
+  return (
+    <>
+      <section className="panel">
+        <div className="cn-head">
+          <h2>Requests waiting for approval ({requests.length})</h2>
+        </div>
+        {requests.length === 0 ? (
+          <p className="muted">No online requests waiting.</p>
+        ) : (
+          <table className="cn-table">
+            <thead>
+              <tr>
+                <th>Requested time</th>
+                <th>Patient</th>
+                <th>Visit</th>
+                <th>Details</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    {formatDate(a.startsAt)} {formatTime(a.startsAt)}
+                    <div className="muted cn-small">received {formatDate(a.createdAt)}</div>
+                  </td>
+                  <td>
+                    <Link href={`/patients/${a.patientId}`}>{patientName(a.patient)}</Link>
+                    <div className="muted cn-small">
+                      {formatDate(a.patient.dob)} · {a.patient.phone}
+                    </div>
+                  </td>
+                  <td>
+                    {typeName[a.visitType] ?? a.visitType}
+                    <div className="muted cn-small">
+                      {a.provider.name} · {a.location.name}
+                    </div>
+                  </td>
+                  <td className="cn-small">{a.bookingNote}</td>
+                  <td>
+                    <form action={reviewBooking.bind(null, a.id)} className="cn-actions">
+                      <button className="btn secondary gw-mini" type="submit" name="decision" value="approve">
+                        Approve
+                      </button>
+                      <input name="note" placeholder="Reason if declining" aria-label="Decline reason" style={{ width: "10rem" }} />
+                      <button className="btn ghost gw-mini" type="submit" name="decision" value="decline">
+                        Decline
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+      <section className="panel">
+        <h2>Online booking page</h2>
+        {link && s.bookingEnabled ? (
+          <div className="cn-sent" style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+            <div className="cn-qr" dangerouslySetInnerHTML={{ __html: await qr(link) }} />
+            <div>
+              <p>
+                <code className="cn-link">{link}</code> <CopyButton text={link} />
+              </p>
+              <p className="muted cn-small">Put this link on your website, Google Business profile and texts. Patients see open times from provider schedules.</p>
+            </div>
+          </div>
+        ) : (
+          <p className="muted">Online booking is off.</p>
+        )}
+        <p className="muted cn-small">
+          Bookable visit types: {types.length ? types.map((t) => t.name).join(", ") : "none"} —{" "}
+          {admin ? <Link href="/settings/scheduling?tab=types">choose in Scheduler admin</Link> : "set in Scheduler admin"}. Open times come from{" "}
+          <Link href="/schedule/availability">provider availability</Link>, minus booked visits, reserved time, office hours and clinic closures.
+        </p>
+        {admin && (
+          <form action={saveBookingSettings} className="form-grid gw-grid-3">
+            <label className="checkbox-inline">
+              <input type="checkbox" name="bookingEnabled" defaultChecked={s.bookingEnabled} /> Online booking on
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="bookingApproval" defaultChecked={s.bookingApproval} /> Staff approve each request
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="bookingNewPatients" defaultChecked={s.bookingNewPatients} /> New patients can book
+            </label>
+            <label>
+              Earliest booking (hours from now)
+              <input type="number" name="bookingLeadHours" min={0} max={336} defaultValue={s.bookingLeadHours} />
+            </label>
+            <label>
+              Book up to (days ahead)
+              <input type="number" name="bookingWindowDays" min={1} max={120} defaultValue={s.bookingWindowDays} />
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="newLink" /> Make a new link (old one stops working)
+            </label>
+            <label className="gw-span-3">
+              Message on the booking page
+              <input name="bookingMessage" defaultValue={s.bookingMessage ?? ""} placeholder="e.g. For new wounds please bring your medication list and insurance card." />
+            </label>
+            <button className="btn" type="submit">
+              Save booking settings
+            </button>
+          </form>
+        )}
+      </section>
+      {recent.length > 0 && (
+        <section className="panel">
+          <h2>Recent online bookings</h2>
+          <table className="cn-table">
+            <tbody>
+              {recent.map((a) => (
+                <tr key={a.id}>
+                  <td>
+                    {formatDate(a.startsAt)} {formatTime(a.startsAt)}
+                  </td>
+                  <td>{patientName(a.patient)}</td>
+                  <td>{typeName[a.visitType] ?? a.visitType}</td>
+                  <td>{a.status === "CANCELLED" ? <span className="cn-status cn-cancelled">{a.cancelReason ?? "Cancelled"}</span> : <span className="cn-status cn-completed">Booked</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+    </>
+  );
+}
+
+// ---- Payments ----
+
+const PAY_STATUS: Record<string, string> = { SENT: "Sent", PAID: "Paid", CANCELLED: "Replaced / cancelled", EXPIRED: "Expired" };
+
+async function Payments({ practiceId, role, s, payLink }: { practiceId: string; role: string; s: Settings; payLink?: string }) {
+  const canSend = PAYMENT_ROLES.includes(role);
+  const [links, owing, url] = await Promise.all([
+    prisma.patientPayment.findMany({ where: { practiceId }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 100 }),
+    prisma.patient.findMany({
+      where: { practiceId, claims: { some: { balanceResponsibility: "PATIENT", status: { notIn: ["VOID", "PAID", "WRITTEN_OFF"] } } } },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      take: 200,
+    }),
+    base(),
+  ]);
+  const balances = await Promise.all(owing.map(async (p) => ({ p, total: (await patientBalance(p.id)).totalCents })));
+  const due = balances.filter((b) => b.total > 0);
+  const just = payLink ? links.find((l) => l.id === payLink) : undefined;
+  const paid30 = links.filter((l) => l.status === "PAID" && l.paidAt && l.paidAt.getTime() > Date.now() - 30 * 86_400_000);
+  return (
+    <>
+      {just && (
+        <section className="panel cn-sent">
+          <div>
+            <h2>Payment link for {patientName(just.patient)}</h2>
+            <p>
+              <code className="cn-link">{`${url}/pay/${just.token}`}</code> <CopyButton text={`${url}/pay/${just.token}`} />
+            </p>
+          </div>
+        </section>
+      )}
+      <section className="grid-stats">
+        <div className="stat">
+          <span>Patients with a balance</span>
+          <strong>{due.length}</strong>
+        </div>
+        <div className="stat">
+          <span>Patient balances</span>
+          <strong>{formatMoney(due.reduce((x, b) => x + b.total, 0))}</strong>
+        </div>
+        <div className="stat">
+          <span>Paid online · 30 days</span>
+          <strong>
+            {paid30.length} · {formatMoney(paid30.reduce((x, l) => x + (l.amountCents ?? 0), 0))}
+          </strong>
+        </div>
+      </section>
+      {!s.paymentsEnabled && <p className="cn-note">Online payments are off. An administrator can turn them on below.</p>}
+      <section className="panel">
+        <h2>Patient balances</h2>
+        {due.length === 0 ? (
+          <p className="muted">No patient balances.</p>
+        ) : (
+          <table className="cn-table">
+            <thead>
+              <tr>
+                <th>Patient</th>
+                <th>Balance</th>
+                <th>Contact</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {due.map(({ p, total }) => (
+                <tr key={p.id}>
+                  <td>
+                    <Link href={`/patients/${p.id}`}>{patientName(p)}</Link>
+                  </td>
+                  <td>{formatMoney(total)}</td>
+                  <td className="cn-small">{[p.phone, p.email].filter(Boolean).join(" · ") || "—"}</td>
+                  <td>
+                    {canSend && s.paymentsEnabled && (
+                      <form action={sendPaymentLink.bind(null, p.id)} className="cn-actions">
+                        <input type="hidden" name="back" value="/connect?tab=payments" />
+                        <select name="channel" defaultValue="BOTH" aria-label="Send by">
+                          <option value="BOTH">Text + email</option>
+                          <option value="SMS">Text</option>
+                          <option value="EMAIL">Email</option>
+                          <option value="LINK">Link only</option>
+                        </select>
+                        <button className="btn secondary gw-mini" type="submit">
+                          Send pay link
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+      <section className="panel">
+        <h2>Payment links</h2>
+        {links.length === 0 ? (
+          <p className="muted">None sent yet.</p>
+        ) : (
+          <table className="cn-table">
+            <thead>
+              <tr>
+                <th>Sent</th>
+                <th>Patient</th>
+                <th>Balance</th>
+                <th>Status</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {links.map((l) => (
+                <tr key={l.id}>
+                  <td>{formatDate(l.createdAt)}</td>
+                  <td>{patientName(l.patient)}</td>
+                  <td>{formatMoney(l.balanceCents)}</td>
+                  <td>
+                    <span className={`cn-status ${l.status === "PAID" ? "cn-completed" : l.status === "SENT" ? "cn-sent" : "cn-expired"}`}>{PAY_STATUS[l.status] ?? l.status}</span>
+                    {l.status === "PAID" && (
+                      <div className="muted cn-small">
+                        {formatMoney(l.amountCents ?? 0)} on {l.paidAt ? formatDate(l.paidAt) : ""} · {l.providerRef}
+                      </div>
+                    )}
+                  </td>
+                  <td className="cn-actions">
+                    {l.status === "SENT" && <CopyButton text={`${url}/pay/${l.token}`} />}
+                    {l.status === "SENT" && canSend && (
+                      <form action={cancelPaymentLink.bind(null, l.id)}>
+                        <button className="btn ghost gw-mini" type="submit">
+                          Cancel
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+      {role === "ADMIN" && (
+        <section className="panel">
+          <h2>Payment settings</h2>
+          <form action={savePaymentSettings} className="form-grid gw-grid-3">
+            <label className="checkbox-inline">
+              <input type="checkbox" name="paymentsEnabled" defaultChecked={s.paymentsEnabled} /> Online payments on
+            </label>
+            <label>
+              Card processor
+              <select name="paymentProvider" defaultValue={s.paymentProvider}>
+                {Object.entries(PAYMENT_PROVIDERS).map(([k, l]) => (
+                  <option key={k} value={k}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="btn" type="submit">
+              Save
+            </button>
+          </form>
+          <p className="muted cn-small">
+            Patients enter their card only on the processor&apos;s secure hosted page — CareHub never sees or stores card numbers. Stripe needs the practice&apos;s
+            secret key set as <code>STRIPE_SECRET_KEY</code> on the server ({process.env.STRIPE_SECRET_KEY ? "set" : "not set"}). Test mode simulates payments and
+            {testPaymentsAllowed() ? " is available on this server." : " is disabled on this production server."} Payments post as patient deposits (card) and apply
+            to the oldest balances first.
+          </p>
+        </section>
+      )}
+    </>
   );
 }

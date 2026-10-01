@@ -153,6 +153,24 @@ const CODE39: Record<string, string> = {
   U: "wwnnnnnnw", V: "nwwnnnnnw", W: "wwwnnnnnn", X: "nwnnwnnnw", Y: "wwnnwnnnn", Z: "nwwnwnnnn", "-": "nwnnnnwnw", ".": "wwnnnnwnn", " ": "nwwnnnwnn", "*": "nwnnwnwnn",
 };
 
+// Code 39 barcode (0-9, A-Z, - . space) drawn as bars; returns the width used.
+export function drawCode39(page: import("pdf-lib").PDFPage, value: string, x: number, y: number, height = 28, narrow = 0.9) {
+  const text = `*${value.toUpperCase().replace(/[^0-9A-Z.\- ]/g, "")}*`;
+  const wide = narrow * 2.5;
+  let bx = x;
+  for (const ch of text) {
+    const pat = CODE39[ch];
+    if (!pat) continue;
+    [...pat].forEach((w, k) => {
+      const width = w === "w" ? wide : narrow;
+      if (k % 2 === 0) page.drawRectangle({ x: bx, y, width, height, color: rgb(0, 0, 0) });
+      bx += width;
+    });
+    bx += narrow;
+  }
+  return bx - x;
+}
+
 export type LabelKind = "chart" | "address" | "barcode";
 
 export async function labelSheetPdf(kind: LabelKind, p: { firstName: string; lastName: string; dob: Date; mrn: string; sex: string; addressLine1: string | null; city: string | null; state: string | null; zip: string | null; phone: string | null }, count: number, startAt = 1) {
@@ -177,19 +195,7 @@ export async function labelSheetPdf(kind: LabelKind, p: { firstName: string; las
       line(`MRN ${p.mrn}`, 32);
       if (p.phone) line(p.phone, 44, 8);
     } else {
-      const text = `*${p.mrn.toUpperCase().replace(/[^0-9A-Z.\- ]/g, "")}*`;
-      const narrow = 0.9, wide = narrow * 2.5;
-      let bx = x;
-      for (const ch of text) {
-        const pat = CODE39[ch];
-        if (!pat) continue;
-        [...pat].forEach((w, k) => {
-          const width = w === "w" ? wide : narrow;
-          if (k % 2 === 0) page.drawRectangle({ x: bx, y: yTop - 34, width, height: 28, color: rgb(0, 0, 0) });
-          bx += width;
-        });
-        bx += narrow;
-      }
+      drawCode39(page, p.mrn, x, yTop - 34);
       line(`${p.lastName}, ${p.firstName}  ·  ${p.mrn}`, 46, 8, true);
     }
   }

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { logClaimEvent, refreshVisitBillingStatus } from "@/lib/claims";
 import { claimNumber } from "@/lib/claim-format";
+import { applyPatientCredit } from "@/lib/checkout";
 
 // X12 835 (Health Care Claim Payment/Advice) reading, claim matching and auto-posting.
 
@@ -31,6 +32,33 @@ export type ParsedEra = {
   paymentDate: Date | null;
   totalCents: number;
   claims: ParsedEraClaim[];
+  // Provider-level adjustments (PLB): positive reduces the payment, negative (e.g. interest) adds to it.
+  plb: EraPlb[];
+};
+
+export type EraPlb = { reason: string; reference: string; cents: number };
+
+export const PLB_REASONS: Record<string, string> = {
+  L6: "Interest owed",
+  WO: "Overpayment recovery",
+  FB: "Forwarding balance",
+  CS: "Adjustment",
+  "72": "Authorized return",
+  J1: "Non-reimbursable",
+  "50": "Late charge",
+  L3: "Penalty",
+  AP: "Acceleration of benefits",
+  B2: "Rebate",
+  LE: "Levy",
+  WU: "Unspecified recovery",
+  IR: "Internal Revenue Service withholding",
+  "90": "Early payment allowance",
+  BD: "Bad debt adjustment",
+  C5: "Temporary allowance",
+  OA: "Organ acquisition",
+  RA: "Retro-activity adjustment",
+  SL: "Student loan repayment",
+  TL: "Third party liability",
 };
 
 export const CAS_GROUPS: Record<string, string> = {
@@ -126,7 +154,7 @@ export function parse835(text: string): ParsedEra {
     .map((s) => s.split(elementSep));
   if (!segments.some((s) => s[0] === "ST" && s[1] === "835")) throw new Error("No 835 transaction found in this file.");
 
-  const era: ParsedEra = { payerName: "Unknown payer", payerId: null, payeeName: null, payeeNpi: null, paymentMethod: "NON", traceNumber: null, paymentDate: null, totalCents: 0, claims: [] };
+  const era: ParsedEra = { payerName: "Unknown payer", payerId: null, payeeName: null, payeeNpi: null, paymentMethod: "NON", traceNumber: null, paymentDate: null, totalCents: 0, claims: [], plb: [] };
   let claim: ParsedEraClaim | null = null;
   let line: EraLine | null = null;
   let loop: "header" | "payer" | "payee" | "claim" = "header";
@@ -175,6 +203,13 @@ export function parse835(text: string): ParsedEra {
       claim.lines.push(line);
     } else if (tag === "LQ" && claim) {
       claim.remarks.push(el[2]);
+    } else if (tag === "PLB") {
+      // PLB*provider id*fiscal date*reason:reference*amount (up to six pairs)
+      for (let i = 3; i + 1 < el.length; i += 2) {
+        if (!el[i]) continue;
+        const [reason, reference = ""] = el[i].split(compSep);
+        era.plb.push({ reason, reference, cents: cents(el[i + 1]) });
+      }
     } else if (tag === "MIA" || tag === "MOA") {
       if (claim) claim.remarks.push(...el.slice(1).filter((v) => /^[MN]A?\d+/.test(v)));
     }
@@ -209,6 +244,8 @@ export async function importEra(practiceId: string, fileName: string, text: stri
       paymentDate: era.paymentDate,
       totalCents: era.totalCents,
       raw: text.slice(0, 2_000_000),
+      plbCents: era.plb.reduce((sum, x) => sum + x.cents, 0),
+      plbDetail: JSON.stringify(era.plb),
       importedById: userId,
     },
   });
@@ -270,7 +307,7 @@ export async function postEra(eraFileId: string, practiceId: string, userId: str
         checkNumber: file.traceNumber,
         totalCents: file.totalCents,
         unappliedCents: file.totalCents,
-        note: `ERA ${file.fileName}`,
+        note: `ERA ${file.fileName}${file.plbCents ? ` · provider adjustments $${(file.plbCents / 100).toFixed(2)}` : ""}`,
       },
     });
     depositId = dep.id;
@@ -285,6 +322,10 @@ export async function postEra(eraFileId: string, practiceId: string, userId: str
       result.messages.push(msg);
     } else result.posted++;
   }
+  // Copays collected at the desk now apply to whatever the patient owes after this remittance.
+  const posted = await prisma.eraClaim.findMany({ where: { eraFileId: file.id, matchStatus: "POSTED", claimId: { not: null } }, select: { claimId: true } });
+  const patients = await prisma.claim.findMany({ where: { id: { in: posted.map((p) => p.claimId!) } }, select: { patientId: true } });
+  for (const pid of new Set(patients.map((p) => p.patientId))) await applyPatientCredit(pid, userId);
   const left = await prisma.eraClaim.count({ where: { eraFileId: file.id, matchStatus: { in: ["MATCHED", "UNMATCHED"] } } });
   await prisma.eraFile.update({ where: { id: file.id }, data: { status: left ? "PARTIAL" : "POSTED", postedAt: new Date() } });
   await logAudit(practiceId, userId, "POST_ERA", "EraFile", file.id, `${result.posted} posted, ${result.skipped} skipped`);

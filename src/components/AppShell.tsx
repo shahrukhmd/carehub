@@ -10,6 +10,7 @@ import { PatientSearchPanel } from "@/components/PatientSearchPanel";
 import { PATIENT_VIEW_ROLES, canWorkTeam } from "@/lib/gateway";
 
 const nav = [
+  { href: "/tasks", label: "Tasks & messages", icon: "tasks", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] },
   { href: "/credentialing", label: "Credentialing", icon: "credentialing", roles: ["ADMIN", "CREDENTIALING"] },
   { href: "/", label: "Patient Gateway", icon: "gateway", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] },
   { href: "/connect", label: "Patient Connect", icon: "connect", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] },
@@ -17,9 +18,12 @@ const nav = [
   { href: "/flow", label: "Flow board", icon: "flow", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER", "INTAKE"] },
   { href: "/recalls", label: "Recalls", icon: "recall", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN", "INTAKE"] },
   { href: "/encounters", label: "Visit worklist", icon: "visits", roles: ["ADMIN", "CLINICIAN", "CDS", "BILLER", "FRONT_DESK", "SCHEDULER"] },
+  { href: "/orders", label: "Lab & imaging orders", icon: "orders", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE"] },
+  { href: "/referrals", label: "Referrals", icon: "referral", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "SCHEDULER"] },
   { href: "/faxing", label: "Faxing", icon: "fax", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "SCHEDULER", "CLINICIAN"] },
   { href: "/billing", label: "Revenue cycle", icon: "revenue", roles: ["ADMIN", "BILLER"] },
   { href: "/statements", label: "Statements", icon: "statements", roles: ["ADMIN", "BILLER"] },
+  { href: "/reports", label: "Reports", icon: "reports", roles: ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"] },
   // Directories live under Settings; everyone who uses them sees Settings.
   { href: "/settings", label: "Settings", icon: "settings", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] },
 ];
@@ -37,18 +41,20 @@ export function AppShell({
   children,
   user,
   credentialingAlertCount = 0,
+  taskCount = 0,
   navCollapsed = true,
   systemMessages = [],
 }: {
   children: ReactNode;
   user: User & { practice: Practice; memberships: (Membership & { practice: Practice })[] };
   credentialingAlertCount?: number;
+  taskCount?: number;
   navCollapsed?: boolean;
   systemMessages?: { id: string; title: string; message: string; level: string; version: string }[];
 }) {
   const items = nav
     .filter((item) => item.roles.includes(user.role))
-    .map(({ href, label, icon }) => ({ href, label, icon, badge: href === "/credentialing" ? credentialingAlertCount : 0 }));
+    .map(({ href, label, icon }) => ({ href, label, icon, badge: href === "/credentialing" ? credentialingAlertCount : href === "/tasks" ? taskCount : 0 }));
 
   return (
     <div className={`app-shell${navCollapsed ? " nav-collapsed" : ""}`}>

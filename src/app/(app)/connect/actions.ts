@@ -16,7 +16,11 @@ import {
   runAutomations,
   sendAppointmentReminder,
   sendIntakeMessages,
+  sendMessage,
 } from "@/lib/connect/core";
+import { PAYMENT_ROLES, createPaymentLink } from "@/lib/connect/payments";
+import { formatDate, formatTime } from "@/lib/format";
+import { recordFlow } from "@/lib/flow";
 
 class ConnectError extends Error {}
 function fail(message: string): never {
@@ -247,5 +251,84 @@ export async function saveConnectSettings(fd: FormData) {
       },
     });
     await logAudit(user.practiceId, user.id, "UPDATE_CONNECT_SETTINGS", "ConnectSettings", user.practiceId, "branding & messaging");
+  });
+}
+
+// ---- Online bill pay ----
+
+export async function sendPaymentLink(patientId: string, fd: FormData) {
+  const back = safeBack(str(fd, "back"), "/connect?tab=payments");
+  return guarded(back, PAYMENT_ROLES, async (user) => {
+    const settings = await prisma.connectSettings.findUnique({ where: { practiceId: user.practiceId } });
+    if (!settings?.paymentsEnabled) fail("Turn on online payments in Patient Connect → Payments first.");
+    const channel = str(fd, "channel") as "SMS" | "EMAIL" | "BOTH" | "LINK";
+    if (!["SMS", "EMAIL", "BOTH", "LINK"].includes(channel)) fail("Choose how to send the link.");
+    try {
+      const r = await createPaymentLink(user.practiceId, patientId, user.id, channel, await origin());
+      return `${back}${back.includes("?") ? "&" : "?"}payLink=${r.pay.id}`;
+    } catch (err) {
+      fail((err as Error).message);
+    }
+  });
+}
+
+export async function cancelPaymentLink(id: string) {
+  return guarded("/connect?tab=payments", PAYMENT_ROLES, async (user) => {
+    await prisma.patientPayment.updateMany({ where: { id, practiceId: user.practiceId, status: "SENT" }, data: { status: "CANCELLED", sessionHash: null } });
+  });
+}
+
+export async function savePaymentSettings(fd: FormData) {
+  return guarded("/connect?tab=payments", ["ADMIN"], async (user) => {
+    const provider = str(fd, "paymentProvider") === "STRIPE" ? "STRIPE" : "TEST";
+    await prisma.connectSettings.update({ where: { practiceId: user.practiceId }, data: { paymentsEnabled: on(fd, "paymentsEnabled"), paymentProvider: provider } });
+    await logAudit(user.practiceId, user.id, "UPDATE_PAYMENT_SETTINGS", "ConnectSettings", user.practiceId, `${on(fd, "paymentsEnabled") ? "on" : "off"} · ${provider}`);
+  });
+}
+
+// ---- Online self-scheduling ----
+
+export async function saveBookingSettings(fd: FormData) {
+  return guarded("/connect?tab=booking", ["ADMIN"], async (user) => {
+    const s = await prisma.connectSettings.findUniqueOrThrow({ where: { practiceId: user.practiceId } });
+    const lead = Number(str(fd, "bookingLeadHours"));
+    const win = Number(str(fd, "bookingWindowDays"));
+    await prisma.connectSettings.update({
+      where: { practiceId: user.practiceId },
+      data: {
+        bookingEnabled: on(fd, "bookingEnabled"),
+        bookingApproval: on(fd, "bookingApproval"),
+        bookingNewPatients: on(fd, "bookingNewPatients"),
+        bookingLeadHours: Number.isInteger(lead) && lead >= 0 && lead <= 336 ? lead : 24,
+        bookingWindowDays: Number.isInteger(win) && win >= 1 && win <= 120 ? win : 30,
+        bookingMessage: str(fd, "bookingMessage").slice(0, 400) || null,
+        bookingToken: s.bookingToken && fd.get("newLink") !== "on" ? s.bookingToken : newToken(),
+      },
+    });
+    await logAudit(user.practiceId, user.id, "UPDATE_BOOKING_SETTINGS", "ConnectSettings", user.practiceId, on(fd, "bookingEnabled") ? "online booking on" : "online booking off");
+  });
+}
+
+export async function reviewBooking(appointmentId: string, fd: FormData) {
+  return guarded("/connect?tab=booking", CONNECT_ROLES, async (user) => {
+    const a = await prisma.appointment.findFirst({ where: { id: appointmentId, practiceId: user.practiceId, status: "REQUESTED" }, include: { patient: true, location: true, provider: true, practice: { include: { connectSettings: true } } } });
+    if (!a) fail("That request was already handled.");
+    const approve = str(fd, "decision") === "approve";
+    const note = str(fd, "note").slice(0, 200);
+    await prisma.appointment.update({
+      where: { id: a.id },
+      data: approve ? { status: "SCHEDULED" } : { status: "CANCELLED", cancelReason: `Online request declined${note ? ` — ${note}` : ""}`, cancelledAt: new Date() },
+    });
+    await recordFlow(a.id, approve ? "SCHEDULED" : "CANCELLED", user.id);
+    const clinic = a.practice.connectSettings?.displayName || a.practice.name;
+    const when = `${formatDate(a.startsAt)} at ${formatTime(a.startsAt)}`;
+    const body = approve
+      ? `${clinic}: your appointment on ${when} with ${a.provider.name} at ${a.location.name} is confirmed.`
+      : `${clinic}: we couldn't book your requested time on ${when}${note ? ` (${note})` : ""}. Please call ${a.practice.connectSettings?.supportPhone ?? "the office"} or pick another time online.`;
+    for (const ch of ["SMS", "EMAIL"] as const) {
+      const to = ch === "SMS" ? a.patient.phone : a.patient.email;
+      if (to) await sendMessage({ practiceId: user.practiceId, channel: ch, to, subject: `${clinic}: appointment ${approve ? "confirmed" : "request"}`, body, kind: "REMINDER", patientId: a.patientId, appointmentId: a.id, userId: user.id });
+    }
+    await logAudit(user.practiceId, user.id, approve ? "APPROVE_ONLINE_BOOKING" : "DECLINE_ONLINE_BOOKING", "Appointment", a.id, when);
   });
 }

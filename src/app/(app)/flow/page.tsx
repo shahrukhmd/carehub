@@ -175,6 +175,11 @@ export default async function FlowBoardPage({ searchParams }: { searchParams: Pr
                         </button>
                       </form>
                     )}
+                    {(key === "waiting" || key === "room" || key === "out") && (
+                      <Link className="btn ghost gw-mini" href={`/checkout?appointmentId=${a.id}`}>
+                        {a.copayDueCents ? `Copay $${(a.copayDueCents / 100).toFixed(0)}` : "Payment"}
+                      </Link>
+                    )}
                     {a.encounter ? (
                       <Link className="btn ghost gw-mini" href={`/encounters/${a.encounter.id}`}>
                         Chart

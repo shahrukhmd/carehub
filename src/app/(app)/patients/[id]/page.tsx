@@ -21,7 +21,7 @@ import { setGuarantorAccount, setPatientStatus } from "@/app/actions";
 import { QuickActions } from "@/components/QuickActions";
 import { PatientFormsPanel } from "@/app/(app)/connect/patient-forms-panel";
 import { CareGapsPanel } from "@/app/(app)/care-gaps/care-gaps-panel";
-import { ImmunizationsPanel, PrescriptionsPanel, RecallsPanel, RecordsPanel } from "./chart-panels";
+import { BalancePanel, ImmunizationsPanel, OrdersPanel, PatientTasksPanel, PrescriptionsPanel, RecallsPanel, RecordsPanel, ReferralsPanel } from "./chart-panels";
 import { startIntake } from "@/app/(app)/gateway/actions";
 import {
   PATIENT_EDIT_ROLES,
@@ -257,6 +257,7 @@ export default async function PatientChartPage({ params, searchParams }: { param
               </ul>
             </div>
           </section>
+          <OrdersPanel patientId={patient.id} role={user.role} />
           <PrescriptionsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
           <ImmunizationsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
         </div>
@@ -301,7 +302,10 @@ export default async function PatientChartPage({ params, searchParams }: { param
             )}
           </section>
           <PatientFormsPanel practiceId={user.practiceId} patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
+          <PatientTasksPanel patientId={patient.id} />
+          <ReferralsPanel patientId={patient.id} role={user.role} />
           <RecallsPanel patientId={patient.id} role={user.role} back={`/patients/${patient.id}`} />
+          <BalancePanel patientId={patient.id} role={user.role} />
           <RecordsPanel patientId={patient.id} role={user.role} sp={sp} />
           <section className="panel">
             <h2>Patient info</h2>

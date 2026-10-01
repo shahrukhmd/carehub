@@ -205,6 +205,7 @@ async function loadFacts(patientIds: string[]) {
       wounds: { where: { status: "ACTIVE" }, select: { etiology: true } },
       immunizations: { where: { source: { not: "REFUSED" } }, select: { vaccine: true, administeredAt: true } },
       labOrders: { include: { result: true } },
+      clinicalOrders: { where: { status: { not: "CANCELLED" } }, select: { kind: true, results: { select: { name: true, code: true, resultedAt: true } }, items: { select: { name: true } } } },
       careOverrides: { orderBy: { createdAt: "desc" } },
       encounters: {
         select: {
@@ -250,7 +251,10 @@ function lastSatisfied(satisfiedBy: string, p: PatientFacts[number]): Date | nul
   const any = (text: string) => arg.split("|").some((t) => t.trim() && text.toUpperCase().includes(t.toUpperCase()));
   switch (kind) {
     case "LAB":
-      return latest(p.labOrders.filter((o) => o.result && any(o.testName)).map((o) => o.result!.resultedAt));
+      return latest([
+        ...p.labOrders.filter((o) => o.result && any(o.testName)).map((o) => o.result!.resultedAt),
+        ...p.clinicalOrders.flatMap((o) => o.results.filter((r) => any(r.name) || any(r.code ?? "")).map((r) => r.resultedAt)),
+      ]);
     case "DOCUMENT":
       return latest(p.encounters.flatMap((e) => e.documents.filter((d) => d.template.key === arg).map((d) => d.completedAt ?? d.updatedAt)));
     case "VITALS_BP":

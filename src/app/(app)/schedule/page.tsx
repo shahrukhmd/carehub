@@ -317,6 +317,9 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           <form className="sc-next" method="get">
             <input name="next" defaultValue={nextQuery ?? ""} placeholder="Patient's next appointment" aria-label="Find a patient's next appointment" />
           </form>
+          <Link className="btn secondary" href="/schedule/eligibility">
+            Batch eligibility
+          </Link>
           <Link className="btn secondary" href="/schedule/availability">
             Manage availability
           </Link>
@@ -597,6 +600,11 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                         ) : a.reminderSentAt ? (
                           <div className="muted">Reminder sent {formatDate(a.reminderSentAt)}</div>
                         ) : null}
+                        {a.status !== "CANCELLED" && (
+                          <Link className="muted cn-small" href={`/checkout?appointmentId=${a.id}`}>
+                            {a.copayDueCents !== null ? `Copay ${formatMoney(a.copayDueCents)}` : "Check-out / payment"}
+                          </Link>
+                        )}
                       </td>
                       <td>
                         {a.eligibilityChecks[0] ? (

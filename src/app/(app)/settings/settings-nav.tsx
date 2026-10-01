@@ -38,6 +38,20 @@ export const SETTINGS_SECTIONS: { key: string; href: string; label: string; desc
     roles: ["ADMIN"],
   },
   {
+    key: "orders",
+    href: "/settings/orders",
+    label: "Labs & imaging",
+    description: "Labs, imaging and vascular centers you order from, and the test / study catalog",
+    roles: ["ADMIN"],
+  },
+  {
+    key: "import",
+    href: "/settings/import",
+    label: "Patient import",
+    description: "Bring patients over from another system with a CSV file — preview, check and undo",
+    roles: ["ADMIN"],
+  },
+  {
     key: "patients",
     href: "/settings/patients",
     label: "Duplicate patients",

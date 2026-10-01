@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 import { claimNumber, claimStatusLabel } from "@/lib/claim-format";
-import { CAS_GROUPS, CLP_STATUS, adjustmentText, allAdjustments, type EraAdjustment, type EraLine } from "@/lib/era";
+import { CAS_GROUPS, CLP_STATUS, PLB_REASONS, adjustmentText, allAdjustments, type EraAdjustment, type EraLine, type EraPlb } from "@/lib/era";
 import { postEraFile, setEraMatch, skipEraLine } from "../actions";
 
 const MATCH: Record<string, [string, string]> = {
@@ -36,6 +36,7 @@ export default async function EraPage({ params, searchParams }: { params: Promis
       })
     : [];
   const ready = file.claims.filter((c) => c.matchStatus === "MATCHED").length;
+  const plb = JSON.parse(file.plbDetail || "[]") as EraPlb[];
   const sum = (k: "paidCents" | "billedCents" | "patientRespCents") => file.claims.reduce((s, c) => s + c[k], 0);
 
   return (
@@ -90,10 +91,38 @@ export default async function EraPage({ params, searchParams }: { params: Promis
           <strong>{file.status === "POSTED" ? "Posted" : file.status === "PARTIAL" ? "Partly posted" : "Not posted"}</strong>
         </div>
       </section>
-      {sum("paidCents") !== file.totalCents && (
+      {plb.length > 0 && (
+        <section className="panel">
+          <h2>Provider-level adjustments (PLB)</h2>
+          <table className="cn-table">
+            <thead>
+              <tr>
+                <th>Reason</th>
+                <th>Reference</th>
+                <th>Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plb.map((x, i) => (
+                <tr key={i}>
+                  <td>
+                    {x.reason} · {PLB_REASONS[x.reason] ?? "Other"}
+                  </td>
+                  <td>{x.reference || "—"}</td>
+                  <td>{x.cents > 0 ? `− ${formatMoney(x.cents)}` : `+ ${formatMoney(-x.cents)}`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="muted cn-small">
+            Claim payments {formatMoney(sum("paidCents"))} {file.plbCents >= 0 ? "−" : "+"} provider adjustments {formatMoney(Math.abs(file.plbCents))} = {formatMoney(sum("paidCents") - file.plbCents)} (payment total {formatMoney(file.totalCents)}). Recoupments reduce this deposit; follow up on the referenced claims in AR.
+          </p>
+        </section>
+      )}
+      {sum("paidCents") - file.plbCents !== file.totalCents && (
         <p className="gw-error">
-          The claim payments on this remittance ({formatMoney(sum("paidCents"))}) don&apos;t add up to the payment total ({formatMoney(file.totalCents)}) — the
-          difference is usually a provider-level adjustment (PLB: interest, recoupment or withholding). Check the payer&apos;s EOB before posting.
+          The claim payments on this remittance ({formatMoney(sum("paidCents"))}){plb.length ? " less provider adjustments" : ""} don&apos;t add up to the payment
+          total ({formatMoney(file.totalCents)}). The file may be incomplete — check the payer&apos;s EOB before posting.
         </p>
       )}
       {file.depositId && (

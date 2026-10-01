@@ -1408,6 +1408,10 @@ export default async function EncounterPage({
                 <Link href={`/encounters/${encounter.id}/reports`}>Patient Reports</Link>
                 <Link href={hrefFor("scans")}>Scans</Link>
                 <Link href={`/encounters/${encounter.id}/wound-analysis`}>Wound Analysis</Link>
+                <Link href={`/orders/new?kind=LAB&patientId=${encounter.patientId}&encounterId=${encounter.id}`}>Order labs</Link>
+                <Link href={`/orders/new?kind=IMAGING&patientId=${encounter.patientId}&encounterId=${encounter.id}`}>Order imaging / vascular</Link>
+                <Link href={`/referrals/new?patientId=${encounter.patientId}&encounterId=${encounter.id}`}>Refer to specialist</Link>
+                <Link href={`/tasks?patientId=${encounter.patientId}#new`}>Message staff about patient</Link>
                 <Link href={hrefFor("connections")}>Connections</Link>
               </div>
             </details>

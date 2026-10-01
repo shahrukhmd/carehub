@@ -69,6 +69,7 @@ export const visitTypeLabel: Record<string, string> = {
 };
 
 export const appointmentStatusLabel: Record<string, string> = {
+  REQUESTED: "Requested online",
   SCHEDULED: "Scheduled",
   CONFIRMED: "Confirmed",
   CHECKED_IN: "Checked in",

@@ -55,6 +55,7 @@ export async function saveVisitTypes(fd: FormData) {
           durationMin: duration,
           billable: on(fd, `bill_${t.id}`),
           active: on(fd, `active_${t.id}`),
+          onlineBooking: on(fd, `online_${t.id}`),
           textColor: color(str(fd, `text_${t.id}`), t.textColor),
           bgColor: color(str(fd, `bg_${t.id}`), t.bgColor),
           sortOrder: Number.isFinite(order) ? Math.round(order) : t.sortOrder,

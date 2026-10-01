@@ -13,7 +13,7 @@ export async function respondToReminder(token: string, fd: FormData) {
   const a = await prisma.appointment.findUnique({ where: { confirmToken: token }, include: { encounter: true } });
   if (!a || a.startsAt < new Date() || ["CANCELLED", "COMPLETED", "NO_SHOW"].includes(a.status)) redirect(`/c/${token}`);
   const answer = String(fd.get("answer") ?? "");
-  if (answer === "confirm") {
+  if (answer === "confirm" && a.status !== "REQUESTED") {
     await prisma.appointment.update({
       where: { id: a.id },
       data: { status: a.status === "SCHEDULED" ? "CONFIRMED" : a.status, confirmedAt: new Date(), confirmedVia: "PATIENT_LINK" },

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { unlink } from "node:fs/promises";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import { completeSourceTasks, createTask } from "@/lib/tasks";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { saveUpload } from "@/lib/storage";
@@ -73,6 +74,17 @@ export async function receiveFax(fd: FormData) {
           if (read?.pageCount) await prisma.fax.update({ where: { id: fax.id }, data: { pages: read.pageCount } });
         })
         .catch(() => undefined);
+      await createTask({
+        practiceId: user.practiceId,
+        type: "DOCUMENT",
+        title: `Inbound fax from ${from} to file`,
+        body: str(fd, "notes") || null,
+        assignedRole: "INTAKE",
+        createdById: user.id,
+        link: "/faxing?tab=inbound",
+        sourceType: "FAX",
+        sourceId: fax.id,
+      });
       await logAudit(user.practiceId, user.id, "RECEIVE_FAX", "Fax", fax.id, from);
     }
   });
@@ -101,6 +113,7 @@ export async function fileFaxToPatient(id: string, fd: FormData) {
       await prisma.patientDocument.update({ where: { id: fax.documentId }, data: { patientId: patient.id, intakeCaseId, reviewedById: user.id, reviewedAt: new Date() } });
     }
     await prisma.fax.update({ where: { id: fax.id }, data: { status: "FILED", patientId: patient.id } });
+    await completeSourceTasks(user.practiceId, "FAX", fax.id, user.id);
     await logAudit(user.practiceId, user.id, "FILE_FAX", "Fax", fax.id, `to ${patient.mrn}`);
   });
 }

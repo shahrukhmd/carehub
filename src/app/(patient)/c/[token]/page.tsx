@@ -5,9 +5,9 @@ import { PortalShell } from "../../portal-shell";
 import { respondToReminder } from "./actions";
 
 // Reminder link: confirm or cancel. Shows only first name, time and place.
-export default async function ConfirmPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ done?: string }> }) {
+export default async function ConfirmPage({ params, searchParams }: { params: Promise<{ token: string }>; searchParams: Promise<{ done?: string; booked?: string }> }) {
   const { token } = await params;
-  const { done } = await searchParams;
+  const { done, booked } = await searchParams;
   if (!/^[A-Za-z0-9_-]{20,64}$/.test(token)) notFound();
   const a = await prisma.appointment.findUnique({
     where: { confirmToken: token },
@@ -27,11 +27,26 @@ export default async function ConfirmPage({ params, searchParams }: { params: Pr
           {a.location.name}
           {a.location.addressLine1 ? `, ${a.location.addressLine1}` : ""}
         </p>
+        {booked && a.status === "SCHEDULED" && <p className="pp-ok">✓ You&apos;re booked! We sent the details by text.</p>}
+        {a.status === "REQUESTED" && (
+          <p className="pp-ok">
+            Request received — the office will confirm by text{booked ? "" : " soon"}.
+          </p>
+        )}
         {a.status === "CANCELLED" ? (
           <p className="pp-error">This appointment is cancelled. Please call the office to reschedule.</p>
         ) : past ? (
           <p className="pp-muted">This appointment has already passed.</p>
-        ) : a.confirmedAt && done !== "cancel" ? (
+        ) : a.status === "REQUESTED" ? (
+          <form action={respondToReminder.bind(null, token)} className="pp-choice">
+            <details>
+              <summary>Cancel this request</summary>
+              <button className="pp-btn pp-btn-ghost" type="submit" name="answer" value="cancel">
+                Cancel request
+              </button>
+            </details>
+          </form>
+        ) : (a.confirmedAt || booked) && done !== "cancel" ? (
           <p className="pp-ok">✓ Confirmed — see you then!</p>
         ) : (
           <form action={respondToReminder.bind(null, token)} className="pp-choice">

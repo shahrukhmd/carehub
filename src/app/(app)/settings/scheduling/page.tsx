@@ -104,6 +104,9 @@ export default async function SchedulingSettingsPage({
         <td>
           <input type="checkbox" name={`active_${t.id}`} defaultChecked={t.active} aria-label={`${t.name} active`} />
         </td>
+        <td>
+          <input type="checkbox" name={`online_${t.id}`} defaultChecked={t.onlineBooking} aria-label={`${t.name} bookable online`} />
+        </td>
       </tr>
     ));
 
@@ -155,6 +158,7 @@ export default async function SchedulingSettingsPage({
                       <th>Colour (text / background)</th>
                       <th>Order</th>
                       <th>Active</th>
+                      <th title="Patients can book this type on the online booking page">Online booking</th>
                     </tr>
                   </thead>
                   <tbody>{typeRows(list as typeof types)}</tbody>

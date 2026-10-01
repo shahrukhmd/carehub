@@ -74,6 +74,14 @@ model Practice {
   clinicClosures    ClinicClosure[]
   apiClients        ApiClient[]
   duplicateDismissals DuplicateDismissal[]
+  patientPayments   PatientPayment[]
+  orderProviders    OrderProvider[]
+  orderCatalog      OrderCatalogItem[]
+  clinicalOrders    ClinicalOrder[]
+  receipts          Receipt[]
+  tasks             Task[]
+  outgoingReferrals OutgoingReferral[]
+  importBatches     ImportBatch[]
 }
 
 model Membership {
@@ -268,6 +276,11 @@ model Patient {
   prescriptions   Prescription[]
   immunizations   Immunization[]
   careOverrides   CareRuleOverride[]
+  payments        PatientPayment[]
+  clinicalOrders  ClinicalOrder[]
+  receipts        Receipt[]
+  tasks           Task[]
+  outgoingReferrals OutgoingReferral[]
 }
 
 model Insurance {
@@ -296,6 +309,8 @@ model Insurance {
   terminationDate   DateTime?
   active     Boolean  @default(true)
   claims     Claim[]
+  // Office-visit copay on the card / plan.
+  copayCents Int?
 }
 
 model Payer {
@@ -607,6 +622,11 @@ model Appointment {
   // Flow board: each status change with its time.
   events                AppointmentEvent[]
   recalls               Recall[]
+  // STAFF | ONLINE (patient self-scheduled)
+  bookingSource         String?
+  bookingNote           String?
+  // Copay expected at the visit (from eligibility or the insurance on file).
+  copayDueCents         Int?
 }
 
 model Encounter {
@@ -870,6 +890,8 @@ model Deposit {
   note           String?
   postedAt       DateTime @default(now())
   applications   PaymentApplication[]
+  // Front-desk collections (copays, prepayments) waiting to be applied to the patient's claims.
+  patientId      String?
 }
 
 model PaymentApplication {
@@ -1366,6 +1388,10 @@ model PracticeSettings {
   faxNumber        String?
   faxProvider      String   @default("MOCK")
   updatedAt        DateTime @updatedAt
+  // Run eligibility for the next business day's appointments every night.
+  eligibilityAuto Boolean @default(false)
+  // Days without a consult note before an outgoing referral needs follow-up.
+  referralFollowUpDays Int @default(30)
 }
 
 // Patient documents uploaded by the data entry team (referrals, face sheets, insurance cards...).
@@ -1426,6 +1452,8 @@ model VisitType {
   createdAt  DateTime @default(now())
 
   @@unique([practiceId, code])
+  // Patients can book this type themselves on the online booking page.
+  onlineBooking Boolean @default(false)
 }
 
 model SchedulerSettings {
@@ -1697,6 +1725,17 @@ model ConnectSettings {
   // Spanish forms offered when a form has a Spanish version (future).
   languages     String   @default("en")
   updatedAt     DateTime @updatedAt
+  // Online self-scheduling
+  bookingEnabled     Boolean @default(false)
+  bookingToken       String? @unique
+  bookingApproval    Boolean @default(true)
+  bookingNewPatients Boolean @default(true)
+  bookingLeadHours   Int     @default(24)
+  bookingWindowDays  Int     @default(30)
+  bookingMessage     String?
+  // Online bill pay: TEST (simulated) | STRIPE (hosted checkout)
+  paymentsEnabled    Boolean @default(false)
+  paymentProvider    String  @default("TEST")
 }
 
 // ---- ERA / 835 remittance ----
@@ -1726,6 +1765,9 @@ model EraFile {
   claims        EraClaim[]
 
   @@index([practiceId, createdAt])
+  // PLB provider-level adjustments (interest, recoupments, withholds): positive reduces the payment.
+  plbCents      Int      @default(0)
+  plbDetail     String   @default("[]")
 }
 
 model EraClaim {
@@ -1978,4 +2020,272 @@ model ApiClient {
   lastUsedAt  DateTime?
   createdById String?
   createdAt   DateTime  @default(now())
+}
+
+// ---- Online bill pay ----
+
+model PatientPayment {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  // Balance shown when the link was made; the patient may pay part of it.
+  balanceCents Int
+  amountCents Int?
+  // SENT | PAID | CANCELLED | EXPIRED
+  status      String    @default("SENT")
+  provider    String    @default("TEST")
+  providerRef String?
+  depositId   String?
+  sentVia     String?
+  expiresAt   DateTime
+  paidAt      DateTime?
+  receiptEmail String?
+  verifyAttempts Int     @default(0)
+  lockedUntil  DateTime?
+  sessionHash  String?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([practiceId, status])
+}
+
+// ---- Lab & imaging orders ----
+
+// A lab, imaging center or vascular lab the practice orders from.
+model OrderProvider {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // LAB | IMAGING
+  kind        String
+  name        String
+  phone       String?
+  fax         String?
+  accountNumber String?
+  // FAX | PRINT | ELECTRONIC (HL7 interface, needs the lab's connection)
+  sendMethod  String   @default("FAX")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  catalog     OrderCatalogItem[]
+  orders      ClinicalOrder[]
+}
+
+model OrderCatalogItem {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId  String?
+  provider    OrderProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  kind        String
+  // LOINC for labs, CPT for imaging
+  code        String
+  name        String
+  category    String?
+  specimen    String?
+  fasting     Boolean  @default(false)
+  favorite    Boolean  @default(true)
+  active      Boolean  @default(true)
+}
+
+model ClinicalOrder {
+  id            String   @id @default(cuid())
+  practiceId    String
+  practice      Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId   String?
+  kind          String
+  providerId    String?
+  provider      OrderProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  orderedById   String
+  // Requisition / placer order number printed on the requisition and returned in results.
+  requisition   String   @unique
+  // DRAFT | SIGNED | SENT | PARTIAL | RESULTED | REVIEWED | CANCELLED
+  status        String   @default("DRAFT")
+  // ROUTINE | URGENT | STAT
+  priority      String   @default("ROUTINE")
+  diagnosisCodes String?
+  clinicalNotes String?
+  fasting       Boolean  @default(false)
+  collectedAt   DateTime?
+  collectedBy   String?
+  scheduledFor  DateTime?
+  sentVia       String?
+  sentAt        DateTime?
+  faxId         String?
+  signedAt      DateTime?
+  cancelledReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  items         ClinicalOrderItem[]
+  results       ClinicalResult[]
+
+  @@index([practiceId, status])
+}
+
+model ClinicalOrderItem {
+  id        String        @id @default(cuid())
+  orderId   String
+  order     ClinicalOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  code      String
+  name      String
+  specimen  String?
+  // ORDERED | RESULTED | CANCELLED
+  status    String        @default("ORDERED")
+}
+
+model ClinicalResult {
+  id          String        @id @default(cuid())
+  orderId     String
+  order       ClinicalOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  code        String?
+  name        String
+  value       String?
+  unit        String?
+  referenceRange String?
+  // NORMAL | HIGH | LOW | ABNORMAL | CRITICAL
+  flag        String        @default("NORMAL")
+  // Imaging / pathology narrative (impression).
+  reportText  String?
+  documentId  String?
+  // MANUAL | HL7 | DOCUMENT
+  source      String        @default("MANUAL")
+  resultedAt  DateTime      @default(now())
+  reviewedById String?
+  reviewedAt  DateTime?
+  reviewNote  String?
+}
+
+// ---- Front-desk checkout ----
+
+model Receipt {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String?
+  encounterId String?
+  depositId   String?
+  number      String
+  // COPAY | BALANCE | PREPAY | OTHER
+  kind        String
+  amountCents Int
+  // CASH | CHECK | CARD | OTHER
+  method      String
+  reference   String?
+  note        String?
+  collectedById String?
+  voidedAt    DateTime?
+  voidReason  String?
+  createdAt   DateTime @default(now())
+
+  @@unique([practiceId, number])
+  @@index([practiceId, createdAt])
+}
+
+// ---- Tasks & staff messages ----
+
+model Task {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // MESSAGE | CALLBACK | LAB_RESULT | IMAGING_RESULT | REFILL | PRIOR_AUTH | REFERRAL | DOCUMENT | BILLING | GENERAL
+  type         String   @default("GENERAL")
+  title        String
+  body         String?
+  patientId    String?
+  patient      Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  assignedToId String?
+  // A team inbox when not assigned to one person (role code, e.g. FRONT_DESK).
+  assignedRole String?
+  createdById  String?
+  // LOW | NORMAL | HIGH | URGENT
+  priority     String   @default("NORMAL")
+  // OPEN | DONE | CANCELLED
+  status       String   @default("OPEN")
+  dueAt        DateTime?
+  link         String?
+  sourceType   String?
+  sourceId     String?
+  completedAt  DateTime?
+  completedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  comments     TaskComment[]
+
+  @@index([practiceId, status, assignedToId])
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String?
+  body      String
+  createdAt DateTime @default(now())
+}
+
+// ---- Outgoing referrals ----
+
+model OutgoingReferral {
+  id            String   @id @default(cuid())
+  practiceId    String
+  practice      Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId   String?
+  // Directory entry (referring / outside physician) or a free-text recipient.
+  toProviderId  String?
+  toName        String
+  toSpecialty   String?
+  toFax         String?
+  toPhone       String?
+  reason        String
+  diagnosisCodes String?
+  notes         String?
+  // ROUTINE | URGENT
+  urgency       String   @default("ROUTINE")
+  authNumber    String?
+  // DRAFT | SENT | SCHEDULED | CONSULT_RECEIVED | CLOSED | CANCELLED
+  status        String   @default("DRAFT")
+  sentVia       String?
+  sentAt        DateTime?
+  faxId         String?
+  letterDocumentId String?
+  appointmentAt DateTime?
+  consultDocumentId String?
+  consultReceivedAt DateTime?
+  followUpDays  Int      @default(30)
+  closedReason  String?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([practiceId, status])
+}
+
+// ---- Bulk patient import ----
+
+model ImportBatch {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  fileName    String
+  // PREVIEW | IMPORTED | UNDONE
+  status      String   @default("PREVIEW")
+  // JSON: column mapping, parsed rows with validation results
+  mapping     String   @default("{}")
+  rows        String   @default("[]")
+  totalRows   Int      @default(0)
+  createdCount Int     @default(0)
+  skippedCount Int     @default(0)
+  // JSON array of created patient ids (for undo)
+  createdIds  String   @default("[]")
+  createdById String?
+  createdAt   DateTime @default(now())
+  importedAt  DateTime?
 }

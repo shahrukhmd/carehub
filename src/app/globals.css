@@ -4700,3 +4700,245 @@ form.fb-room input {
     grid-template-columns: repeat(5, 14rem);
   }
 }
+
+/* ---- Patient portal: bill pay & booking ---- */
+.pp-bill {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #e2e6ec;
+  border-radius: 10px;
+}
+.pp-bill-total {
+  border: none;
+  font-size: 1.1rem;
+  padding-top: 0;
+}
+.pp-choice-set {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.pp-radio {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+.pp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.pp-tabs a {
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid #cfd5de;
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.pp-tabs a.active {
+  background: var(--pp-brand);
+  border-color: var(--pp-brand);
+  color: #fff;
+}
+.pp-day h2 {
+  font-size: 1rem;
+  margin: 0.4rem 0 0.5rem;
+}
+.pp-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  gap: 0.45rem;
+}
+.pp-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.55rem 0.4rem;
+  border: 1px solid var(--pp-accent);
+  border-radius: 10px;
+  color: var(--pp-brand);
+  font-weight: 700;
+  text-decoration: none;
+  text-align: center;
+}
+.pp-slot span {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+.pp-slot:hover,
+.pp-slot:focus-visible {
+  background: var(--pp-accent);
+  color: #fff;
+}
+.pp-slot:hover span,
+.pp-slot:focus-visible span {
+  color: #fff;
+}
+.pp-hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ---- Tasks & messages ---- */
+.tk-count {
+  display: inline-block;
+  min-width: 1.2rem;
+  margin-left: 0.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 0.72rem;
+  text-align: center;
+}
+.tk-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.tk-item {
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  padding: 0.5rem 0.6rem;
+}
+.tk-item.tk-high {
+  border-left-color: var(--amber);
+}
+.tk-item.tk-urgent {
+  border-left-color: var(--danger);
+  background: var(--danger-soft);
+}
+.tk-item.tk-overdue summary strong {
+  color: var(--danger);
+}
+.tk-item summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: baseline;
+}
+.tk-type {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--info);
+  background: var(--info-soft);
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+}
+.tk-meta {
+  margin-left: auto;
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  align-items: center;
+}
+.tk-body {
+  padding: 0.5rem 0 0.2rem 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.tk-text {
+  white-space: pre-line;
+  margin: 0;
+}
+.tk-comments {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.7rem;
+  border-left: 2px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+}
+.tk-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.tk-actions form {
+  margin: 0;
+}
+
+/* ---- Orders ---- */
+.or-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.or-group {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.or-group legend {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+.or-group .muted {
+  margin-left: auto;
+}
+.or-abn td {
+  background: var(--danger-soft);
+}
+.or-report {
+  white-space: pre-line;
+  font-size: 0.86rem;
+  margin-top: 0.2rem;
+}
+.or-result {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.or-result legend {
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.or-prov {
+  margin: 0.35rem 0;
+}
+.or-prov input {
+  width: 9rem;
+}
+.or-prov input[name="name"] {
+  width: 16rem;
+}
+
+/* ---- Patient import ---- */
+.im-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.5rem 0.8rem;
+  align-items: end;
+}
+.im-map label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.86rem;
+}
