@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
-export type NavItem = { href: string; label: string; icon: string; badge?: number };
+// group: heading shown above this item (first of its group). match: every path that belongs to the item.
+export type NavItem = { href: string; label: string; icon: string; badge?: number; group?: string; match?: string[] };
 
 const s = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
 
@@ -162,10 +163,11 @@ export function SidebarNav({ items, initialCollapsed, search }: { items: NavItem
       <nav aria-label="Main">
         {search}
         {items.map((item) => {
-          const active = isActive(pathname, item.href);
+          const active = (item.match ?? [item.href]).some((href) => isActive(pathname, href));
           return (
+            <Fragment key={item.href}>
+              {item.group && <span className="nav-group">{item.group}</span>}
             <Link
-              key={item.href}
               href={item.href}
               className={active ? "active" : undefined}
               aria-current={active ? "page" : undefined}
@@ -183,6 +185,7 @@ export function SidebarNav({ items, initialCollapsed, search }: { items: NavItem
                 </span>
               ) : null}
             </Link>
+            </Fragment>
           );
         })}
       </nav>

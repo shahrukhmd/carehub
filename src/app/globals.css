@@ -11,6 +11,11 @@
   --panel: #ffffff;
   --panel-alt: #f7f8fb;
   --line: #e2e6ec;
+  /* Dark chrome (side menu, avatar, primary dark surfaces), form fields, and soft shadows */
+  --chrome: #171342;
+  --chrome-light: #2b2568;
+  --field: #ffffff;
+  --shadow: 0 1px 2px rgba(23, 19, 66, 0.05);
 
   --accent: #4f9c60;
   --accent-dark: #3a7a49;
@@ -57,7 +62,7 @@ a {
 }
 
 .sidebar {
-  background: var(--navy);
+  background: var(--chrome);
   color: #e7e8f5;
   padding: 1.4rem 1rem;
   display: flex;
@@ -127,7 +132,7 @@ a {
 }
 
 .sidebar nav a:hover {
-  background: var(--navy-light);
+  background: var(--chrome-light);
   color: #ffffff;
 }
 
@@ -177,7 +182,7 @@ a {
   width: 2rem;
   height: 2rem;
   border-radius: 999px;
-  background: var(--navy);
+  background: var(--chrome);
   color: white;
   display: grid;
   place-items: center;
@@ -854,7 +859,7 @@ table.sgrid {
 }
 
 .scell.tone-empty {
-  background: #fff;
+  background: var(--panel);
   border: 1px dashed #d3d8df;
   color: #9aa1ab;
   font-weight: 600;
@@ -867,7 +872,7 @@ table.sgrid {
   width: 5px;
   height: 5px;
   border-radius: 999px;
-  background: var(--navy);
+  background: var(--chrome);
 }
 
 .scell-editor {
@@ -949,7 +954,7 @@ textarea {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--line);
   border-radius: 0.5rem;
-  background: #fff;
+  background: var(--field);
   color: var(--ink);
   min-width: 0;
   max-width: 100%;
@@ -992,7 +997,7 @@ textarea {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: var(--navy);
+  background: var(--chrome);
   padding: 1.5rem;
 }
 
@@ -1130,7 +1135,7 @@ textarea {
 }
 
 .pill-master {
-  background: var(--navy);
+  background: var(--chrome);
   color: #fff;
 }
 
@@ -1348,7 +1353,7 @@ textarea {
 }
 
 .az-index a.active {
-  background: var(--navy);
+  background: var(--chrome);
   border-color: var(--navy);
   color: #fff;
 }
@@ -1571,7 +1576,7 @@ h1 .gw-stage {
 }
 
 .quick-actions li a:hover {
-  background: var(--navy);
+  background: var(--chrome);
   color: #fff;
 }
 
@@ -2583,7 +2588,7 @@ textarea.vw-tall {
   height: 3rem;
   max-width: 14rem;
   object-fit: contain;
-  background: #fff;
+  background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
 
@@ -2597,7 +2602,7 @@ textarea.vw-tall {
   width: 100%;
   max-width: 600px;
   aspect-ratio: 600 / 180;
-  background: #fff;
+  background: var(--panel);
   border: 1px dashed var(--line);
   border-radius: 0.5rem;
   touch-action: none;
@@ -3457,7 +3462,7 @@ tr.wa-current td {
 }
 
 .nav-toggle:hover {
-  background: var(--navy-light);
+  background: var(--chrome-light);
   color: #fff;
 }
 
@@ -3469,7 +3474,7 @@ tr.wa-current td {
 }
 
 .sidebar nav a.active {
-  background: var(--navy-light);
+  background: var(--chrome-light);
   color: #ffffff;
   border-left-color: var(--accent);
 }
@@ -4108,7 +4113,7 @@ tr.sc-cancelled td {
 }
 
 .nav-search:hover {
-  background: var(--navy-light);
+  background: var(--chrome-light);
   color: #fff;
 }
 
@@ -4248,7 +4253,7 @@ input.sa-name {
   text-decoration: none;
 }
 .cn-filters a.active {
-  background: var(--navy);
+  background: var(--chrome);
   border-color: var(--navy);
   color: #fff;
 }
@@ -4301,7 +4306,7 @@ input.sa-name {
 .cn-qr {
   width: 132px;
   flex: 0 0 132px;
-  background: #fff;
+  background: var(--panel);
   border-radius: 6px;
   line-height: 0;
 }
@@ -5826,4 +5831,479 @@ form.fb-room input {
 /* Long consent wording gets most of the screen to read in. */
 .pp-card .df-consent-text {
   max-height: 55vh;
+}
+
+/* =====================================================================================
+   Workspace refresh: compact density, light / dark theme, grouped menu, slim top bar.
+   Applies to the staff app only (.app-shell); the patient portal and login keep their own look.
+   ===================================================================================== */
+
+/* Everything in the app is sized in rem, so one smaller root size tightens the whole workspace. */
+:root:has(.app-shell) {
+  font-size: 14px;
+}
+
+.app-shell {
+  background: var(--bg);
+  color: var(--ink);
+  grid-template-columns: 208px 1fr;
+}
+
+.app-shell.nav-collapsed {
+  grid-template-columns: 54px 1fr;
+}
+
+/* ---- Dark theme: the same tokens, re-valued ---- */
+.app-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --navy: #e3e6ff;
+  --navy-light: #2c3352;
+  --navy-soft: #262c45;
+  --ink: #e6e9f0;
+  --muted: #9aa3b5;
+  --bg: #0e1117;
+  --panel: #161a23;
+  --panel-alt: #1c212c;
+  --line: #2a3040;
+  --accent: #58b06d;
+  --accent-dark: #6cc481;
+  --accent-soft: #19321f;
+  --amber: #e3b65c;
+  --amber-soft: #382c10;
+  --info: #86aef2;
+  --info-soft: #1a2946;
+  --danger: #f28b83;
+  --danger-soft: #3c1a18;
+  --chrome: #0a0c12;
+  --chrome-light: #1e2433;
+  --field: #10141b;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.app-shell[data-theme="dark"] .btn,
+.app-shell[data-theme="dark"] .view-tab.active {
+  color: #08130b;
+}
+
+.app-shell[data-theme="dark"] .btn.secondary {
+  color: var(--ink);
+}
+
+.app-shell[data-theme="dark"] .btn.ghost {
+  color: var(--info);
+}
+
+.app-shell[data-theme="dark"] .scell.tone-mute,
+.app-shell[data-theme="dark"] .scell.tone-empty {
+  background: var(--panel-alt);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+/* Printing always uses the light palette. */
+@media print {
+  .app-shell[data-theme="dark"] {
+    color-scheme: light;
+    --navy: #171342;
+    --navy-soft: #eceafb;
+    --ink: #191b23;
+    --muted: #6b7280;
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-alt: #f7f8fb;
+    --line: #e2e6ec;
+    --accent: #4f9c60;
+    --accent-dark: #3a7a49;
+    --accent-soft: #e5f4e8;
+    --amber: #a9750c;
+    --amber-soft: #fbf0d9;
+    --info: #2f5fa8;
+    --info-soft: #e4ecfa;
+    --danger: #b3261e;
+    --danger-soft: #fbe4e2;
+    --field: #ffffff;
+  }
+}
+
+/* ---- Side menu ---- */
+.app-shell .sidebar {
+  padding: 0.7rem 0.6rem;
+  gap: 0.7rem;
+}
+
+.app-shell .brand-mark {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.55rem;
+  font-size: 0.85rem;
+}
+
+.app-shell .sidebar nav {
+  gap: 0.1rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.app-shell .sidebar nav a {
+  padding: 0.42rem 0.6rem;
+  font-size: 0.9rem;
+  gap: 0.6rem;
+}
+
+.nav-group {
+  margin: 0.65rem 0 0.15rem 0.6rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8388bd;
+}
+
+.nav-group:first-of-type {
+  margin-top: 0.2rem;
+}
+
+/* Icon-only menu: the group name becomes a hairline between groups. */
+.nav-collapsed .nav-group {
+  width: 1.6rem;
+  height: 1px;
+  margin: 0.35rem 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.nav-collapsed .nav-group:first-of-type {
+  display: none;
+}
+
+.app-shell.nav-collapsed .sidebar {
+  padding: 0.7rem 0.3rem;
+}
+
+.app-shell.nav-collapsed .sidebar nav a {
+  width: 2.7rem;
+  height: 2.45rem;
+}
+
+/* ---- Top bar: one slim row that also carries the tabs of the current section ---- */
+.app-shell .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  min-height: 3.1rem;
+  padding: 0.3rem 1rem;
+  gap: 1rem;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  min-width: 0;
+}
+
+.app-shell .clinic-name {
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.app-shell .clinic-meta {
+  font-size: 0.72rem;
+  margin: 0;
+}
+
+.section-tabs {
+  display: flex;
+  gap: 0.15rem;
+  align-self: stretch;
+  align-items: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.section-tabs a {
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem 0.3rem;
+  margin-bottom: -0.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+
+.section-tabs a:hover {
+  color: var(--ink);
+}
+
+.section-tabs a.active {
+  color: var(--navy);
+  border-bottom-color: var(--accent);
+}
+
+.app-shell .topbar-right {
+  gap: 0.5rem;
+  flex: none;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.icon-btn:hover {
+  background: var(--panel-alt);
+}
+
+.icon-btn svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.ai-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.2rem;
+  padding: 0 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.ai-chip.on {
+  color: var(--accent-dark);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.user-menu {
+  position: relative;
+}
+
+.user-menu > summary {
+  list-style: none;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.user-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.user-menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  min-width: 15rem;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.35rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  z-index: 40;
+}
+
+.user-menu-pop strong {
+  color: var(--navy);
+}
+
+.user-menu-pop a,
+.user-menu-pop button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.45rem;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.user-menu-pop a:hover,
+.user-menu-pop button:hover {
+  background: var(--panel-alt);
+}
+
+.user-menu-pop hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0.2rem 0;
+}
+
+/* ---- Content: tighter spacing so more of each screen is the work itself ---- */
+.app-shell .content {
+  padding: 0.85rem 1rem 1.2rem;
+}
+
+.app-shell .page-head {
+  margin-bottom: 0.7rem;
+  align-items: center;
+}
+
+.app-shell .page-head h1 {
+  font-size: 1.35rem;
+}
+
+.app-shell .card,
+.app-shell .stat,
+.app-shell .panel {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.65rem;
+  box-shadow: var(--shadow);
+}
+
+.app-shell .panel h2 {
+  font-size: 0.98rem;
+  margin-bottom: 0.5rem;
+}
+
+.app-shell .stack {
+  gap: 0.75rem;
+}
+
+.app-shell table {
+  font-size: 0.9rem;
+}
+
+.app-shell th {
+  padding: 0.4rem 0.5rem;
+}
+
+.app-shell td {
+  padding: 0.42rem 0.5rem;
+}
+
+.app-shell .btn,
+.app-shell button.btn {
+  padding: 0.45rem 0.8rem;
+}
+
+.app-shell input,
+.app-shell select,
+.app-shell textarea {
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.45rem;
+}
+
+.app-shell textarea {
+  min-height: 5.5rem;
+}
+
+.app-shell .view-tabs {
+  flex-wrap: wrap;
+}
+
+.app-shell .view-tab {
+  padding: 0.32rem 0.7rem;
+}
+
+.app-shell .grid-stats {
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.app-shell .stat strong {
+  font-size: 1.35rem;
+}
+
+/* Thin scrollbars inside panels and tables */
+.app-shell * {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+/* ---- AI assist ---- */
+.ai-assist {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ai-assist-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.ai-assist-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.ai-assist-result {
+  border: 1px solid var(--accent);
+  border-radius: 0.6rem;
+  background: var(--panel);
+  padding: 0.7rem 0.85rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ai-assist-result pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font: inherit;
+  max-height: 22rem;
+  overflow: auto;
+}
+
+.ai-assist-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.ai-assist-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 980px) {
+  .app-shell,
+  .app-shell.nav-collapsed {
+    grid-template-columns: 1fr;
+  }
+}
+
+.app-shell .section-tabs,
+.app-shell .sidebar nav {
+  scrollbar-width: none;
+}
+
+.section-tabs::-webkit-scrollbar,
+.sidebar nav::-webkit-scrollbar {
+  display: none;
+}
+
+.app-shell[data-theme="dark"] .sgrid-grp {
+  background: var(--panel-alt);
+  color: var(--ink);
 }

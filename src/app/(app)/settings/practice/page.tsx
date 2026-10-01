@@ -185,7 +185,7 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
         </section>
 
         <section className="panel">
-          <h2>Patient document reading</h2>
+          <h2>AI assistance &amp; document reading</h2>
           <p className="muted">
             Uploaded referrals, face sheets and insurance cards are read on this computer by default (PDF text, or OCR for scans and photos) — nothing
             leaves the practice. AI reading (Claude or OpenAI) handles handwriting, faxes and unusual layouts much better, but it sends each document to
@@ -193,7 +193,7 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
             <code>OPENAI_API_KEY</code> set on the server.
           </p>
           <label className="checkbox-inline">
-            <input type="checkbox" name="documentAiEnabled" defaultChecked={s.documentAiEnabled} /> Read uploaded patient documents with AI
+            <input type="checkbox" name="documentAiEnabled" defaultChecked={s.documentAiEnabled} /> Use AI assistance: read uploaded documents, draft appeal letters, suggest a plan of care
           </label>
           <p className={documentAiProvider() ? "muted" : "gw-missing"} style={{ margin: "0.4rem 0 0" }}>
             {documentAiProvider()

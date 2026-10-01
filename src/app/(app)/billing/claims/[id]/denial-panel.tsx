@@ -1,3 +1,5 @@
+import { AiAssist } from "@/components/AiAssist";
+import { draftAppealLetter } from "../../../ai/actions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -182,6 +184,7 @@ export function DenialPanel({ denials, staff, payerFax }: Awaited<ReturnType<typ
                     Appeal letter (the payer address, claim details, signature and enclosure list are added to the PDF)
                     <textarea name="letterBody" defaultValue={a.letterBody} rows={14} required />
                   </label>
+                  <AiAssist action={draftAppealLetter.bind(null, a.id)} label="Draft this letter with AI" target="letterBody" />
                   <div className="gw-actions">
                     <button className="btn secondary" type="submit" formAction={saveAppealLetter.bind(null, a.id)}>
                       Save letter

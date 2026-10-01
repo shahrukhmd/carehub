@@ -7,6 +7,7 @@ import { CREDENTIALING_ROLES, credentialingPracticeIds } from "@/lib/scope";
 import { prisma } from "@/lib/prisma";
 import { isMessageLive } from "@/lib/system-messages";
 import { openTaskCount } from "@/lib/tasks";
+import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
@@ -15,12 +16,16 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     : 0;
   const taskCount = await openTaskCount(user);
   // Icon-only menu unless the user expanded it (remembered in a cookie).
-  const navCollapsed = (await cookies()).get("ch_nav")?.value !== "expanded";
+  const jar = await cookies();
+  const navCollapsed = jar.get("ch_nav")?.value !== "expanded";
+  const theme = jar.get("ch_theme")?.value === "dark" ? "dark" : "light";
+  const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { documentAiEnabled: true } });
+  const provider = settings?.documentAiEnabled ? documentAiProvider() : null;
   const messages = (await prisma.systemMessage.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { createdAt: "desc" } }))
     .filter((m) => isMessageLive(m))
     .map((m) => ({ id: m.id, title: m.title, message: m.message, level: m.level, version: m.updatedAt.toISOString() }));
   return (
-    <AppShell user={user} credentialingAlertCount={alertCount} taskCount={taskCount} navCollapsed={navCollapsed} systemMessages={messages}>
+    <AppShell user={user} credentialingAlertCount={alertCount} taskCount={taskCount} navCollapsed={navCollapsed} theme={theme} ai={provider ? documentAiLabel[provider] : null} systemMessages={messages}>
       {children}
     </AppShell>
   );

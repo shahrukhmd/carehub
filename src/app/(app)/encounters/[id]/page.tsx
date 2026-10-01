@@ -1,3 +1,5 @@
+import { AiAssist } from "@/components/AiAssist";
+import { suggestPlanOfCare } from "../../ai/actions";
 import Link from "next/link";
 import { CareGapsPanel } from "@/app/(app)/care-gaps/care-gaps-panel";
 import { visitTypeNames } from "@/lib/scheduler-setup";
@@ -530,6 +532,7 @@ export default async function EncounterPage({
                   <textarea name="plan" defaultValue={encounter.plan ?? ""} className="vw-tall" />
                 </label>
               </div>
+              {clinicalEditable && <AiAssist action={suggestPlanOfCare.bind(null, encounter.id)} label="Suggest plan of care" target="plan" mode="append" />}
               {clinicalEditable && <StepSave current="assessment" />}
             </form>
           </fieldset>
