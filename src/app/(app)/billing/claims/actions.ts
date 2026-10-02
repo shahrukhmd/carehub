@@ -6,7 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { getClearinghouseAdapter } from "@/lib/clearinghouse";
+import { releaseClaimToClearinghouse } from "@/lib/claim-submit";
 import {
   ClaimError,
   claimEdits,
@@ -19,8 +19,6 @@ import {
 } from "@/lib/claims";
 import { creditRecovery, recordDenial, resolveDenials } from "@/lib/denials";
 import { CARC } from "@/lib/era";
-import { markBilledIfComplete } from "@/lib/visit-guard";
-import { SIGNED_STATUSES } from "@/lib/visit-workflow";
 import { placeOfServiceLabel } from "@/lib/superbill";
 import {
   EDITABLE_CLAIM_STATUSES,
@@ -273,58 +271,10 @@ export async function saveClaim(claimId: string, fd: FormData) {
 export async function submitClaim(claimId: string, nextClaimId?: string | null) {
   const user = await requireUser(BILLING_ROLES);
   return guarded(`/billing/claims/${claimId}`, async () => {
-    let accepted = false;
-    const claim = await loadClaimForEdits(claimId, user.practiceId);
-    if (!claim) fail("Claim not found");
-    if (!["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status)) fail(`A ${claimStatusLabel[claim.status]?.toLowerCase()} claim can't be submitted.`);
-    const encounter = await prisma.encounter.findUniqueOrThrow({ where: { id: claim.encounterId } });
-    if (!SIGNED_STATUSES.includes(encounter.status)) fail("The visit isn't signed and ready for billing.");
-    const errors = claimEdits(claim, await claimRuleOptions(user.practiceId, claim)).filter((e) => e.severity === "error");
-    if (errors.length) fail(`Fix ${errors.length} claim edit(s) first: ${errors.map((e) => e.message).join(" ")}`);
-
-    const result = await getClearinghouseAdapter().submitClaim({
-      claimId: claim.id,
-      payerId: claim.payerId ?? "",
-      payerCode: claim.payer?.payerCode ?? null,
-      billedCents: claim.billedCents,
-      frequencyCode: claim.frequencyCode,
-      diagnosisCodes: claim.diagnoses.map((d) => d.icd10),
-      lines: claim.lines.map((l) => ({ cptCode: l.cptCode, chargeCents: l.chargeCents, units: l.units, pointers: l.pointers })),
-    });
-
-    if (result.status === "ACCEPTED") {
-      accepted = true;
-      await prisma.claim.update({
-        where: { id: claim.id },
-        data: {
-          status: "SUBMITTED",
-          submittedAt: new Date(),
-          clearinghouseStatus: "ACCEPTED",
-          clearinghouseClaimId: result.clearinghouseClaimId ?? null,
-          rejectionReason: null,
-          attempt: claim.status === "EDI_REJECTED" ? claim.attempt + 1 : claim.attempt,
-        },
-      });
-      await logClaimEvent(claim.id, user.id, "SUBMITTED", { note: `Accepted by clearinghouse · ${result.clearinghouseClaimId ?? ""}` });
-      await logAudit(user.practiceId, user.id, "SUBMIT_CLAIM", "Claim", claim.id, result.clearinghouseClaimId);
-      await markBilledIfComplete(claim.encounterId, user.id);
-    } else if (result.status === "REJECTED") {
-      await prisma.claim.update({
-        where: { id: claim.id },
-        data: { status: "EDI_REJECTED", clearinghouseStatus: "REJECTED", rejectionReason: result.rejectionReason ?? "Rejected" },
-      });
-      await logClaimEvent(claim.id, user.id, "EDI_REJECTED", { note: result.rejectionReason });
-      await logAudit(user.practiceId, user.id, "EDI_REJECTED", "Claim", claim.id, result.rejectionReason);
-    } else {
-      await prisma.claim.update({
-        where: { id: claim.id },
-        data: { clearinghouseStatus: "ERROR", rejectionReason: result.rejectionReason ?? "Clearinghouse error" },
-      });
-      await logClaimEvent(claim.id, user.id, "SUBMIT_ERROR", { note: result.rejectionReason });
-    }
-    await refreshVisitBillingStatus(claim.encounterId);
-    refreshAll(claim.id, claim.encounterId);
-    if (accepted && typeof nextClaimId === "string" && /^[a-z0-9]{10,40}$/.test(nextClaimId)) {
+    const result = await releaseClaimToClearinghouse(user, claimId);
+    if (result.outcome === "BLOCKED") fail(result.message);
+    if (result.encounterId) refreshAll(claimId, result.encounterId);
+    if (result.outcome === "RELEASED" && typeof nextClaimId === "string" && /^[a-z0-9]{10,40}$/.test(nextClaimId)) {
       return `/billing/claims/${nextClaimId}?ok=${encodeURIComponent("Previous claim submitted and accepted by the clearinghouse.")}`;
     }
   });

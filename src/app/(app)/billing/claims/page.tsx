@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { BUCKETS, FILTER_KEYS, claimsDashboard, type ClaimFilters } from "@/lib/claims-dashboard";
 import { claimNumber, claimStatusLabel, payerRankLabel } from "@/lib/claim-format";
 import { formatDate, formatMoney, insuranceTypeLabel, patientName } from "@/lib/format";
-import { BillingTabs } from "../tabs";
+import { BillingTabs, ClaimsMenu } from "../tabs";
 import { goToClaim } from "./go";
 
 const LIST_LIMIT = 300;
@@ -55,6 +55,7 @@ export default async function ClaimsDashboardPage({ searchParams }: { searchPara
         </p>
       )}
       <BillingTabs active="claims" />
+      <ClaimsMenu active="dashboard" />
 
       <section className="grid-stats cd-tiles">
         <Link className={`stat${d.selected === "UNBILLED" ? " cd-on" : ""}`} href={`/billing/claims${query(sp, { bucket: "UNBILLED" })}`} title="Claims not yet sent to a payer: draft, ready, on hold or rejected by the clearinghouse">

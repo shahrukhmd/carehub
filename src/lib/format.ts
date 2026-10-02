@@ -66,6 +66,7 @@ export const visitTypeLabel: Record<string, string> = {
   COMM_LOG: "Communication Log",
   DATA_ENTRY: "Data Entry",
   PROVIDER_ORDERS: "Provider Orders",
+  BILLING_ONLY: "Billing-only claim (no chart note)",
 };
 
 export const appointmentStatusLabel: Record<string, string> = {

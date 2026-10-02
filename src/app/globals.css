@@ -6724,3 +6724,193 @@ td.num {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---- Claims menu: new claim, paper claims, bulk release ---- */
+.cm-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0 0 0.7rem;
+}
+
+.cm-menu a {
+  padding: 0.28rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.cm-menu a:hover {
+  border-color: var(--accent);
+}
+
+.cm-menu a.cm-on {
+  background: var(--chrome);
+  border-color: var(--chrome);
+  color: #fff;
+}
+
+.cm-tiles {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.cm-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 0.8rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.cm-bar label {
+  flex: 1 1 12rem;
+  max-width: 22rem;
+}
+
+.cm-bar-plain {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.cm-batch {
+  margin-top: 0.75rem;
+}
+
+.cm-batch .cd-scroll {
+  max-height: calc(100vh - 24rem);
+}
+
+.cm-batch td:first-child,
+.cm-batch th:first-child {
+  width: 2.2rem;
+  text-align: center;
+}
+
+.cm-batch input[type="checkbox"],
+.cm-check input,
+.sel-all input {
+  width: auto;
+  margin: 0;
+}
+
+.cm-blocked td {
+  color: var(--muted);
+}
+
+.sel-all {
+  display: inline-flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.sel-all label,
+.cm-check {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+
+.cd-list-head .sel-all .cd-bad {
+  color: #ffb4a8 !important;
+}
+
+.cm-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  align-items: center;
+  padding: 0.6rem 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.cm-foot > .muted {
+  flex: 1 1 14rem;
+}
+
+.cm-detail {
+  max-width: 34rem;
+  white-space: normal;
+}
+
+.cm-done {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.cm-row-actions {
+  white-space: nowrap;
+}
+
+.cm-row-actions form {
+  display: inline-block;
+  margin-left: 0.3rem;
+}
+
+.cm-manual > summary {
+  cursor: pointer;
+}
+
+.cm-form fieldset {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.8rem 0.8rem;
+  margin: 0.8rem 0 0;
+}
+
+.cm-form legend {
+  font-weight: 700;
+  color: var(--navy);
+  padding: 0 0.3rem;
+}
+
+.cm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.55rem 0.8rem;
+}
+
+.cm-lines {
+  width: 100%;
+  table-layout: fixed;
+}
+
+.cm-lines td {
+  padding: 0.2rem 0.3rem;
+}
+
+.cm-lines input {
+  width: 100%;
+  min-width: 0;
+}
+
+.cm-lines th:first-child {
+  width: 2rem;
+}
+
+.cm-lines td:first-child {
+  width: 2rem;
+  color: var(--muted);
+}
+
+.cm-form .gw-actions {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  margin-top: 0.8rem;
+}
+
+@media (max-width: 1100px) {
+  .cm-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
