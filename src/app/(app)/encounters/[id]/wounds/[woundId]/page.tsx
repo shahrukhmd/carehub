@@ -1,3 +1,4 @@
+import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -28,12 +29,16 @@ export default async function WoundPage({
 }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const { id: encounterId, woundId } = await params;
+  await requireEncounterAccess(user, encounterId);
 
   const encounter = await prisma.encounter.findFirst({
     where: { id: encounterId, practiceId: user.practiceId },
-    include: { patient: true },
+    include: { patient: true, appointment: { select: { visitType: true } } },
   });
   if (!encounter) notFound();
+  // Encounter types can switch the photo analyzer off (Scheduler admin -> Encounter types).
+  const visitType = encounter.appointment ? await prisma.visitType.findFirst({ where: { practiceId: user.practiceId, code: encounter.appointment.visitType }, select: { woundAnalytics: true } }) : null;
+  const photoAnalysis = visitType?.woundAnalytics ?? true;
   const editable = canEditClinical(encounter.status, user.role);
 
   const wound = await prisma.wound.findFirst({
@@ -201,8 +206,12 @@ export default async function WoundPage({
         <form className="panel stack" action={saveWoundAssessment.bind(null, wound.id, encounterId)}>
           <h2>New assessment</h2>
 
-          <h3>Photo &amp; AI analysis</h3>
-          <WoundPhotoAnalyzer action={analyzeWoundPhoto.bind(null, wound.id, encounterId)} />
+          {photoAnalysis && (
+            <>
+              <h3>Photo &amp; AI analysis</h3>
+              <WoundPhotoAnalyzer action={analyzeWoundPhoto.bind(null, wound.id, encounterId)} />
+            </>
+          )}
 
           <h3>Measurements</h3>
           <div className="form-grid">

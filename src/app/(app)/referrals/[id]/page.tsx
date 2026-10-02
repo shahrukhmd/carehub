@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -12,6 +13,7 @@ export default async function ReferralPage({ params, searchParams }: { params: P
   const sp = await searchParams;
   const r = await prisma.outgoingReferral.findFirst({ where: { id, practiceId: user.practiceId }, include: { patient: true } });
   if (!r) notFound();
+  if (r.patientId) await requireChartAccess(user, r.patientId, `/referrals/${id}`);
   const docs = await prisma.patientDocument.findMany({ where: { patientId: r.patientId, practiceId: user.practiceId }, orderBy: { createdAt: "desc" }, take: 40 });
   const [label, tone] = REFERRAL_STATUS[r.status] ?? [r.status, "info"];
   const open = !["CLOSED", "CANCELLED"].includes(r.status);

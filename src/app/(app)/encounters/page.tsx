@@ -1,3 +1,4 @@
+import { visitTypeLabel } from "@/lib/format";
 import Link from "next/link";
 import { visitTypeNames } from "@/lib/scheduler-setup";
 import type { Prisma } from "@prisma/client";
@@ -284,7 +285,7 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
                       {formatDate(row.at)} {e.appointment ? formatTime(row.at) : ""}
                     </Link>
                     <div className="muted">
-                      {e.appointment ? (vtNames[e.appointment.visitType] ?? e.appointment.visitType) : e.type}
+                      {e.appointment ? (vtNames[e.appointment.visitType] ?? e.appointment.visitType) : (visitTypeLabel[e.type] ?? e.type)}
                     </div>
                   </td>
                   <td>

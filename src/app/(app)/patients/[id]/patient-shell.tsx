@@ -1,3 +1,5 @@
+import { parseCustomValues, showCustomValue } from "@/lib/custom-fields";
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -19,14 +21,17 @@ const FORM_STATUS: Record<string, string> = {
 };
 
 // Everything the patient summary column needs. Loaded by each patient page so the page renders in one pass.
-export async function loadPatientShell(patientId: string, user: { practiceId: string; role: string }) {
+export async function loadPatientShell(patientId: string, user: { id: string; practiceId: string; role: string }) {
   const patient = await prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId }, include: { referringPhysician: true } });
   if (!patient) notFound();
+  // A restricted chart stops here for anyone outside the care team until they give a reason.
+  const access = await requireChartAccess(user, patientId, `/patients/${patientId}`);
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
   const dayEnd = new Date(dayStart.getTime() + 86_400_000);
   const ids = [patient.woundCarePhysicianId, patient.primaryCarePhysicianId].filter((v): v is string => Boolean(v));
-  const [providers, todayVisit, latestEncounter, intake, formRequest] = await Promise.all([
+  const [customFields, providers, todayVisit, latestEncounter, intake, formRequest] = await Promise.all([
+    patient.customFields ? prisma.customField.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] }) : [],
     ids.length ? prisma.renderingProvider.findMany({ where: { id: { in: ids }, practiceId: user.practiceId } }) : [],
     prisma.appointment.findFirst({
       where: { patientId, practiceId: user.practiceId, startsAt: { gte: dayStart, lt: dayEnd }, status: { notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"] } },
@@ -46,6 +51,9 @@ export async function loadPatientShell(patientId: string, user: { practiceId: st
     caseId: intake?.id ?? null,
     formRequest,
     role: user.role,
+    access,
+    // The practice's custom fields this patient has an answer for.
+    custom: customFields.map((f) => ({ label: f.label, value: showCustomValue(f, parseCustomValues(patient.customFields)[f.key]) })).filter((c) => c.value),
   };
 }
 
@@ -116,6 +124,11 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
           {ageFromDob(p.dob)}y | {formatDate(p.dob)} | {p.sex} <StatusBadge value={p.status} />
         </p>
         {p.interpreterNeeded && <p className="gw-tag gw-tag-warn">Interpreter needed{p.preferredLanguage ? ` · ${p.preferredLanguage}` : ""}</p>}
+        {p.restricted && (
+          <p className="gw-tag gw-tag-bad" title={data.access === "EMERGENCY" ? "You opened this chart with emergency access; it is recorded and reviewed" : "Only the care team and administrators can open this chart"}>
+            Restricted chart{data.access === "EMERGENCY" ? " · emergency access" : ""}
+          </p>
+        )}
 
         <div className="pd-block">
           <h4>Patient medical record number</h4>
@@ -150,6 +163,12 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
               <p>{p.phone2}</p>
             </>
           )}
+        </div>
+        <div className="pd-block">
+          <h4>Text reminders</h4>
+          <p>
+            {p.textConsent === "YES" ? "Consented" : p.textConsent === "NO" ? "Declined — do not text" : <span className="muted">Consent not recorded</span>}
+          </p>
         </div>
         <div className="pd-block">
           <h4>Email</h4>
@@ -196,6 +215,16 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
               {p.emergencyContactRelationship ? ` (${p.emergencyContactRelationship})` : ""}
             </p>
             {p.emergencyContactPhone && <p className="muted">Phone: {p.emergencyContactPhone}</p>}
+          </div>
+        )}
+        {data.custom.length > 0 && (
+          <div className="pd-block">
+            <h4>Additional information</h4>
+            {data.custom.map((c) => (
+              <p key={c.label}>
+                <span className="muted">{c.label}:</span> {c.value}
+              </p>
+            ))}
           </div>
         )}
         {p.registrationNotes && (

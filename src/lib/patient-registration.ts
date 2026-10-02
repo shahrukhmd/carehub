@@ -1,4 +1,5 @@
 import "server-only";
+import { customOptions, parseCustomValues } from "@/lib/custom-fields";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { raceLabel, ethnicityLabel, US_STATES } from "@/lib/format";
@@ -189,6 +190,26 @@ export async function readPatientForm(fd: FormData, practiceId: string) {
 }
 
 // One coverage block per rank. A block with a payer is saved; a block left empty retires the coverage it showed.
+// The practice's custom fields from the form, merged over what the patient already has so answers to fields that
+// are turned off are kept.
+export async function readCustomValues(fd: FormData, practiceId: string, existing?: string | null) {
+  const fields = await prisma.customField.findMany({ where: { practiceId, active: true } });
+  if (fields.length === 0) return existing ?? null;
+  const values = parseCustomValues(existing);
+  for (const f of fields) {
+    const raw = text(fd, `cf_${f.key}`, 300);
+    let value = raw ?? "";
+    if (f.type === "CHECKBOX") value = fd.get(`cf_${f.key}`) === "on" ? "true" : "";
+    if (f.type === "SELECT" && value && !customOptions(f.options).includes(value)) value = "";
+    if (f.type === "NUMBER" && value && !Number.isFinite(Number(value))) throw new RegistrationError(`${f.label}: enter a number.`);
+    if (f.type === "DATE" && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new RegistrationError(`${f.label}: enter a valid date.`);
+    if (f.required && !value) throw new RegistrationError(`${f.label} is required.`);
+    if (value) values[f.key] = value;
+    else delete values[f.key];
+  }
+  return Object.keys(values).length ? JSON.stringify(values) : null;
+}
+
 export async function saveInsuranceBlocks(patientId: string, practiceId: string, fd: FormData) {
   for (const rank of PAYER_RANKS) {
     const p = `ins_${rank}_`;

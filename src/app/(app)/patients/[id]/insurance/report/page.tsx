@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +14,7 @@ import { yesNoUnknownLabel } from "@/lib/patient-fields";
 export default async function InsuranceAuthorizationReport({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser([...PATIENT_VIEW_ROLES, "BILLER"]);
   const { id } = await params;
+  await requireChartAccess(user, id, `/patients/${id}/insurance/report`);
   const patient = await prisma.patient.findFirst({
     where: { id, practiceId: user.practiceId },
     include: { practice: true, insurances: { where: { active: true }, include: { payer: true, authorizations: { orderBy: [{ kind: "asc" }, { startDate: "asc" }] } }, orderBy: { rank: "asc" } } },

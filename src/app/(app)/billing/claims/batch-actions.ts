@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { ClaimError, createClaimFromVisit, logClaimEvent } from "@/lib/claims";
 import { BULK_RELEASE_EVENT, PAPER_CLAIM_EVENT, batchId, releaseClaimOnPaper, releaseClaimToClearinghouse } from "@/lib/claim-submit";
 import { DX_LETTERS, PAYER_RANKS, normalizePointers } from "@/lib/claim-format";
+import { scheduleFor } from "@/lib/charge-schedules";
 import { placeOfServiceLabel } from "@/lib/superbill";
 
 const BILLING_ROLES = ["ADMIN", "BILLER"];
@@ -116,9 +117,12 @@ export async function createManualClaim(patientId: string, fd: FormData) {
   if (!(pos in placeOfServiceLabel)) stop("Invalid place of service.");
   const provider = await prisma.renderingProvider.findFirst({
     where: { id: text(fd, "provider") ?? "", practiceId: user.practiceId, userId: { not: null } },
-    select: { userId: true },
+    select: { id: true, userId: true },
   });
   if (!provider?.userId) stop("Pick the rendering provider.");
+  const coverage = await prisma.insurance.findFirst({ where: { patientId, active: true, rank }, select: { payerId: true } });
+  const site = await prisma.patient.findFirst({ where: { id: patientId }, select: { siteOfServiceId: true } });
+  const schedule = await scheduleFor(user.practiceId, { date: dos!, locationId: site?.siteOfServiceId, providerId: provider!.id, payerId: coverage?.payerId });
 
   const catalog = await prisma.practiceCode.findMany({ where: { practiceId: user.practiceId, active: true } });
   const describe = (type: string, code: string) => catalog.find((c) => c.type === type && c.code.toUpperCase() === code);
@@ -144,9 +148,10 @@ export async function createManualClaim(patientId: string, fd: FormData) {
     const chargeText = text(fd, `l_${i}_charge`);
     const charge = chargeText ? Number(chargeText.replace(/[$,\s]/g, "")) : null;
     if (charge !== null && (!Number.isFinite(charge) || charge < 0)) stop(`Line ${n}: the charge must be a dollar amount.`);
-    // No charge typed: the practice fee schedule's fee for the code, times the units.
-    const amountCents = charge !== null ? Math.round(charge * 100) : (known?.feeCents ?? 0) * units;
-    if (charge === null && !known?.feeCents) stop(`Line ${n}: enter a charge — ${cpt} has no fee on the practice fee schedule.`);
+    // No charge typed: the fee from the charge schedule covering the visit, else the practice code list, times the units.
+    const fee = schedule?.fees.get(cpt)?.feeCents ?? known?.feeCents ?? 0;
+    const amountCents = charge !== null ? Math.round(charge * 100) : fee * units;
+    if (charge === null && !fee) stop(`Line ${n}: enter a charge — ${cpt} has no fee on a charge schedule or the practice code list.`);
     const modifiers = (text(fd, `l_${i}_mod`) ?? "")
       .toUpperCase()
       .split(/[\s,]+/)

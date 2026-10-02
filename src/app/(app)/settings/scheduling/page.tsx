@@ -93,6 +93,9 @@ export default async function SchedulingSettingsPage({
         <td>
           <input type="checkbox" name={`bill_${t.id}`} defaultChecked={t.billable} aria-label={`${t.name} billable`} />
         </td>
+        <td>
+          <input type="checkbox" name={`wa_${t.id}`} defaultChecked={t.woundAnalytics} aria-label={`${t.name} wound photo measurements`} />
+        </td>
         <td className="sa-colors">
           <input type="color" name={`text_${t.id}`} defaultValue={t.textColor} aria-label={`${t.name} text colour`} />
           <input type="color" name={`bg_${t.id}`} defaultValue={t.bgColor} aria-label={`${t.name} background colour`} />
@@ -155,6 +158,7 @@ export default async function SchedulingSettingsPage({
                       <th>Encounter type</th>
                       <th>Duration (min)</th>
                       <th>Billable</th>
+                      <th title="Offer the wound photo analyzer (AI measurements from the photo) at visits of this type">Wound photo measurements</th>
                       <th>Colour (text / background)</th>
                       <th>Order</th>
                       <th>Active</th>
@@ -182,6 +186,9 @@ export default async function SchedulingSettingsPage({
             </label>
             <label className="checkbox-inline">
               <input type="checkbox" name="nonBillable" /> Non-billable interaction
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="woundAnalytics" defaultChecked /> Include wound photo measurements
             </label>
             <button className="btn secondary" type="submit">
               Add visit type

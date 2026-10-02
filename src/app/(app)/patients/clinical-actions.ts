@@ -169,6 +169,14 @@ export async function recordImmunization(patientId: string, fd: FormData) {
   if (source === "ADMINISTERED" && !str(fd, "lotNumber")) go(to, { error: "Lot number is required for vaccines given here." });
   const dose = Number(str(fd, "doseMl"));
   const exp = str(fd, "expirationDate") ? new Date(`${str(fd, "expirationDate")}T12:00:00`) : null;
+  // A dose given here from a lot in the practice's stock comes off that lot's count.
+  const lotNumber = str(fd, "lotNumber").toUpperCase().slice(0, 40);
+  const stock =
+    source === "ADMINISTERED" && lotNumber
+      ? await prisma.vaccineLot.findFirst({ where: { practiceId: user.practiceId, active: true, lotNumber, ...(known ? { cvxCode: known.cvx } : {}) } })
+      : null;
+  if (stock && stock.expirationDate && stock.expirationDate.getTime() < date.getTime() - 86_400_000) go(to, { error: `Lot ${stock.lotNumber} expired on ${stock.expirationDate.toISOString().slice(0, 10)} — do not use it.` });
+  if (stock && stock.dosesOnHand <= 0) go(to, { error: `Lot ${stock.lotNumber} shows no doses on hand. Correct the count under Settings → Vaccine inventory first.` });
   const imm = await prisma.immunization.create({
     data: {
       practiceId: user.practiceId,
@@ -178,9 +186,10 @@ export async function recordImmunization(patientId: string, fd: FormData) {
       cvxCode: known?.cvx ?? (cvx || null),
       administeredAt: date,
       source,
-      lotNumber: str(fd, "lotNumber").slice(0, 40) || null,
-      manufacturer: str(fd, "manufacturer").slice(0, 60) || known?.mfr || null,
-      expirationDate: exp && !Number.isNaN(exp.getTime()) ? exp : null,
+      lotNumber: (stock ? stock.lotNumber : str(fd, "lotNumber").slice(0, 40)) || null,
+      lotId: stock?.id ?? null,
+      manufacturer: str(fd, "manufacturer").slice(0, 60) || stock?.manufacturer || known?.mfr || null,
+      expirationDate: exp && !Number.isNaN(exp.getTime()) ? exp : (stock?.expirationDate ?? null),
       site: str(fd, "site") || null,
       route: str(fd, "route") || known?.route || null,
       doseMl: Number.isFinite(dose) && dose > 0 ? dose : (known?.dose ?? null),
@@ -190,8 +199,9 @@ export async function recordImmunization(patientId: string, fd: FormData) {
       notes: str(fd, "notes").slice(0, 300) || null,
     },
   });
+  if (stock) await prisma.vaccineLot.update({ where: { id: stock.id }, data: { dosesOnHand: { decrement: 1 } } });
   await logAudit(user.practiceId, user.id, "RECORD_IMMUNIZATION", "Immunization", imm.id, `${vaccine} (${source.toLowerCase()})`);
-  go(to, { ok: `${vaccine} recorded.` });
+  go(to, { ok: `${vaccine} recorded.${stock ? ` Lot ${stock.lotNumber}: ${stock.dosesOnHand - 1} doses left.` : ""}` });
 }
 
 export async function deleteImmunization(id: string, fd: FormData) {
@@ -199,6 +209,8 @@ export async function deleteImmunization(id: string, fd: FormData) {
   const imm = await prisma.immunization.findFirst({ where: { id, practiceId: user.practiceId } });
   if (!imm) throw new Error("Not found");
   await prisma.immunization.delete({ where: { id } });
+  // An entry removed as a mistake gives its dose back to the lot.
+  if (imm.lotId) await prisma.vaccineLot.updateMany({ where: { id: imm.lotId, practiceId: user.practiceId }, data: { dosesOnHand: { increment: 1 } } });
   await logAudit(user.practiceId, user.id, "DELETE_IMMUNIZATION", "Immunization", id, imm.vaccine);
   go(back(fd, imm.patientId, "imm"), { ok: "Immunization entry removed." });
 }

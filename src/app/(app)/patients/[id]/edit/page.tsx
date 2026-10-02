@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import { notFound } from "next/navigation";
 import { updatePatient } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
@@ -9,6 +10,7 @@ import { PatientForm } from "@/components/PatientForm";
 export default async function EditPatientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   const user = await requireUser(PATIENT_EDIT_ROLES);
   const { id } = await params;
+  await requireChartAccess(user, id, `/patients/${id}/edit`);
   const { error } = await searchParams;
 
   const patient = await prisma.patient.findFirst({ where: { id, practiceId: user.practiceId }, include: { insurances: true } });
@@ -25,8 +27,14 @@ export default async function EditPatientPage({ params, searchParams }: { params
       orderBy: { name: "asc" },
       select: { id: true, name: true, isReferring: true, isRendering: true, isSupervising: true, status: true },
     }),
-    prisma.location.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    // An inactive site stays offered only where this patient already uses it.
+    prisma.location.findMany({
+      where: { practiceId: user.practiceId, OR: [{ active: true }, { id: { in: [patient.siteOfServiceId, patient.careCenterId].filter((v): v is string => Boolean(v)) } }] },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
+  const customFields = await prisma.customField.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
   // Inactive providers stay available only where this patient already uses them.
   const used = [patient.woundCarePhysicianId, patient.primaryCarePhysicianId, patient.supervisingPhysicianId, patient.referringPhysicianId];
   const offered = providers.filter((p) => p.status === "ACTIVE" || used.includes(p.id));
@@ -45,6 +53,7 @@ export default async function EditPatientPage({ params, searchParams }: { params
         locations={locations}
         providers={offered}
         payers={payers}
+        customFields={customFields}
         cancelHref={`/patients/${patient.id}`}
         error={error}
       />

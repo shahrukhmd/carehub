@@ -19,7 +19,7 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
       orderBy: { name: "asc" },
       select: { id: true, name: true, npi: true, isReferring: true, isRendering: true, isSupervising: true },
     }),
-    prisma.location.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.location.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.patient.findMany({
       where: { practiceId: user.practiceId },
       orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
@@ -45,6 +45,8 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
       summary: ex?.notes ?? null,
     };
   });
+
+  const customFields = await prisma.customField.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ order: "asc" }, { createdAt: "asc" }] });
 
   // The same name and date of birth usually means the patient is already registered.
   const draft = built?.draft;
@@ -79,6 +81,7 @@ export default async function NewPatientPage({ searchParams }: { searchParams: P
         providers={providers}
         payers={payers}
         accounts={accounts}
+        customFields={customFields}
         cancelHref="/patients"
         error={error}
       />

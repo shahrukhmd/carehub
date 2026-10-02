@@ -1,3 +1,4 @@
+import { customOptions, parseCustomValues, type CustomFieldDef } from "@/lib/custom-fields";
 import Link from "next/link";
 import type { Location, Payer, RenderingProvider } from "@prisma/client";
 import {
@@ -48,6 +49,8 @@ type Props = {
   payers: Pick<Payer, "id" | "name">[];
   // Offered as guarantor accounts when registering a new patient.
   accounts?: { id: string; firstName: string; lastName: string; mrn: string }[];
+  // The practice's own extra fields (Settings → Custom patient fields).
+  customFields?: CustomFieldDef[];
   cancelHref: string;
   error?: string;
 };
@@ -258,7 +261,8 @@ function InsuranceBlock({ rank, ins, payers, open }: { rank: string; ins?: Insur
 }
 
 // Add / Edit Patient: identification, contact, admission, care providers, insurance, billing, notes and photo.
-export function PatientForm({ action, patient, documents = [], review, locations, providers, payers, accounts, cancelHref, error }: Props) {
+export function PatientForm({ action, patient, documents = [], review, locations, providers, payers, accounts, customFields = [], cancelHref, error }: Props) {
+  const customValues = parseCustomValues(patient?.customFields);
   const p = patient;
   // A draft has no id yet.
   const isNew = !p?.id;
@@ -870,6 +874,45 @@ export function PatientForm({ action, patient, documents = [], review, locations
           </div>
         </div>
       </details>
+
+      {customFields.length > 0 && (
+        <details className="panel reg-section" open>
+          <summary>Additional information</summary>
+          <div className="form-grid gw-grid-3">
+            {customFields.map((f) => {
+              const name = `cf_${f.key}`;
+              const value = customValues[f.key] ?? "";
+              if (f.type === "CHECKBOX") {
+                return (
+                  <label key={f.id} className="checkbox-inline">
+                    <input type="checkbox" name={name} defaultChecked={value === "true"} /> {f.label}
+                    {f.helpText ? <span className="muted"> — {f.helpText}</span> : null}
+                  </label>
+                );
+              }
+              return (
+                <label key={f.id}>
+                  {f.label}
+                  {f.required ? " *" : ""}
+                  {f.type === "SELECT" ? (
+                    <select name={name} defaultValue={value} required={f.required}>
+                      <option value="" />
+                      {customOptions(f.options).map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input name={name} type={f.type === "NUMBER" ? "number" : f.type === "DATE" ? "date" : "text"} step={f.type === "NUMBER" ? "any" : undefined} defaultValue={value} required={f.required} maxLength={300} />
+                  )}
+                  {f.helpText ? <span className="muted">{f.helpText}</span> : null}
+                </label>
+              );
+            })}
+          </div>
+        </details>
+      )}
 
       <details className="panel reg-section" open={Boolean(p?.registrationNotes)}>
         <summary>Notes</summary>

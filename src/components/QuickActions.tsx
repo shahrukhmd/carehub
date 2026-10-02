@@ -21,6 +21,8 @@ export function QuickActions({
     ...(canEdit ? [{ href: `/patients/${patientId}/edit`, label: "Edit patient details" }] : []),
     { href: `/patients/${patientId}/insurance`, label: "Insurance, authorizations & eligibility" },
     { href: `/patients/${patientId}/scans`, label: "Scans" },
+    { href: `/patients/${patientId}/care-plan`, label: "Care team, goals & care plan" },
+    { href: `/patients/${patientId}/privacy`, label: "Privacy, disclosures & consent" },
     ...(caseId ? [{ href: `/gateway/${caseId}`, label: "Patient Gateway case" }] : []),
     { href: `/patients/${patientId}/face-sheet`, label: "Patient demographics report (face sheet)" },
     ...(caseId ? [{ href: `/gateway/${caseId}/report`, label: "Patient authorization report" }] : []),

@@ -63,6 +63,11 @@ export async function findDuplicates(practiceId: string): Promise<DuplicatePair[
 
 // Fields copied from the duplicate when the surviving chart has them blank.
 const FILL: (keyof Patient)[] = [
+  "textConsent",
+  "voiceConsent",
+  "consentMethod",
+  "consentRecordedAt",
+  "customFields",
   "phone",
   "email",
   "addressLine1",
@@ -124,8 +129,18 @@ export async function mergePatients(practiceId: string, keepId: string, mergeId:
     await run("care-gap notes", tx.careRuleOverride.updateMany(move));
     await run("messages", tx.messageLog.updateMany(move));
     await run("faxes", tx.fax.updateMany(move));
+    await run("disclosures", tx.disclosure.updateMany(move));
+    await run("amendment requests", tx.amendmentRequest.updateMany(move));
+    await run("emergency access log", tx.emergencyAccess.updateMany(move));
+    await run("care team", tx.careTeamMember.updateMany(move));
+    await run("health concerns", tx.healthConcern.updateMany(move));
+    await run("goals", tx.patientGoal.updateMany(move));
+    await run("implantable devices", tx.implantableDevice.updateMany(move));
+    await run("social needs screenings", tx.sdohScreening.updateMany(move));
     await run("dependents", tx.patient.updateMany({ where: { guarantorPatientId: dup.id, id: { not: keep.id } }, data: { guarantorPatientId: keep.id } }));
-    await tx.patient.update({ where: { id: keep.id }, data: fill as never });
+    // A restriction on either chart carries over to the merged one.
+    const restrict = dup.restricted && !keep.restricted ? { restricted: true, restrictedReason: dup.restrictedReason } : {};
+    await tx.patient.update({ where: { id: keep.id }, data: { ...fill, ...restrict } as never });
     await tx.patient.delete({ where: { id: dup.id } });
     return c;
   }, { timeout: 30_000 });

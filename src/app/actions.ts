@@ -1,5 +1,6 @@
 "use server";
 
+import { scheduleForEncounter } from "@/lib/charge-schedules";
 import { revalidatePath } from "next/cache";
 import { getSchedulerSettings } from "@/lib/scheduler-setup";
 import { redirect } from "next/navigation";
@@ -13,7 +14,7 @@ import { placeOfServiceLabel } from "@/lib/superbill";
 import { buildOccurrences, findConflicts } from "@/lib/schedule-conflicts";
 import { PATIENT_EDIT_ROLES, canWorkTeam } from "@/lib/gateway";
 import { fillCaseFromDocuments, openIntakeCase } from "@/lib/intake";
-import { RegistrationError, readPatientForm, readPatientPhoto, saveInsuranceBlocks } from "@/lib/patient-registration";
+import { RegistrationError, readCustomValues, readPatientForm, readPatientPhoto, saveInsuranceBlocks } from "@/lib/patient-registration";
 import { ScanError, fileScan, saveScanFiles, uploadedFiles } from "@/lib/scans";
 
 function required(formData: FormData, key: string) {
@@ -43,8 +44,9 @@ export async function createPatient(formData: FormData) {
       throw new RegistrationError("Guarantor account not found.");
     }
     const photoPath = await readPatientPhoto(formData, user.practiceId);
+    const customFields = await readCustomValues(formData, user.practiceId);
     const patient = await prisma.patient.create({
-      data: { ...data, practiceId: user.practiceId, mrn: nextMrn(), guarantorPatientId, photoPath: photoPath ?? null },
+      data: { ...data, customFields, practiceId: user.practiceId, mrn: nextMrn(), guarantorPatientId, photoPath: photoPath ?? null },
     });
     patientId = patient.id;
     try {
@@ -99,7 +101,8 @@ export async function updatePatient(patientId: string, formData: FormData) {
   try {
     const data = await readPatientForm(formData, user.practiceId);
     const photoPath = await readPatientPhoto(formData, user.practiceId);
-    await prisma.patient.update({ where: { id: patient.id }, data: { ...data, ...(photoPath === undefined ? {} : { photoPath }) } });
+    const customFields = await readCustomValues(formData, user.practiceId, patient.customFields);
+    await prisma.patient.update({ where: { id: patient.id }, data: { ...data, customFields, ...(photoPath === undefined ? {} : { photoPath }) } });
     await saveInsuranceBlocks(patient.id, user.practiceId, formData);
     await logAudit(user.practiceId, user.id, "UPDATE_PATIENT", "Patient", patient.id, `${data.firstName} ${data.lastName}`);
   } catch (err) {
@@ -150,6 +153,8 @@ export async function addChargeFromTemplate(encounterId: string, templateItemId:
   const item = await prisma.superbillTemplateItem.findFirstOrThrow({
     where: { id: templateItemId, template: { practiceId: user.practiceId } },
   });
+  // The charge schedule covering the visit overrides the template's fee for the codes it prices.
+  const scheduled = (await scheduleForEncounter(user.practiceId, encounter.id))?.fees.get(item.cptCode.toUpperCase());
 
   await prisma.charge.create({
     data: {
@@ -157,7 +162,7 @@ export async function addChargeFromTemplate(encounterId: string, templateItemId:
       encounterId: encounter.id,
       cptCode: item.cptCode,
       description: item.description,
-      amountCents: item.amountCents,
+      amountCents: scheduled?.feeCents ?? item.amountCents,
       modifiers: item.modifiers,
     },
   });
@@ -338,7 +343,7 @@ export async function startEncounter(appointmentId: string) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
   const appt = await prisma.appointment.findFirstOrThrow({
     where: { id: appointmentId, practiceId: user.practiceId },
-    include: { encounter: true },
+    include: { encounter: true, location: { select: { placeOfService: true } } },
   });
 
   if (appt.encounter) {
@@ -359,7 +364,8 @@ export async function startEncounter(appointmentId: string) {
       type: appt.visitType === "TELE" ? "TELEHEALTH" : "OFFICE",
       status: "IN_PROGRESS",
       chiefComplaint: appt.reason,
-      placeOfService: appt.placeOfService ?? (appt.visitType === "TELE" ? "02" : "11"),
+      // From the booking, else the site of service's own code, else office (or telehealth).
+      placeOfService: appt.placeOfService ?? appt.location.placeOfService ?? (appt.visitType === "TELE" ? "02" : "11"),
       clinicalStaffId: appt.clinicalStaffId,
       supervisingProviderId:
         appt.supervisingProviderId ?? (rendering?.requiresSupervision ? rendering.supervisingProviderId : null),

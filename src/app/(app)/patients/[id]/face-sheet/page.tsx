@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -30,6 +31,7 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
 export default async function FaceSheetPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(PATIENT_VIEW_ROLES);
   const { id } = await params;
+  await requireChartAccess(user, id, `/patients/${id}/face-sheet`);
   const patient = await prisma.patient.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {

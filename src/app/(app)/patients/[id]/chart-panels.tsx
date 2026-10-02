@@ -208,6 +208,10 @@ export async function PrescriptionsPanel({ patientId, role, back, encounterId }:
 export async function ImmunizationsPanel({ patientId, role, back }: { patientId: string; role: string; back: string }) {
   const imms = await prisma.immunization.findMany({ where: { patientId }, orderBy: { administeredAt: "desc" } });
   const can = IMMUNIZATION_ROLES.includes(role);
+  // Lots in the practice's stock, offered when typing the lot number.
+  const lots = can
+    ? await prisma.vaccineLot.findMany({ where: { practice: { patients: { some: { id: patientId } } }, active: true, dosesOnHand: { gt: 0 } }, orderBy: { expirationDate: "asc" } })
+    : [];
   return (
     <section className="panel" id="imm">
       <h2>Immunizations</h2>
@@ -271,7 +275,14 @@ export async function ImmunizationsPanel({ patientId, role, back }: { patientId:
             </label>
             <label>
               Lot number
-              <input name="lotNumber" />
+              <input name="lotNumber" list="imm-lots" autoComplete="off" />
+              <datalist id="imm-lots">
+                {lots.map((l) => (
+                  <option key={l.id} value={l.lotNumber}>
+                    {l.vaccine} · {l.dosesOnHand} on hand{l.expirationDate ? ` · exp ${formatDate(l.expirationDate)}` : ""}
+                  </option>
+                ))}
+              </datalist>
             </label>
             <label>
               Expiration

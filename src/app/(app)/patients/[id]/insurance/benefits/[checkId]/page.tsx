@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -24,6 +25,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 export default async function BenefitsPage({ params, searchParams }: { params: Promise<{ id: string; checkId: string }>; searchParams: Promise<{ case?: string }> }) {
   const user = await requireUser([...PATIENT_VIEW_ROLES, "BILLER"]);
   const { id, checkId } = await params;
+  await requireChartAccess(user, id, `/patients/${id}/insurance`);
   const { case: caseId } = await searchParams;
   const check = await prisma.eligibilityCheck.findFirst({
     where: { id: checkId, patientId: id, practiceId: user.practiceId },

@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import { claimNeighbours } from "@/lib/claims-dashboard";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -77,6 +78,7 @@ export default async function ClaimPage({
     },
   });
   if (!claim) notFound();
+  if (claim.patientId) await requireChartAccess(user, claim.patientId, `/billing/claims/${id}`);
 
   const [billingProviders, providers, locations, deposits, related] = await Promise.all([
     prisma.billingProvider.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),

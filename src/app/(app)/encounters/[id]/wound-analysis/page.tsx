@@ -1,3 +1,4 @@
+import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -52,6 +53,7 @@ function AreaChart({ points }: { points: Point[] }) {
 export default async function WoundAnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const { id } = await params;
+  await requireEncounterAccess(user, id);
   const encounter = await prisma.encounter.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {

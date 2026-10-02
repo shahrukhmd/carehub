@@ -1,3 +1,4 @@
+import { textBlockedReason } from "@/lib/privacy";
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
@@ -137,11 +138,15 @@ export async function sendMessage(input: {
   const settings = await prisma.connectSettings.findUnique({ where: { practiceId: input.practiceId } });
   const provider = input.channel === "SMS" ? (settings?.smsProvider ?? "MOCK") : (settings?.emailProvider ?? "MOCK");
   // No live connector is wired up yet: a real provider without credentials fails loudly rather than pretending to deliver.
+  // Automated texts (reminders, recalls, surveys) need the patient's consent on file.
+  const noConsent = input.channel === "SMS" && valid ? await textBlockedReason(input.practiceId, input.patientId, input.kind) : null;
   const error = !valid
     ? input.channel === "SMS"
       ? "No valid mobile number"
       : "No valid email address"
-    : provider !== "MOCK"
+    : noConsent
+      ? noConsent
+      : provider !== "MOCK"
       ? `${provider === "TWILIO" ? "Twilio" : "SendGrid"} is not connected yet — switch to test mode or add the account`
       : null;
   return prisma.messageLog.create({

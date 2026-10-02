@@ -1,3 +1,5 @@
+import { scheduleForEncounter } from "@/lib/charge-schedules";
+import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -28,6 +30,7 @@ export default async function SuperbillPage({
 }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const { id } = await params;
+  await requireEncounterAccess(user, id);
   const sp = await searchParams;
   const encounter = await prisma.encounter.findFirst({
     where: { id, practiceId: user.practiceId },
@@ -65,6 +68,11 @@ export default async function SuperbillPage({
   }
   for (const c of practiceCodes.filter((c) => c.type === "CPT")) {
     fees.set(c.code, { fee: c.feeCents ?? fees.get(c.code)?.fee ?? 0, modifiers: c.modifiers, description: c.description });
+  }
+  // A charge schedule covering this visit (site, provider, insurance, date) sets the fee for the codes it prices.
+  const schedule = await scheduleForEncounter(user.practiceId, encounter.id);
+  if (schedule) {
+    for (const [code, item] of schedule.fees) fees.set(code, { fee: item.feeCents, modifiers: fees.get(code)?.modifiers ?? null, description: fees.get(code)?.description ?? item.description });
   }
   const cptFavorites: CatalogCode[] = [
     ...practiceCodes.filter((c) => c.type === "CPT").map((c) => ({ code: c.code, description: c.description, category: "Practice fee schedule" })),
@@ -361,7 +369,14 @@ export default async function SuperbillPage({
         {/* ---------------- CPT picker ---------------- */}
         <section className="panel">
           <div className="gw-section-head">
-            <h2>CPT / HCPCS codes</h2>
+            <h2>
+              CPT / HCPCS codes
+              {schedule && (
+                <span className="gw-tag gw-tag-info" title="Fees for the codes this schedule prices come from it; other codes use the practice code list">
+                  Fees: {schedule.name}
+                </span>
+              )}
+            </h2>
             <form method="get" className="sb-search">
               {dq && <input type="hidden" name="dq" value={dq} />}
               <input name="cq" defaultValue={cq} placeholder="Search CPT code or words (e.g. debridement)" aria-label="Search procedures" />

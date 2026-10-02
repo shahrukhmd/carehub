@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { uploadPatientDocuments } from "../documents/actions";
@@ -99,6 +100,7 @@ export default async function IntakeCasePage({
     },
   });
   if (!c) notFound();
+  if (c.patientId) await requireChartAccess(user, c.patientId, `/gateway/${id}`);
   const patient = c.patient;
   const documents = await prisma.patientDocument.findMany({
     where: { practiceId: user.practiceId, patientId: patient.id },

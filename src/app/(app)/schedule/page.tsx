@@ -92,7 +92,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   const [patients, providers, locations, collaborators, resources] = await Promise.all([
     prisma.patient.findMany({ where: { practiceId: user.practiceId, status: { notIn: ["INACTIVE", "DECEASED"] } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }),
     prisma.user.findMany({ where: { practiceId: user.practiceId, role: "CLINICIAN" }, orderBy: { name: "asc" } }),
-    prisma.location.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" } }),
+    prisma.location.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
     prisma.renderingProvider.findMany({ where: { practiceId: user.practiceId, isRendering: true, status: "ACTIVE" }, orderBy: { name: "asc" } }),
     prisma.schedulerResource.findMany({ where: { practiceId: user.practiceId, active: true }, include: { location: true }, orderBy: { name: "asc" } }),
   ]);

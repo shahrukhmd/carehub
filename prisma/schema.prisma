@@ -84,6 +84,18 @@ model Practice {
   outgoingReferrals OutgoingReferral[]
   importBatches     ImportBatch[]
   claimDenials      ClaimDenial[]
+  disclosures       Disclosure[]
+  amendmentRequests AmendmentRequest[]
+  emergencyAccesses EmergencyAccess[]
+  careTeamMembers   CareTeamMember[]
+  healthConcerns    HealthConcern[]
+  patientGoals      PatientGoal[]
+  implantableDevices ImplantableDevice[]
+  sdohScreenings    SdohScreening[]
+  customFields      CustomField[]
+  vaccineLots       VaccineLot[]
+  serviceTypes      ServiceType[]
+  chargeSchedules   ChargeSchedule[]
 }
 
 model Membership {
@@ -120,6 +132,20 @@ model Location {
   showNonOfficeHours Boolean @default(false)
   promptOutsideHours Boolean @default(true)
   resources          SchedulerResource[]
+  // ---- Site of service administration ----
+  serviceTypeId  String?
+  serviceType    ServiceType? @relation(fields: [serviceTypeId], references: [id], onDelete: SetNull)
+  addressLine2   String?
+  fax            String?
+  email          String?
+  // CMS place of service code used for visits at this site (box 24B).
+  placeOfService String?
+  taxId          String?
+  groupNpi       String?
+  ptan           String?
+  // The facility bills for services here (the practice does not send a professional claim).
+  facilityBilling Boolean @default(false)
+  active         Boolean  @default(true)
 }
 
 model User {
@@ -357,6 +383,28 @@ model Patient {
   receipts        Receipt[]
   tasks           Task[]
   outgoingReferrals OutgoingReferral[]
+
+  // ---- Privacy ----
+  // Restricted chart: only the care team and administrators open it; anyone else must record a reason first.
+  restricted        Boolean   @default(false)
+  restrictedReason  String?
+  // Consent to automated texts and calls (TCPA): YES | NO, null = not asked yet.
+  textConsent       String?
+  voiceConsent      String?
+  consentRecordedAt DateTime?
+  // VERBAL | WRITTEN | FORM | PORTAL
+  consentMethod     String?
+  consentRecordedById String?
+  // Values of the practice's custom fields (JSON { key: value }).
+  customFields      String?
+  disclosures       Disclosure[]
+  amendmentRequests AmendmentRequest[]
+  emergencyAccesses EmergencyAccess[]
+  careTeam          CareTeamMember[]
+  healthConcerns    HealthConcern[]
+  goals             PatientGoal[]
+  implantableDevices ImplantableDevice[]
+  sdohScreenings    SdohScreening[]
 }
 
 model Insurance {
@@ -778,6 +826,15 @@ model Encounter {
   workflow            ChartWorkflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
   documents           EncounterDocument[]
   attachments         EncounterAttachment[]
+  // Reconciliation done at this visit (medications, allergies, problem list).
+  medsReconciledAt      DateTime?
+  allergiesReconciledAt DateTime?
+  problemsReconciledAt  DateTime?
+  reconciledById        String?
+  // The patient arrived from another setting of care (hospital discharge, SNF, referral in).
+  transferOfCare        Boolean   @default(false)
+  // The earlier visit this note was started from ("copy forward").
+  copiedFromEncounterId String?
 }
 
 model EncounterDiagnosis {
@@ -1669,6 +1726,8 @@ model VisitType {
   @@unique([practiceId, code])
   // Patients can book this type themselves on the online booking page.
   onlineBooking Boolean @default(false)
+  // Offer the wound photo analyzer (AI measurements) at visits of this type.
+  woundAnalytics Boolean @default(true)
 }
 
 model SchedulerSettings {
@@ -1951,6 +2010,8 @@ model ConnectSettings {
   // Online bill pay: TEST (simulated) | STRIPE (hosted checkout)
   paymentsEnabled    Boolean @default(false)
   paymentProvider    String  @default("TEST")
+  // Reminder, recall and survey texts only go to patients whose consent to text is recorded as YES.
+  requireTextConsent Boolean @default(true)
 }
 
 // ---- ERA / 835 remittance ----
@@ -2180,6 +2241,9 @@ model Immunization {
   notes          String?
   reportedAt     DateTime?
   createdAt      DateTime @default(now())
+  // The stock lot the dose was drawn from, when it came from the practice's inventory.
+  lotId          String?
+  lot            VaccineLot? @relation(fields: [lotId], references: [id], onDelete: SetNull)
 
   @@index([practiceId, administeredAt])
 }
@@ -2530,4 +2594,288 @@ model InsuranceAuthorization {
   updatedAt        DateTime  @updatedAt
 
   @@index([patientId])
+}
+
+// ---- Privacy and compliance ----
+
+// Accounting of disclosures (45 CFR 164.528): each release of the patient's information outside treatment,
+// payment and operations, kept for six years.
+model Disclosure {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  disclosedAt DateTime
+  recipient   String
+  recipientAddress String?
+  // PATIENT_REQUEST | AUTHORIZATION | LEGAL | PUBLIC_HEALTH | OVERSIGHT | LAW_ENFORCEMENT | RESEARCH | WORKERS_COMP | OTHER
+  purpose     String
+  // What was released, e.g. "Progress notes 01/2026 to 06/2026".
+  description String
+  // FAX | MAIL | ELECTRONIC | IN_PERSON | VERBAL
+  method      String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([practiceId, disclosedAt])
+  @@index([patientId])
+}
+
+// A patient's request to amend their record (45 CFR 164.526). The practice answers within 60 days.
+model AmendmentRequest {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  requestedAt  DateTime
+  // Who asked: the patient or their representative.
+  requestedBy  String
+  // Which part of the record, e.g. "Problem list", "Visit note 03/02/2026".
+  section      String
+  requestText  String
+  reason       String?
+  // PENDING | ACCEPTED | DENIED
+  status       String   @default("PENDING")
+  dueAt        DateTime
+  decidedAt    DateTime?
+  decidedById  String?
+  decisionNote String?
+  // NOT_CREATED_HERE | NOT_PART_OF_RECORD | NOT_AVAILABLE_FOR_INSPECTION | ACCURATE_AND_COMPLETE
+  denialReason String?
+  patientNotifiedAt DateTime?
+  disagreement String?
+  createdById  String?
+  createdAt    DateTime @default(now())
+
+  @@index([practiceId, status])
+  @@index([patientId])
+}
+
+// "Break the glass": a staff member outside the care team opened a restricted chart after giving a reason.
+model EmergencyAccess {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  userId       String
+  // EMERGENCY | COVERING | BILLING | PATIENT_REQUEST | OTHER
+  reason       String
+  note         String?
+  grantedAt    DateTime @default(now())
+  expiresAt    DateTime
+  reviewedById String?
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  @@index([practiceId, grantedAt])
+  @@index([patientId, userId])
+}
+
+// ---- Care plan ----
+
+model CareTeamMember {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  name         String
+  // PCP | WOUND_CARE | SPECIALIST | NURSE | HOME_HEALTH | CASE_MANAGER | PHARMACIST | THERAPIST | CAREGIVER | OTHER
+  role         String
+  specialty    String?
+  organization String?
+  phone        String?
+  fax          String?
+  email        String?
+  // Set when the member is a CareHub user; gives them access to a restricted chart.
+  userId       String?
+  startDate    DateTime?
+  endDate      DateTime?
+  active       Boolean  @default(true)
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  @@index([patientId])
+}
+
+model HealthConcern {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  concern     String
+  // CLINICAL | FUNCTIONAL | SOCIAL | BEHAVIORAL | OTHER
+  category    String   @default("CLINICAL")
+  // ACTIVE | RESOLVED
+  status      String   @default("ACTIVE")
+  notedAt     DateTime @default(now())
+  resolvedAt  DateTime?
+  notes       String?
+  createdById String?
+  goals       PatientGoal[]
+
+  @@index([patientId])
+}
+
+model PatientGoal {
+  id            String   @id @default(cuid())
+  practiceId    String
+  practice      Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  goal          String
+  // PATIENT (in the patient's words) | PROVIDER
+  kind          String   @default("PROVIDER")
+  concernId     String?
+  concern       HealthConcern? @relation(fields: [concernId], references: [id], onDelete: SetNull)
+  // What the team will do to reach it.
+  interventions String?
+  targetDate    DateTime?
+  // ACTIVE | ACHIEVED | NOT_MET | CANCELLED
+  status        String   @default("ACTIVE")
+  progressNote  String?
+  closedAt      DateTime?
+  createdById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([patientId])
+}
+
+model ImplantableDevice {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  deviceName   String
+  // Unique device identifier from the label or implant card.
+  udi          String?
+  manufacturer String?
+  model        String?
+  lotNumber    String?
+  serialNumber String?
+  site         String?
+  implantedAt  DateTime?
+  // ACTIVE | REMOVED
+  status       String   @default("ACTIVE")
+  removedAt    DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  @@index([patientId])
+}
+
+// Social needs screening. The questions live in src/lib/sdoh.ts; answers are stored by question key.
+model SdohScreening {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  encounterId  String?
+  screenedAt   DateTime @default(now())
+  declined     Boolean  @default(false)
+  // JSON { questionKey: answerCode }
+  answers      String   @default("{}")
+  // Comma separated domains with a need found (HOUSING,FOOD,...).
+  needs        String   @default("")
+  notes        String?
+  screenedById String?
+
+  @@index([patientId, screenedAt])
+}
+
+// ---- Setup ----
+
+// Extra fields a practice adds to the patient registration form.
+model CustomField {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  // TEXT | NUMBER | DATE | CHECKBOX | SELECT
+  type       String   @default("TEXT")
+  // One choice per line (SELECT only).
+  options    String?
+  helpText   String?
+  required   Boolean  @default(false)
+  order      Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@unique([practiceId, key])
+}
+
+model VaccineLot {
+  id             String   @id @default(cuid())
+  practiceId     String
+  practice       Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  vaccine        String
+  cvxCode        String?
+  manufacturer   String?
+  lotNumber      String
+  expirationDate DateTime?
+  dosesReceived  Int
+  dosesOnHand    Int
+  // PRIVATE | VFC | STATE
+  funding        String   @default("PRIVATE")
+  receivedAt     DateTime @default(now())
+  notes          String?
+  active         Boolean  @default(true)
+  immunizations  Immunization[]
+
+  @@index([practiceId, active])
+}
+
+// The kinds of site a practice visits (assisted living, SNF, home, ...). Sites of service pick one.
+model ServiceType {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name       String
+  createdAt  DateTime @default(now())
+  locations  Location[]
+
+  @@unique([practiceId, name])
+}
+
+// Charge schedule: what the practice charges for each billing code, for a set of sites, providers and
+// insurances over a date range. A visit takes its fees from the schedule that covers it.
+model ChargeSchedule {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  startDate   DateTime
+  endDate     DateTime?
+  active      Boolean  @default(true)
+  // JSON arrays of ids. An empty list means the schedule applies to all of them.
+  locationIds String   @default("[]")
+  providerIds String   @default("[]")
+  payerIds    String   @default("[]")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  items       ChargeScheduleItem[]
+
+  @@index([practiceId, active])
+}
+
+model ChargeScheduleItem {
+  id          String         @id @default(cuid())
+  scheduleId  String
+  schedule    ChargeSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  code        String
+  description String
+  feeCents    Int            @default(0)
+  // UB-04 revenue code (4 characters) for facility claims.
+  revenueCode String?
+
+  @@unique([scheduleId, code])
 }

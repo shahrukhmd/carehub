@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { saveDashboardWidgets } from "./actions";
 export default async function DashboardWidgetsPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(PATIENT_VIEW_ROLES);
   const { id } = await params;
+  await requireChartAccess(user, id, `/patients/${id}/widgets`);
   const patient = await prisma.patient.findFirst({ where: { id, practiceId: user.practiceId }, select: { id: true } });
   if (!patient) notFound();
   const all = Object.entries(WIDGETS).map(([key, w]) => ({ key, title: w.title, span: w.span, about: w.about }));

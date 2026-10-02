@@ -1,3 +1,4 @@
+import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -17,6 +18,7 @@ const PATIENT_REPORTS: [string, string, string][] = [
 export default async function VisitReportsPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER", "FRONT_DESK", "CDS"]);
   const { id } = await params;
+  await requireEncounterAccess(user, id);
   await ensureChartSetup(user.practiceId);
   const encounter = await prisma.encounter.findFirst({ where: { id, practiceId: user.practiceId }, include: { patient: true } });
   if (!encounter) notFound();

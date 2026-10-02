@@ -1,3 +1,5 @@
+import { copyForward, setTransferOfCare, toggleReconciled } from "./reconcile-actions";
+import { requireEncounterAccess } from "@/lib/privacy";
 import { AiAssist } from "@/components/AiAssist";
 import { suggestPlanOfCare } from "../../ai/actions";
 import Link from "next/link";
@@ -106,6 +108,7 @@ export default async function EncounterPage({
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
+  await requireEncounterAccess(user, id);
   const { error, step: stepParam, wound: woundParam } = await searchParams;
   const encounter = await prisma.encounter.findFirst({
     where: { id, practiceId: user.practiceId },
@@ -169,6 +172,11 @@ export default async function EncounterPage({
 
   const status = encounter.status;
   const clinicalEditable = canEditClinical(status, user.role);
+  // Copy forward: the visit just before this one, and the visit this note was started from.
+  const previousVisit = otherVisits.find((v) => v.date < encounter.date) ?? null;
+  const copiedFrom = encounter.copiedFromEncounterId ? (otherVisits.find((v) => v.id === encounter.copiedFromEncounterId) ?? null) : null;
+  const reconciledBy = encounter.reconciledById ? (staffMembers.find((m) => m.userId === encounter.reconciledById)?.user.name ?? null) : null;
+  const noteEmpty = !encounter.subjective && !encounter.objective && !encounter.assessment && !encounter.plan;
   const codingEditable = canEditCoding(status, user.role);
   const assessedWounds = new Set(encounter.woundAssessments.map((w) => w.woundId));
   const woundNo = new Map(encounter.patient.wounds.map((w, i) => [w.id, i + 1]));
@@ -308,6 +316,21 @@ export default async function EncounterPage({
       case "cc":
         return (
           <fieldset className="stack gw-fieldset" disabled={!clinicalEditable}>
+            {copiedFrom && (
+              <p className="notice-ok">
+                This note was started from the visit on {formatDate(copiedFrom.date)} ({copiedFrom.provider.name}). Review and update every section before signing.
+              </p>
+            )}
+            {clinicalEditable && previousVisit && !copiedFrom && noteEmpty && (
+              <form action={copyForward.bind(null, encounter.id, previousVisit.id)} className="pv-inline">
+                <button className="btn secondary" type="submit" title="Fills the empty note sections and diagnoses from the previous visit; nothing you have written is replaced">
+                  Start from the last visit
+                </button>
+                <span className="muted">
+                  {formatDate(previousVisit.date)} · {previousVisit.provider.name}
+                </span>
+              </form>
+            )}
             <form className="stack" action={saveEncounter.bind(null, encounter.id)}>
               <label>
                 Chief complaint
@@ -540,6 +563,52 @@ export default async function EncounterPage({
       case "meds":
         return (
           <fieldset className="stack gw-fieldset" disabled={!clinicalEditable}>
+            <div className="rc-panel">
+              <div className="gw-section-head">
+                <h3>Reconciliation at this visit</h3>
+                <form action={setTransferOfCare.bind(null, encounter.id)} className="pv-inline">
+                  <label className="cm-check" title="Hospital discharge, nursing facility or a referral in: reconcile every list">
+                    <input type="checkbox" name="transferOfCare" defaultChecked={encounter.transferOfCare} />
+                    Patient arrived from another care setting
+                  </label>
+                  {clinicalEditable && (
+                    <button className="btn ghost gw-mini" type="submit">
+                      Save
+                    </button>
+                  )}
+                </form>
+              </div>
+              {encounter.transferOfCare && !(encounter.medsReconciledAt && encounter.allergiesReconciledAt && encounter.problemsReconciledAt) && (
+                <p className="gw-tag gw-tag-warn">Transition of care — reconcile medications, allergies and problems before signing</p>
+              )}
+              <div className="rc-rows">
+                {(
+                  [
+                    ["meds", "Medications", encounter.medsReconciledAt, `${encounter.patient.medications.filter((m) => m.status === "ACTIVE").length} active`],
+                    ["allergies", "Allergies", encounter.allergiesReconciledAt, encounter.patient.allergies.length ? `${encounter.patient.allergies.length} on file` : "None on file"],
+                    ["problems", "Problem list", encounter.problemsReconciledAt, `${encounter.patient.problems.filter((x) => x.status === "ACTIVE").length} active`],
+                  ] as const
+                ).map(([key, label, at, count]) => (
+                  <form key={key} action={toggleReconciled.bind(null, encounter.id, key)} className="rc-row">
+                    <strong>{label}</strong>
+                    <span className="muted">{count}</span>
+                    {at ? (
+                      <span className="gw-tag gw-tag-ok">
+                        Reconciled {formatDate(at)}
+                        {reconciledBy ? ` · ${reconciledBy}` : ""}
+                      </span>
+                    ) : (
+                      <span className="gw-tag gw-tag-muted">Not reconciled</span>
+                    )}
+                    {clinicalEditable && (
+                      <button className={`btn gw-mini ${at ? "ghost" : "secondary"}`} type="submit">
+                        {at ? "Undo" : "Mark reconciled"}
+                      </button>
+                    )}
+                  </form>
+                ))}
+              </div>
+            </div>
             <div className="two-col">
               <div>
                 <h3>Safety</h3>

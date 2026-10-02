@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -12,6 +13,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   const sp = await searchParams;
   const o = await prisma.clinicalOrder.findFirst({ where: { id, practiceId: user.practiceId }, include: { patient: true, items: true, provider: true, results: { orderBy: { resultedAt: "asc" } } } });
   if (!o) notFound();
+  if (o.patientId) await requireChartAccess(user, o.patientId, `/orders/${id}`);
   const [orderer, docs, reviewers] = await Promise.all([
     prisma.user.findUnique({ where: { id: o.orderedById } }),
     prisma.patientDocument.findMany({ where: { patientId: o.patientId, practiceId: user.practiceId }, orderBy: { createdAt: "desc" }, take: 30 }),

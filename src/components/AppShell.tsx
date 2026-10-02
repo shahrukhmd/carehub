@@ -75,7 +75,15 @@ const MENU: { group: string; entries: Entry[] }[] = [
   {
     group: "Insights & setup",
     entries: [
-      { label: "Reports", icon: "reports", tabs: [{ href: "/reports", label: "Reports", roles: ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"] }] },
+      {
+        label: "Reports",
+        icon: "reports",
+        tabs: [
+          { href: "/reports", label: "Reports", roles: ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"] },
+          { href: "/reports/registry", label: "Patient registry", roles: ["ADMIN", "CLINICIAN", "CDS", "FRONT_DESK"] },
+          { href: "/reports/quality", label: "Quality measures", roles: ["ADMIN", "CLINICIAN", "CDS"] },
+        ],
+      },
       // Directories live under Settings; everyone who uses them sees Settings.
       { label: "Settings", icon: "settings", tabs: [{ href: "/settings", label: "Settings", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] }] },
     ],

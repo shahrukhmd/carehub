@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { createLetter } from "./actions";
 export default async function PatientLetterPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ t?: string; error?: string }> }) {
   const user = await requireUser(LETTER_ROLES);
   const { id } = await params;
+  await requireChartAccess(user, id, `/patients/${id}/letter`);
   const sp = await searchParams;
   await ensureLetters(user.practiceId);
   const patient = await prisma.patient.findFirst({ where: { id, practiceId: user.practiceId } });

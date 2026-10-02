@@ -1,3 +1,4 @@
+import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { applyCcda } from "../actions";
 export default async function CcdaReviewPage({ params }: { params: Promise<{ id: string; docId: string }> }) {
   const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS"]);
   const { id, docId } = await params;
+  await requireChartAccess(user, id, `/patients/${id}`);
   const [patient, doc] = await Promise.all([
     prisma.patient.findFirst({ where: { id, practiceId: user.practiceId }, include: { problems: true, medications: { where: { status: "ACTIVE" } }, allergies: true, immunizations: true } }),
     prisma.patientDocument.findFirst({ where: { id: docId, patientId: id, practiceId: user.practiceId, docType: "CCDA" } }),

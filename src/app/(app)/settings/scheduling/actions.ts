@@ -54,6 +54,7 @@ export async function saveVisitTypes(fd: FormData) {
           name: name.slice(0, 80),
           durationMin: duration,
           billable: on(fd, `bill_${t.id}`),
+          woundAnalytics: on(fd, `wa_${t.id}`),
           active: on(fd, `active_${t.id}`),
           onlineBooking: on(fd, `online_${t.id}`),
           textColor: color(str(fd, `text_${t.id}`), t.textColor),
@@ -80,6 +81,7 @@ export async function addVisitType(fd: FormData) {
         name: name.slice(0, 80),
         durationMin: Number.isInteger(dur) && dur >= 5 && dur <= 480 ? dur : null,
         billable: !on(fd, "nonBillable"),
+        woundAnalytics: on(fd, "woundAnalytics"),
         sortOrder: 900,
       },
     });
