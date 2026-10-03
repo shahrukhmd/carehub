@@ -96,6 +96,7 @@ model Practice {
   vaccineLots       VaccineLot[]
   serviceTypes      ServiceType[]
   chargeSchedules   ChargeSchedule[]
+  payerPlans        PayerPlan[]
 }
 
 model Membership {
@@ -496,6 +497,9 @@ model Payer {
   groupEnrollments GroupPayerEnrollment[]
   intakeCases  IntakeCase[]
   claims       Claim[]
+  // The plan type this payer name stands for ("Aetna Medicare Advantage" -> MEDICARE_ADVANTAGE).
+  planSegment  String?
+  plans        PayerPlan[]
 }
 
 model BillingProvider {
@@ -516,6 +520,7 @@ model BillingProvider {
   taxonomy     String?
   phone        String?
   claims       Claim[]
+  documents    GroupDocument[]
 }
 
 // Group-level enrollment: one group (billing entity) x one payer line.
@@ -2878,4 +2883,51 @@ model ChargeScheduleItem {
   revenueCode String?
 
   @@unique([scheduleId, code])
+}
+
+// Credentialing documents that belong to a group (billing provider): W-9, EFT form, IRS letter, liability cover.
+model GroupDocument {
+  id                String          @id @default(cuid())
+  billingProviderId String
+  billingProvider   BillingProvider @relation(fields: [billingProviderId], references: [id], onDelete: Cascade)
+  type              String
+  fileName          String
+  filePath          String
+  mimeType          String
+  issueDate         DateTime?
+  expiryDate        DateTime?
+  supersededAt      DateTime?
+  uploadedById      String?
+  createdAt         DateTime        @default(now())
+
+  @@index([billingProviderId])
+}
+
+// Plan names under a payer (e.g. "Aetna Medicare Advantage" -> "Aetna Medicare Eagle PPO"). Credentialing marks
+// each one approved or not; plan names the VOB team enters on patients arrive here to be reviewed.
+model PayerPlan {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  payerId     String
+  payer       Payer    @relation(fields: [payerId], references: [id], onDelete: Cascade)
+  name        String
+  // Lower-cased, punctuation-free name used to match what VOB typed.
+  nameKey     String
+  planSegment String?
+  // REVIEW (not decided yet) | APPROVED | NOT_APPROVED
+  status      String   @default("REVIEW")
+  // CREDENTIALING (added by the credentialing team) | VOB (first seen on a patient's coverage)
+  source      String   @default("CREDENTIALING")
+  notes       String?
+  // How many patient coverages and intake cases carry this plan name, and when it was last seen.
+  seenCount   Int      @default(0)
+  lastSeenAt  DateTime?
+  decidedById String?
+  decidedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([payerId, nameKey])
+  @@index([practiceId, status])
 }

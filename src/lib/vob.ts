@@ -158,12 +158,34 @@ export function suggestRoute(c: SuggestInput, history: History): RouteSuggestion
 const inNetwork = (rows: NetworkStatus[]) => rows.some((n) => n.network === "IN_NETWORK");
 
 // Suggestion for one case (case page).
-export async function suggestionForCase(practiceId: string, c: Omit<SuggestInput, "inNetwork">, network?: NetworkStatus[]) {
+export async function suggestionForCase(
+  practiceId: string,
+  c: Omit<SuggestInput, "inNetwork">,
+  network?: NetworkStatus[],
+  // Credentialing's decision on the patient's plan name, when one is on file.
+  plan?: { status: string; name: string } | null
+) {
   const [history, rows] = await Promise.all([
     loadVobHistory(practiceId),
     network ?? (c.payerId ? networkStatusForPayer(practiceId, c.payerId, c.planSegment) : Promise.resolve([])),
   ]);
-  return suggestRoute({ ...c, inNetwork: inNetwork(rows) }, history);
+  const suggestion = suggestRoute({ ...c, inNetwork: inNetwork(rows) }, history);
+  // A patient is only taken directly when the plan itself is approved, not just the payer.
+  if (plan && plan.status !== "APPROVED" && suggestion.kind === "TAKE_DIRECT" && c.eligibilityStatus !== "SELF_PAY") {
+    return {
+      ...suggestion,
+      kind: "SEND_TO_VOB" as const,
+      scope: null,
+      headline: plan.status === "NOT_APPROVED" ? "Send to VOB — the practice is not approved for this plan" : "Send to VOB — this plan has not been reviewed by credentialing",
+      reasons: [
+        plan.status === "NOT_APPROVED"
+          ? `Credentialing marked “${plan.name}” as not approved, even though the payer is in network.`
+          : `“${plan.name}” is new; credentialing has been asked to confirm whether the practice is approved for it.`,
+        ...suggestion.reasons,
+      ],
+    };
+  }
+  return suggestion;
 }
 
 // Suggestions for a queue of cases, looking each payer / segment up once.

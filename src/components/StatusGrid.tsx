@@ -20,11 +20,13 @@ export type GridRow = {
   lineId: string;
   payer: string;
   segment: string;
-  cpid: string | null;
+  payerId: string | null;
   groupStatus: string;
   ediStatus: string;
   eftStatus: string;
   groupEffectiveDate: string | null;
+  // The number the payer assigned to the group for this line.
+  groupNumber: string | null;
   groupRemarks: string | null;
   cells: Record<string, GridCell>;
 };
@@ -43,6 +45,8 @@ type Props = {
   updateCell: (enrollmentId: string, formData: FormData) => Promise<void>;
   updateGroup: (lineId: string, field: string, formData: FormData) => Promise<void>;
   enrollmentBasePath?: string;
+  // Provider column headings link to the provider's own file when set.
+  providerBasePath?: string;
 };
 
 const TONES: Record<string, string> = {
@@ -79,7 +83,7 @@ function shortName(name: string) {
   return parts.length > 1 ? `${parts[parts.length - 1]}, ${parts[0][0]}.` : name;
 }
 
-export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmentBasePath }: Props) {
+export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmentBasePath, providerBasePath }: Props) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [showDates, setShowDates] = useState(true);
   const [openOnly, setOpenOnly] = useState(false);
@@ -174,15 +178,24 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
             <tr>
               <th className="sgrid-sticky sgrid-payer">Payer</th>
               <th className="sgrid-sticky sgrid-seg">Plan segment</th>
-              <th className="sgrid-sticky sgrid-cpid">CPID</th>
+              <th className="sgrid-sticky sgrid-cpid">Payer ID</th>
               <th className="sgrid-grp">Group</th>
               <th className="sgrid-grp">EDI</th>
               <th className="sgrid-grp sgrid-grp-end">EFT</th>
               {providers.map((p) => (
                 <th key={p.id} className="sgrid-prov" title={`${p.name}${p.credential ? `, ${p.credential}` : ""}`}>
                   <span>
-                    {single ? p.name : shortName(p.name)}
-                    {p.credential ? ` ${p.credential}` : ""}
+                    {providerBasePath ? (
+                      <a href={`${providerBasePath}${p.id}`}>
+                        {single ? p.name : shortName(p.name)}
+                        {p.credential ? ` ${p.credential}` : ""}
+                      </a>
+                    ) : (
+                      <>
+                        {single ? p.name : shortName(p.name)}
+                        {p.credential ? ` ${p.credential}` : ""}
+                      </>
+                    )}
                   </span>
                 </th>
               ))}
@@ -205,13 +218,13 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
                     {newPayer ? r.payer : ""}
                   </td>
                   <td className="sgrid-sticky sgrid-seg">{r.segment}</td>
-                  <td className="sgrid-sticky sgrid-cpid">{r.cpid ?? ""}</td>
+                  <td className="sgrid-sticky sgrid-cpid">{r.payerId ?? ""}</td>
                   {(["groupStatus", "ediStatus", "eftStatus"] as const).map((field) => (
                     <td key={field} className={`sgrid-grp${field === "eftStatus" ? " sgrid-grp-end" : ""}`}>
                       <button
                         type="button"
                         className={`scell tone-${TONES[r[field]] ?? "info"}`}
-                        title={`${field === "groupStatus" ? credentialingStatusLabel[r[field]] : connectionStatusLabel[r[field]]}${field === "groupStatus" && r.groupRemarks ? ` — ${r.groupRemarks}` : ""}`}
+                        title={`${field === "groupStatus" ? credentialingStatusLabel[r[field]] : connectionStatusLabel[r[field]]}${field === "groupStatus" && r.groupNumber ? ` · group # ${r.groupNumber}` : ""}${field === "groupStatus" && r.groupRemarks ? ` — ${r.groupRemarks}` : ""}`}
                         onClick={(e) => open(e, { kind: "group", row: r, field })}
                       >
                         {statusShortCode[r[field]] ?? r[field]}
@@ -228,7 +241,7 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
                         <button
                           type="button"
                           className={`scell tone-${TONES[c.status] ?? "info"}`}
-                          title={`${p.name} · ${r.payer} ${r.segment}: ${enrollmentStatusLabel[c.status]}${c.effectiveDate ? ` (eff. ${new Date(c.effectiveDate).toLocaleDateString("en-US", { timeZone: "UTC" })})` : ""}${c.remarks ? ` — ${c.remarks}` : ""}`}
+                          title={`${p.name} · ${r.payer} ${r.segment}: ${enrollmentStatusLabel[c.status]}${c.payerProviderId ? ` · provider # ${c.payerProviderId}` : ""}${c.effectiveDate ? ` (eff. ${new Date(c.effectiveDate).toLocaleDateString("en-US", { timeZone: "UTC" })})` : ""}${c.remarks ? ` — ${c.remarks}` : ""}`}
                           onClick={(e) => open(e, { kind: "cell", row: r, provider: p, cell: c })}
                         >
                           {statusShortCode[c.status] ?? c.status}
@@ -295,6 +308,15 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
                   defaultValue={
                     (editing.kind === "cell" ? editing.cell.effectiveDate : editing.row.groupEffectiveDate)?.slice(0, 10) ?? ""
                   }
+                />
+              </label>
+              <label>
+                {editing.kind === "cell" ? "Payer provider number" : "Group number with this payer"}
+                <input
+                  name="number"
+                  maxLength={60}
+                  defaultValue={(editing.kind === "cell" ? editing.cell.payerProviderId : editing.row.groupNumber) ?? ""}
+                  placeholder="PTAN, provider ID…"
                 />
               </label>
               <label>

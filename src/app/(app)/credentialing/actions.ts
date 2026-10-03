@@ -14,6 +14,7 @@ import {
   enrollmentStatusLabel,
   planSegmentLabel,
   providerDocumentTypeLabel,
+  groupDocumentTypeLabel,
   verificationResultLabel,
   verificationSourceLabel,
 } from "@/lib/format";
@@ -85,8 +86,9 @@ export async function createGroupPayerEnrollment(billingProviderId: string, form
   });
   const payerId = required(formData, "payerId");
   // Payers are per practice; a line may only use a payer from the group's own practice.
-  await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: billingProvider.practiceId } });
-  const planSegment = oneOf(formData, "planSegment", planSegmentLabel, "COMMERCIAL");
+  const payer = await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: billingProvider.practiceId } });
+  // A payer named for its line of business ("Aetna Medicare Advantage") carries its own plan type.
+  const planSegment = payer.planSegment && payer.planSegment in planSegmentLabel ? payer.planSegment : oneOf(formData, "planSegment", planSegmentLabel, "COMMERCIAL");
 
   const existing = await prisma.groupPayerEnrollment.findUnique({
     where: { billingProviderId_payerId_planSegment: { billingProviderId: billingProvider.id, payerId, planSegment } },
@@ -446,16 +448,20 @@ export async function updateGridCell(enrollmentId: string, formData: FormData) {
   const status = oneOf(formData, "status", enrollmentStatusLabel, current.status);
   const effectiveDate = optionalDate(formData, "effectiveDate");
   const remarks = optional(formData, "remarks");
+  // Older callers don't send the number; leave it alone then.
+  const number = formData.has("number") ? (optional(formData, "number")?.slice(0, 60) ?? null) : current.payerProviderId;
 
   const statusChanged = status !== current.status;
   const remarksChanged = remarks !== current.notes;
   const dateChanged = (effectiveDate?.getTime() ?? null) !== (current.effectiveDate?.getTime() ?? null);
-  if (!statusChanged && !remarksChanged && !dateChanged) return;
+  const numberChanged = number !== current.payerProviderId;
+  if (!statusChanged && !remarksChanged && !dateChanged && !numberChanged) return;
 
   const now = new Date();
   const note = [
     statusChanged ? `Status: ${enrollmentStatusLabel[current.status]} → ${enrollmentStatusLabel[status]}` : null,
     dateChanged ? `Effective date: ${effectiveDate ? effectiveDate.toLocaleDateString("en-US") : "cleared"}` : null,
+    numberChanged ? `Payer provider number: ${number ?? "cleared"}` : null,
     remarksChanged && remarks ? `Remarks: ${remarks}` : null,
   ]
     .filter(Boolean)
@@ -467,6 +473,7 @@ export async function updateGridCell(enrollmentId: string, formData: FormData) {
       status,
       effectiveDate,
       notes: remarks,
+      payerProviderId: number,
       lastActivityAt: now,
       ...(statusChanged ? { statusChangedAt: now } : {}),
       activities: { create: { channel: "INTERNAL", note: note || "Remarks cleared", loggedById: user.id } },
@@ -496,11 +503,78 @@ export async function updateGroupCell(lineId: string, field: string, formData: F
     data: {
       [key]: status,
       ...(key === "groupStatus"
-        ? { effectiveDate: optionalDate(formData, "effectiveDate"), notes: optional(formData, "remarks") }
+        ? {
+            effectiveDate: optionalDate(formData, "effectiveDate"),
+            notes: optional(formData, "remarks"),
+            ...(formData.has("number") ? { payerGroupId: optional(formData, "number")?.slice(0, 60) ?? null } : {}),
+          }
         : {}),
     },
   });
 
   await logAudit(user.practiceId, user.id, "GRID_EDIT_GROUP_LINE", "GroupPayerEnrollment", line.id, `${key}=${status}`);
   refresh();
+}
+
+// ---------- Numbers and files kept on the provider and on the group ----------
+
+// Payer-assigned provider numbers (PTAN, provider ID), saved for every enrollment listed on the provider's file.
+export async function saveProviderNumbers(providerId: string, formData: FormData) {
+  const user = await requireUser(CREDENTIALING_ROLES);
+  const provider = await loadProvider(providerId, credentialingPracticeIds(user));
+  const enrollments = await prisma.providerEnrollment.findMany({ where: { renderingProviderId: provider.id } });
+  let changed = 0;
+  for (const e of enrollments) {
+    if (!formData.has(`num_${e.id}`)) continue;
+    const number = optional(formData, `num_${e.id}`)?.slice(0, 60) ?? null;
+    if (number === e.payerProviderId) continue;
+    await prisma.providerEnrollment.update({
+      where: { id: e.id },
+      data: { payerProviderId: number, lastActivityAt: new Date(), activities: { create: { channel: "INTERNAL", note: `Payer provider number: ${number ?? "cleared"}`, loggedById: user.id } } },
+    });
+    changed++;
+  }
+  if (changed) await logAudit(provider.practiceId, user.id, "UPDATE_PROVIDER_NUMBERS", "RenderingProvider", provider.id, `${changed} number(s)`);
+  refresh(`/credentialing/providers/${provider.id}`);
+}
+
+async function loadGroup(groupId: string, practiceIds: string[]) {
+  return prisma.billingProvider.findFirstOrThrow({ where: { id: groupId, practiceId: { in: practiceIds } } });
+}
+
+// The group's own number with each payer.
+export async function saveGroupNumbers(groupId: string, formData: FormData) {
+  const user = await requireUser(CREDENTIALING_ROLES);
+  const group = await loadGroup(groupId, credentialingPracticeIds(user));
+  const lines = await prisma.groupPayerEnrollment.findMany({ where: { billingProviderId: group.id } });
+  let changed = 0;
+  for (const l of lines) {
+    if (!formData.has(`num_${l.id}`)) continue;
+    const number = optional(formData, `num_${l.id}`)?.slice(0, 60) ?? null;
+    if (number === l.payerGroupId) continue;
+    await prisma.groupPayerEnrollment.update({ where: { id: l.id }, data: { payerGroupId: number } });
+    changed++;
+  }
+  if (changed) await logAudit(group.practiceId, user.id, "UPDATE_GROUP_NUMBERS", "BillingProvider", group.id, `${changed} number(s)`);
+  refresh(`/credentialing/groups/${group.id}`);
+}
+
+export async function uploadGroupDocument(groupId: string, formData: FormData) {
+  const user = await requireUser(CREDENTIALING_ROLES);
+  const group = await loadGroup(groupId, credentialingPracticeIds(user));
+  const type = oneOf(formData, "type", groupDocumentTypeLabel, "");
+  if (!type) throw new Error("Choose a document type");
+  const file = getUploadedFile(formData, "file");
+  if (!file) throw new Error("Choose a file to upload");
+  const stored = await saveUpload(file, group.practiceId);
+
+  // A renewed document replaces the current one but the prior version stays on file.
+  if (type !== "OTHER") {
+    await prisma.groupDocument.updateMany({ where: { billingProviderId: group.id, type, supersededAt: null }, data: { supersededAt: new Date() } });
+  }
+  const doc = await prisma.groupDocument.create({
+    data: { billingProviderId: group.id, type, ...stored, issueDate: optionalDate(formData, "issueDate"), expiryDate: optionalDate(formData, "expiryDate"), uploadedById: user.id },
+  });
+  await logAudit(group.practiceId, user.id, "UPLOAD_GROUP_DOCUMENT", "GroupDocument", doc.id, `${group.name}: ${type}`);
+  refresh(`/credentialing/groups/${group.id}`);
 }

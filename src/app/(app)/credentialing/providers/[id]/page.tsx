@@ -16,6 +16,7 @@ import {
   reactivateProvider,
   recordVerificationCheck,
   runNppesCheck,
+  saveProviderNumbers,
   termProvider,
   uploadProviderDocument,
 } from "../../actions";
@@ -75,8 +76,8 @@ export default async function ProviderFilePage({ params }: { params: Promise<{ i
           <Link className="btn secondary" href={`/settings/directories/providers/${provider.id}`}>
             Edit profile
           </Link>
-          <Link className="btn secondary" href="/credentialing?tab=providers">
-            All providers
+          <Link className="btn secondary" href="/credentialing?tab=grid">
+            Enrollment status
           </Link>
         </div>
       </div>
@@ -199,15 +200,18 @@ export default async function ProviderFilePage({ params }: { params: Promise<{ i
           </section>
 
           <section className="panel">
-            <h2>Payer enrollments</h2>
+            <h2>Payer enrollments &amp; provider numbers</h2>
+            <p className="muted">The number each payer assigned to this provider (PTAN, provider ID). Billing and eligibility look it up here.</p>
+            <form id="provider-numbers" action={saveProviderNumbers.bind(null, provider.id)} />
             <table>
               <thead>
                 <tr>
                   <th>Payer</th>
                   <th>Group / state</th>
                   <th>Status</th>
-                  <th>Provider #</th>
+                  <th>Payer provider #</th>
                   <th>Effective</th>
+                  <th>Approval letter</th>
                 </tr>
               </thead>
               <tbody>
@@ -223,19 +227,37 @@ export default async function ProviderFilePage({ params }: { params: Promise<{ i
                     <td>
                       <StatusBadge value={e.status} />
                     </td>
-                    <td>{e.payerProviderId ?? "—"}</td>
+                    <td>
+                      <input form="provider-numbers" name={`num_${e.id}`} defaultValue={e.payerProviderId ?? ""} maxLength={60} placeholder="Not captured" aria-label={`${e.groupPayerEnrollment.payer.name} provider number`} />
+                    </td>
                     <td>{e.effectiveDate ? formatDate(e.effectiveDate) : "—"}</td>
+                    <td>
+                      {e.approvalLetterPath ? (
+                        <a href={`/api/files/approval/${e.id}`} target="_blank" rel="noreferrer">
+                          View
+                        </a>
+                      ) : (
+                        <Link href={`/credentialing/enrollments/${e.id}`} className="muted">
+                          Add
+                        </Link>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {provider.enrollments.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="muted">
-                      No payer lines yet — add them under Credentialing → Groups.
+                    <td colSpan={6} className="muted">
+                      No payer lines yet — add them under Credentialing → Work queue → Payer lines setup.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+            {provider.enrollments.length > 0 && (
+              <button className="btn secondary" type="submit" form="provider-numbers" style={{ marginTop: "0.6rem" }}>
+                Save provider numbers
+              </button>
+            )}
           </section>
         </div>
 

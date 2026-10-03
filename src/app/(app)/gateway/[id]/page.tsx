@@ -1,3 +1,4 @@
+import { planApproval } from "@/lib/payer-plans";
 import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { headers } from "next/headers";
@@ -138,12 +139,16 @@ export default async function IntakeCasePage({
   const t1Gaps = dataEntryGaps(patient, c);
   const t3Gaps = schedulingGaps(c);
 
+  // The patient's actual plan under the payer, and whether credentialing has approved the practice for it.
+  const coverage = c.payerId ? (c.patient.insurances.find((i) => i.payerId === c.payerId && i.active) ?? null) : null;
+  const plan = await planApproval(user.practiceId, c.payerId, coverage?.planName, c.planSegment);
+
   // Everything the workflow panels show is loaded here; the panels themselves are plain components.
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const [benefit, suggestion, consentRequest, signers] = await Promise.all([
     c.eligibilityCheckId ? loadBenefitContext(c.eligibilityCheckId, user.practiceId) : null,
-    suggestionForCase(user.practiceId, { ...c, payerName: c.payer?.name }, network),
+    suggestionForCase(user.practiceId, { ...c, payerName: c.payer?.name }, network, plan),
     c.consentRequestId ? prisma.intakeRequest.findFirst({ where: { id: c.consentRequestId, practiceId: user.practiceId } }) : null,
     prisma.user.findMany({
       where: { id: { in: [c.dataVerifiedById, c.vobDecisionById].filter((x): x is string => Boolean(x)) } },
@@ -301,7 +306,7 @@ export default async function IntakeCasePage({
         )}
 
         {["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"].includes(c.stage) && canTeam2 && (
-          <VobDecisionPanel c={c} suggestion={suggestion} consent={consent} needsOverride={needsOverride} network={assignedNetwork} decidedBy={nameOf(c.vobDecisionById)} />
+          <VobDecisionPanel c={c} suggestion={suggestion} consent={consent} needsOverride={needsOverride} network={assignedNetwork} plan={plan} decidedBy={nameOf(c.vobDecisionById)} />
         )}
 
         {c.stage === "SCHEDULING" && canTeam3 && (
@@ -529,6 +534,10 @@ export default async function IntakeCasePage({
                   </select>
                 </label>
                 <label>
+                  Plan name (as the payer states it)
+                  <input name="planName" defaultValue={coverage?.planName ?? ""} maxLength={160} placeholder="e.g. Aetna Medicare Eagle PPO" disabled={!coverage} title={coverage ? undefined : "Add the patient's coverage with this payer first"} />
+                </label>
+                <label>
                   Member / policy ID
                   <input name="memberId" defaultValue={c.memberId ?? ""} />
                 </label>
@@ -751,6 +760,17 @@ export default async function IntakeCasePage({
               <h3>Credentialing check {c.payer ? `· ${c.payer.name}` : ""}</h3>
               {c.assignedProvider && <NetworkTag status={assignedNetwork} />}
             </div>
+            {plan && (
+              <p className={plan.status === "APPROVED" ? "notice-ok" : "gw-error"}>
+                <strong>Plan “{plan.name}”:</strong>{" "}
+                {plan.status === "APPROVED"
+                  ? "the practice is approved for this plan."
+                  : plan.status === "NOT_APPROVED"
+                    ? "the practice is NOT approved for this plan, even if a provider shows in network with the payer."
+                    : "not reviewed by credentialing yet — it has been added to their list. Confirm with credentialing before approving."}
+                {plan.notes ? ` ${plan.notes}` : ""}
+              </p>
+            )}
             {!c.payerId ? (
               <p className="muted">Select the payer to see which providers are credentialed with it.</p>
             ) : network.length === 0 ? (

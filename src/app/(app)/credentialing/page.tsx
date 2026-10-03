@@ -8,13 +8,13 @@ import {
   connectionStatusLabel,
   credentialingStatusLabel,
   enrollmentStatusLabel,
-  formatDate,
   planSegmentLabel,
-  providerDocumentTypeLabel,
 } from "@/lib/format";
 import { STALE_FOLLOW_UP_DAYS, daysBetween, getCredentialingAlerts } from "@/lib/credentialing";
 import { CREDENTIALING_ROLES, credentialingPractices, selectedPracticeIds } from "@/lib/scope";
-import { GridTab, ProviderViewTab } from "./grid-tabs";
+import { GridTab } from "./grid-tabs";
+import { WorkQueue } from "./work-queue";
+import { PayerPlans } from "./plans";
 import {
   bulkSetLineStatus,
   createGroupPayerEnrollment,
@@ -25,16 +25,15 @@ import {
 
 type SearchParams = Record<string, string | undefined>;
 
+// Three tabs. "Work queue" is the old Workboard, Needs attention and Payer lines setup in one place: everything
+// that needs doing is a line in one list. Provider numbers and files live on each provider's and group's file.
 const TABS = [
-  { key: "grid", label: "Status grid" },
-  { key: "provider", label: "Provider view" },
-  { key: "board", label: "Workboard" },
-  { key: "attention", label: "Needs attention" },
-  { key: "numbers", label: "Provider numbers" },
   { key: "dashboard", label: "Dashboard" },
-  { key: "groups", label: "Payer lines setup" },
-  { key: "providers", label: "Provider files" },
+  { key: "board", label: "Work queue" },
+  { key: "grid", label: "Enrollment status" },
 ];
+// Old links keep working.
+const MOVED_TABS: Record<string, string> = { provider: "grid", numbers: "grid", providers: "grid", attention: "board", groups: "board" };
 
 const BOARD_COLUMNS = [
   { key: "NOT_STARTED", label: "Not started", statuses: ["NOT_STARTED"] },
@@ -71,7 +70,10 @@ export default async function CredentialingPage({
   const sp: SearchParams = Object.fromEntries(
     Object.entries(raw).map(([k, v]) => [k, Array.isArray(v) ? v.join(",") : v])
   );
-  const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "grid";
+  const wanted = MOVED_TABS[sp.tab ?? ""] ?? sp.tab;
+  // The work queue has three faces: the list (default), the board by status, and the payer lines setup.
+  const queueView = sp.tab === "groups" || sp.view === "setup" ? "setup" : sp.view === "board" ? "board" : sp.view === "plans" ? "plans" : "list";
+  const tab = TABS.some((t) => t.key === wanted) ? wanted! : "dashboard";
   const practiceIds = selectedPracticeIds(user, sp.p);
   const allPractices = credentialingPractices(user);
   const multi = user.isMaster && allPractices.length > 1;
@@ -129,20 +131,33 @@ export default async function CredentialingPage({
             className={`view-tab${t.key === tab ? " active" : ""}`}
           >
             {t.label}
-            {t.key === "attention" && alerts.length > 0 ? ` (${alerts.length})` : ""}
           </Link>
         ))}
       </nav>
 
       {tab === "grid" && <GridTab practiceIds={practiceIds} sp={sp} multi={multi} />}
-      {tab === "provider" && <ProviderViewTab practiceIds={practiceIds} sp={sp} multi={multi} />}
-      {tab === "board" && <Workboard practiceIds={practiceIds} userId={user.id} sp={sp} />}
-      {tab === "attention" && (
-        <NeedsAttention alerts={alerts} userId={user.id} mine={sp.mine === "1"} multi={multi} scopeQuery={scopeQuery} />
+      {tab === "board" && (
+        <>
+          <nav className="cm-menu" aria-label="Work queue view">
+            <Link href={`/credentialing?tab=board${scopeQuery}`} className={queueView === "list" ? "cm-on" : undefined} title="Everything that needs doing, in one list">
+              To-do list
+            </Link>
+            <Link href={`/credentialing?tab=board&view=board${scopeQuery}`} className={queueView === "board" ? "cm-on" : undefined} title="Applications as cards in a column per status">
+              Board by status
+            </Link>
+            <Link href={`/credentialing?tab=board&view=setup${scopeQuery}`} className={queueView === "setup" ? "cm-on" : undefined} title="Add an insurance to a group, or change a group's line">
+              Payer lines setup
+            </Link>
+            <Link href={`/credentialing?tab=board&view=plans${scopeQuery}`} className={queueView === "plans" ? "cm-on" : undefined} title="Payer names with their plan type, and the plan names the practice is approved for">
+              Payer names &amp; plans
+            </Link>
+          </nav>
+          {queueView === "list" && <WorkQueue practiceIds={practiceIds} userId={user.id} sp={sp} alerts={alerts} multi={multi} scopeQuery={scopeQuery} />}
+          {queueView === "board" && <Workboard practiceIds={practiceIds} userId={user.id} sp={sp} />}
+          {queueView === "setup" && <Groups practiceIds={practiceIds} />}
+          {queueView === "plans" && <PayerPlans practiceIds={practiceIds} sp={sp} isAdmin={user.role === "ADMIN"} />}
+        </>
       )}
-      {tab === "groups" && <Groups practiceIds={practiceIds} />}
-      {tab === "providers" && <Providers practiceIds={practiceIds} multi={multi} />}
-      {tab === "numbers" && <ProviderNumbers practiceIds={practiceIds} q={sp.q ?? ""} multi={multi} />}
       {tab === "dashboard" && (
         <Dashboard practiceIds={practiceIds} alertCount={alerts.length} multi={multi} practiceNames={selectedNames} />
       )}
@@ -199,6 +214,7 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
     <>
       <form className="panel schedule-filters" method="get" style={{ marginBottom: "1rem" }}>
         <input type="hidden" name="tab" value="board" />
+        <input type="hidden" name="view" value="board" />
         <label>
           Provider
           <select name="provider" defaultValue={sp.provider ?? ""}>
@@ -262,7 +278,7 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
         <button className="btn secondary" type="submit">
           Apply
         </button>
-        <Link className="btn ghost" href="/credentialing?tab=board">
+        <Link className="btn ghost" href="/credentialing?tab=board&view=board">
           Clear
         </Link>
       </form>
@@ -324,82 +340,6 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
   );
 }
 
-// ---------------------------------------------------------------- Needs attention
-
-function NeedsAttention({
-  alerts,
-  userId,
-  mine,
-  multi,
-  scopeQuery,
-}: {
-  alerts: Awaited<ReturnType<typeof getCredentialingAlerts>>;
-  userId: string;
-  mine: boolean;
-  multi: boolean;
-  scopeQuery: string;
-}) {
-  const shown = mine ? alerts.filter((a) => a.assignedToId === userId) : alerts;
-  const kinds = [
-    { key: "SCREENING", label: "Exclusion screening (30-day cycle)" },
-    { key: "DOCUMENT", label: "Expiring documents" },
-    { key: "FOLLOW_UP", label: "Follow-ups due" },
-    { key: "STALE", label: `No activity in ${STALE_FOLLOW_UP_DAYS}+ days` },
-    { key: "REVALIDATION", label: "Revalidation / recredentialing" },
-  ];
-
-  return (
-    <section className="panel">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.6rem" }}>
-        <h2 style={{ margin: 0 }}>Needs attention</h2>
-        <nav className="view-tabs">
-          <Link className={`view-tab${mine ? "" : " active"}`} href={`/credentialing?tab=attention${scopeQuery}`}>
-            Everything
-          </Link>
-          <Link className={`view-tab${mine ? " active" : ""}`} href={`/credentialing?tab=attention&mine=1${scopeQuery}`}>
-            Assigned to me
-          </Link>
-        </nav>
-      </div>
-      {shown.length === 0 && <p className="muted">Nothing needs attention right now.</p>}
-      {kinds.map((k) => {
-        const items = shown.filter((a) => a.kind === k.key);
-        if (items.length === 0) return null;
-        return (
-          <div key={k.key} className="panel-section">
-            <h3>
-              {k.label} ({items.length})
-            </h3>
-            <table>
-              <tbody>
-                {items.map((a) => (
-                  <tr key={a.key}>
-                    <td style={{ width: "6rem" }}>
-                      <span className={`badge ${a.severity === "high" ? "badge-denied" : "badge-submitted"}`}>
-                        {a.severity === "high" ? "Urgent" : "Soon"}
-                      </span>
-                    </td>
-                    <td>
-                      <Link href={a.href}>{a.title}</Link>
-                      <div className="muted">
-                        {multi ? `${a.practiceName} · ` : ""}
-                        {a.detail}
-                      </div>
-                    </td>
-                    <td className="muted" style={{ width: "8rem" }}>
-                      {a.dueDate ? formatDate(a.dueDate) : ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
 // ---------------------------------------------------------------- Groups
 
 async function Groups({ practiceIds }: { practiceIds: string[] }) {
@@ -428,7 +368,10 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
         <section key={bp.id} className="panel">
           <h2>
             {bp.name} {bp.state ? `(${bp.state})` : ""} <StatusBadge value={bp.active ? "ACTIVE" : "INACTIVE"} />
-            {bp.practice.name !== bp.name && <span className="muted"> · {bp.practice.name}</span>}
+            {bp.practice.name !== bp.name && <span className="muted"> · {bp.practice.name}</span>}{" "}
+            <Link className="btn ghost" href={`/credentialing/groups/${bp.id}`}>
+              Group file &amp; numbers
+            </Link>
           </h2>
           <p className="muted">
             Type-2 NPI {bp.npi ?? "—"} · Tax ID {bp.taxId ?? "—"} · {bp.addressLine1 ?? "No address"}
@@ -499,7 +442,7 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
                       <input form={formId} name="notes" type="hidden" defaultValue={e.notes ?? ""} />
                     </td>
                     <td>
-                      <Link href={`/credentialing?tab=board&group=${bp.id}&payer=${e.payerId}`}>
+                      <Link href={`/credentialing?tab=board&view=board&group=${bp.id}&payer=${e.payerId}`}>
                         {approved}/{tracked} approved
                       </Link>
                     </td>
@@ -547,11 +490,12 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
                   .map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
+                      {p.planSegment ? ` — ${planSegmentLabel[p.planSegment] ?? p.planSegment}` : ""}
                     </option>
                   ))}
               </select>
             </label>
-            <label>
+            <label title="Used only when the payer has no plan type of its own (set under Payer names & plans)">
               Plan segment
               <select name="planSegment" defaultValue="COMMERCIAL">
                 {Object.entries(planSegmentLabel).map(([v, l]) => (
@@ -582,192 +526,6 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
         </section>
       ))}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------- Providers
-
-async function Providers({ practiceIds, multi }: { practiceIds: string[]; multi: boolean }) {
-  const practiceId = { in: practiceIds };
-  const now = new Date();
-  const providers = await prisma.renderingProvider.findMany({
-    where: { practiceId, isRendering: true },
-    include: {
-      practice: true,
-      enrollments: { select: { status: true } },
-      documents: { where: { supersededAt: null }, orderBy: { expiryDate: "asc" } },
-      verificationChecks: { orderBy: { checkedAt: "desc" } },
-    },
-    orderBy: [{ status: "asc" }, { name: "asc" }],
-  });
-
-  return (
-    <section className="panel">
-      <h2>Provider credentialing files</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Provider</th>
-            {multi && <th>Practice</th>}
-            <th>NPI</th>
-            <th>Enrollments</th>
-            <th>Documents on file</th>
-            <th>Next expiry</th>
-            <th>Last OIG / SAM screen</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {providers.map((p) => {
-            const approved = p.enrollments.filter((e) => ACTIVE_ENROLLMENT_STATUSES.includes(e.status)).length;
-            const open = p.enrollments.filter((e) => OPEN_ENROLLMENT_STATUSES.includes(e.status)).length;
-            const nextExpiry = p.documents.find((d) => d.expiryDate);
-            const lastOig = p.verificationChecks.find((c) => c.source === "OIG_LEIE");
-            const lastSam = p.verificationChecks.find((c) => c.source === "SAM");
-            return (
-              <tr key={p.id}>
-                <td>
-                  <Link href={`/credentialing/providers/${p.id}`}>
-                    {p.name}
-                    {p.credential ? `, ${p.credential}` : ""}
-                  </Link>
-                </td>
-                {multi && <td>{p.practice.name}</td>}
-                <td>{p.npi ?? "—"}</td>
-                <td>
-                  {approved} approved · {open} open
-                </td>
-                <td>{p.documents.length}</td>
-                <td>
-                  {nextExpiry?.expiryDate ? (
-                    <>
-                      {providerDocumentTypeLabel[nextExpiry.type]} {formatDate(nextExpiry.expiryDate)}
-                      {daysBetween(now, nextExpiry.expiryDate) <= 90 && (
-                        <div className="muted">in {daysBetween(now, nextExpiry.expiryDate)} days</div>
-                      )}
-                    </>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-                <td>
-                  {lastOig ? formatDate(lastOig.checkedAt) : "Never"} / {lastSam ? formatDate(lastSam.checkedAt) : "Never"}
-                </td>
-                <td>
-                  <StatusBadge value={p.status} />
-                </td>
-              </tr>
-            );
-          })}
-          {providers.length === 0 && (
-            <tr>
-              <td colSpan={multi ? 8 : 7} className="muted">
-                No rendering providers yet — add them in Directories.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------- Provider-number directory
-
-async function ProviderNumbers({ practiceIds, q, multi }: { practiceIds: string[]; q: string; multi: boolean }) {
-  const practiceId = { in: practiceIds };
-  const rows = await prisma.providerEnrollment.findMany({
-    where: {
-      renderingProvider: { practiceId },
-      status: { in: ACTIVE_ENROLLMENT_STATUSES },
-    },
-    include: {
-      renderingProvider: { include: { practice: true } },
-      groupPayerEnrollment: { include: { payer: true, billingProvider: true } },
-    },
-    orderBy: [{ renderingProvider: { name: "asc" } }],
-  });
-  const needle = q.toLowerCase();
-  const shown = needle
-    ? rows.filter((r) =>
-        [r.renderingProvider.name, r.renderingProvider.npi, r.groupPayerEnrollment.payer.name, r.payerProviderId]
-          .filter(Boolean)
-          .some((v) => v!.toLowerCase().includes(needle))
-      )
-    : rows;
-
-  return (
-    <section className="panel">
-      <h2>Provider-number directory</h2>
-      <p className="muted">
-        Every payer where a provider is actively enrolled, with the payer-assigned number (PTAN, provider ID) —
-        the single place billing and eligibility look this up.
-      </p>
-      <form method="get" className="schedule-filters">
-        <input type="hidden" name="tab" value="numbers" />
-        {multi && <input type="hidden" name="p" value={practiceIds.join(",")} />}
-        <label>
-          Search provider, NPI, payer or number
-          <input name="q" defaultValue={q} />
-        </label>
-        <button className="btn secondary" type="submit">
-          Search
-        </button>
-      </form>
-      <table>
-        <thead>
-          <tr>
-            <th>Provider</th>
-            {multi && <th>Practice</th>}
-            <th>Payer</th>
-            <th>Group / state</th>
-            <th>Payer provider #</th>
-            <th>Effective</th>
-            <th>Term</th>
-            <th>Approval letter</th>
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((r) => (
-            <tr key={r.id}>
-              <td>
-                <Link href={`/credentialing/enrollments/${r.id}`}>{r.renderingProvider.name}</Link>
-                <div className="muted">NPI {r.renderingProvider.npi ?? "—"}</div>
-              </td>
-              {multi && <td>{r.renderingProvider.practice.name}</td>}
-              <td>
-                {r.groupPayerEnrollment.payer.name}
-                <div className="muted">{planSegmentLabel[r.groupPayerEnrollment.planSegment]}</div>
-                {r.status === "FOLLOWS_PARENT" && <div className="muted">Follows parent payer</div>}
-              </td>
-              <td>
-                {r.groupPayerEnrollment.billingProvider.name}
-                {r.state ? ` · ${r.state}` : ""}
-              </td>
-              <td>{r.payerProviderId ?? <span className="muted">Not captured</span>}</td>
-              <td>{r.effectiveDate ? formatDate(r.effectiveDate) : "—"}</td>
-              <td>{r.termDate ? formatDate(r.termDate) : "—"}</td>
-              <td>
-                {r.approvalLetterPath ? (
-                  <a href={`/api/files/approval/${r.id}`} target="_blank" rel="noreferrer">
-                    View
-                  </a>
-                ) : (
-                  <span className="muted">Not uploaded</span>
-                )}
-              </td>
-            </tr>
-          ))}
-          {shown.length === 0 && (
-            <tr>
-              <td colSpan={multi ? 8 : 7} className="muted">
-                No active enrollments match.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </section>
   );
 }
 
@@ -879,7 +637,7 @@ async function Dashboard({
         <div className="stat">
           <span>Needs attention</span>
           <strong>
-            <Link href="/credentialing?tab=attention">{alertCount}</Link>
+            <Link href="/credentialing?tab=board&cat=URGENT">{alertCount}</Link>
           </strong>
         </div>
       </section>

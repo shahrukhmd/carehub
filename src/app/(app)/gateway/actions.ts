@@ -442,15 +442,22 @@ export async function saveVerification(caseId: string, fd: FormData) {
     const c = await loadCase(user, caseId);
 
     const payerId = text(fd, "payerId");
-    if (payerId) await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: user.practiceId } });
+    const payer = payerId ? await prisma.payer.findFirstOrThrow({ where: { id: payerId, practiceId: user.practiceId } }) : null;
     const assignedProviderId = text(fd, "assignedProviderId");
     if (assignedProviderId) {
       await prisma.renderingProvider.findFirstOrThrow({
         where: { id: assignedProviderId, practiceId: user.practiceId, isRendering: true },
       });
     }
-    const planSegment = text(fd, "planSegment");
+    // A payer name stands for one line of business; when the segment is left open it follows the payer.
+    const planSegment = text(fd, "planSegment") ?? payer?.planSegment ?? null;
     if (planSegment && !(planSegment in planSegmentLabel)) fail("Invalid plan segment");
+    // The plan name VOB confirmed is kept on the patient's coverage with this payer, and reaches credentialing's
+    // plan list from there.
+    const planName = text(fd, "planName")?.slice(0, 160) ?? null;
+    if (payerId && fd.has("planName")) {
+      await prisma.insurance.updateMany({ where: { patientId: c.patientId, payerId, active: true }, data: { planName } });
+    }
 
     const authRequired = oneOf(fd, "authRequired", yesNoUnknownLabel, "UNKNOWN");
     const referralRequired = oneOf(fd, "referralRequired", yesNoUnknownLabel, "UNKNOWN");

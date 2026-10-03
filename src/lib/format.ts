@@ -353,6 +353,19 @@ export const providerDocumentTypeLabel: Record<string, string> = {
   OTHER: "Other",
 };
 
+export const groupDocumentTypeLabel: Record<string, string> = {
+  W9: "W-9",
+  IRS_LETTER: "IRS letter (CP-575 / 147C)",
+  NPI_LETTER: "Group NPI confirmation",
+  EFT_FORM: "EFT / ERA enrollment form",
+  VOIDED_CHECK: "Voided check / bank letter",
+  LIABILITY_COI: "Liability insurance (COI)",
+  BUSINESS_LICENSE: "Business license",
+  CLIA: "CLIA certificate",
+  PAYER_CONTRACT: "Payer contract / welcome letter",
+  OTHER: "Other",
+};
+
 export const activityChannelLabel: Record<string, string> = {
   PORTAL: "Payer portal",
   PHONE: "Phone call",

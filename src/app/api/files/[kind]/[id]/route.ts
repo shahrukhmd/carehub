@@ -35,6 +35,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
       where: { id, renderingProvider: { practiceId: { in: credentialingPracticeIds(user) } } },
     });
     if (doc) file = { path: doc.filePath, name: doc.fileName, mimeType: doc.mimeType };
+  } else if (kind === "groupdoc") {
+    const doc = await prisma.groupDocument.findFirst({ where: { id, billingProvider: { practiceId: { in: credentialingPracticeIds(user) } } } });
+    if (doc) file = { path: doc.filePath, name: doc.fileName, mimeType: doc.mimeType };
   } else if (kind === "approval") {
     const enrollment = await prisma.providerEnrollment.findFirst({
       where: { id, renderingProvider: { practiceId: { in: credentialingPracticeIds(user) } } },

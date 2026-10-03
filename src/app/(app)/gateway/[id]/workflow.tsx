@@ -1,3 +1,4 @@
+import type { PlanApproval } from "@/lib/payer-plans";
 import Link from "next/link";
 import type { EligibilityCheck, IntakeCase } from "@prisma/client";
 import { CopyButton } from "@/components/CopyButton";
@@ -377,6 +378,7 @@ export function VobDecisionPanel({
   consent,
   needsOverride,
   network,
+  plan,
   decidedBy,
 }: {
   c: IntakeCase;
@@ -384,6 +386,8 @@ export function VobDecisionPanel({
   consent: ConsentRequestInfo;
   needsOverride: boolean;
   network: NetworkStatus | undefined;
+  // Credentialing's answer for the patient's actual plan under the payer.
+  plan: PlanApproval | null;
   decidedBy: string | null;
 }) {
   const waiting = c.stage !== "VERIFICATION";
@@ -399,6 +403,11 @@ export function VobDecisionPanel({
             </Tag>
           ) : (
             <Tag tone="warn">No rendering provider</Tag>
+          )}{" "}
+          {plan && (
+            <Tag tone={plan.status === "APPROVED" ? "ok" : plan.status === "NOT_APPROVED" ? "bad" : "warn"}>
+              {plan.status === "APPROVED" ? "Plan approved" : plan.status === "NOT_APPROVED" ? "Plan not approved" : "Plan not reviewed"}
+            </Tag>
           )}
         </span>
       </div>
