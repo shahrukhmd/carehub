@@ -3,9 +3,9 @@
 export const CLEARINGHOUSES: Record<string, string> = {
   MOCK: "Test clearinghouse (built-in)",
   OFFICE_ALLY: "Office Ally",
-  CHANGE_HEALTHCARE: "Change Healthcare",
+  CHANGE_HEALTHCARE: "Optum (Change Healthcare)",
   AVAILITY: "Availity",
-  WAYSTAR: "Waystar",
+  WAYSTAR: "Waystar (ZirMed)",
   TRIZETTO: "TriZetto",
 };
 

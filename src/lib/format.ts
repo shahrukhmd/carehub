@@ -315,18 +315,33 @@ export const providerTitleLabel: Record<string, string> = {
   MX: "Mx.",
 };
 
-// CMS-1500 box 1 insurance types.
+// The payer's line of business. The CMS-1500 box 1 choice is worked out from it (cms1500-data.ts).
 export const insuranceTypeLabel: Record<string, string> = {
   MEDICARE: "Medicare",
+  MEDICARE_ADVANTAGE: "Medicare Advantage",
+  MEDICARE_SUPPLEMENTAL: "Medicare Supplemental",
   MEDICAID: "Medicaid",
+  MEDICAID_MCO: "Medicaid MCO",
+  COMMERCIAL: "Commercial",
   TRICARE: "TRICARE / CHAMPUS",
   CHAMPVA: "CHAMPVA",
-  GROUP_HEALTH: "Group health plan (commercial)",
-  FECA: "FECA / Black Lung",
-  WORKERS_COMP: "Workers' compensation",
-  AUTO: "Auto / liability",
+  FEDERAL_PROGRAM: "Federal Program",
+  WORKERS_COMP: "Workers' Compensation",
+  AUTO: "Auto / Liability",
   OTHER: "Other",
 };
+
+// The display name made from an insurance's name and type: "Aetna" + Medicare Advantage reads "Aetna Medicare
+// Advantage". The type is left off when the name already says it, and for Other.
+export function insuranceDisplayName(name: string, insuranceType: string | null | undefined) {
+  const base = name.trim().replace(/\s+/g, " ");
+  const label = insuranceType && insuranceType !== "OTHER" ? insuranceTypeLabel[insuranceType] : null;
+  if (!label) return base;
+  const said = (words: string) => base.toLowerCase().includes(words.toLowerCase());
+  // "TRICARE / CHAMPUS" and "Auto / Liability" are two names for one type; either in the name is enough.
+  if (said(label) || label.split(" / ").some(said)) return base;
+  return `${base} ${label.split(" / ")[0]}`;
+}
 
 export const timelyFilingUnitLabel: Record<string, string> = {
   DAYS: "Days",

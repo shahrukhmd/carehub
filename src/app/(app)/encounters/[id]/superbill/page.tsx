@@ -1,3 +1,4 @@
+import { searchMasterCodes, type CodeHit } from "@/lib/master-codes";
 import { scheduleForEncounter } from "@/lib/charge-schedules";
 import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
@@ -20,6 +21,12 @@ import { diagnosisPointerLetter, mdmLevelLabel, parsePointerIds, patientStatusLa
 import { CPT_CATALOG, CPT_CATEGORIES, ICD10_CATALOG, ICD10_CATEGORIES, searchCatalog, type CatalogCode } from "@/lib/code-catalog";
 
 type Search = { dq?: string; cq?: string; warn?: string };
+
+// Adds the code library's matches after the practice's own, leaving out headings and codes already listed.
+function withLibrary(own: CatalogCode[], library: CodeHit[], category: string): CatalogCode[] {
+  const have = new Set(own.map((c) => c.code.toUpperCase()));
+  return [...own, ...library.filter((h) => h.billable && !have.has(h.code.toUpperCase())).map((h) => ({ code: h.code, description: h.description, category }))];
+}
 
 export default async function SuperbillPage({
   params,
@@ -59,7 +66,7 @@ export default async function SuperbillPage({
     .filter((c) => c.type === "ICD10")
     .map((c) => ({ code: c.code, description: c.description, category: c.category ?? "Practice favorites" }));
   const dq = sp.dq?.trim() ?? "";
-  const dxResults = dq ? searchCatalog([...dxFavorites, ...ICD10_CATALOG], dq).slice(0, 150) : [];
+  const dxResults = dq ? withLibrary(searchCatalog([...dxFavorites, ...ICD10_CATALOG], dq), await searchMasterCodes(dq, ["ICD10"], 150), "ICD-10-CM").slice(0, 150) : [];
 
   // Fee schedule: practice CPT list first, then superbill template fees, then the catalog (no fee).
   const fees = new Map<string, { fee: number; modifiers: string | null; description: string }>();
@@ -79,7 +86,7 @@ export default async function SuperbillPage({
     ...templates.flatMap((t) => t.items.map((i) => ({ code: i.cptCode, description: i.description, category: t.name }))),
   ].filter((c, i, arr) => arr.findIndex((x) => x.code === c.code) === i);
   const cq = sp.cq?.trim() ?? "";
-  const cptResults = cq ? searchCatalog([...cptFavorites, ...CPT_CATALOG], cq).slice(0, 100) : [];
+  const cptResults = cq ? withLibrary(searchCatalog([...cptFavorites, ...CPT_CATALOG], cq), await searchMasterCodes(cq, ["CPT", "HCPCS"], 100), "Code library").slice(0, 100) : [];
   const letters = encounter.diagnoses.map((_, i) => diagnosisPointerLetter(i));
   const total = encounter.charges.reduce((s, c) => s + c.amountCents, 0);
 

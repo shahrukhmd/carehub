@@ -108,7 +108,9 @@ export async function addScheduleCode(scheduleId: string, fd: FormData) {
   const revenue = str(fd, "revenueCode").toUpperCase();
   if (revenue.length > 4) back(path, { error: "The revenue code is limited to 4 characters." });
   const known = await prisma.practiceCode.findFirst({ where: { practiceId: user.practiceId, type: "CPT", code } });
-  const description = str(fd, "description").slice(0, 300) || known?.description || code;
+  // The description comes from the practice's own list, then the code library.
+  const library = known ? null : await prisma.masterCode.findFirst({ where: { codeSet: { in: ["CPT", "HCPCS"] }, code } });
+  const description = str(fd, "description").slice(0, 300) || known?.description || library?.description.slice(0, 300) || code;
   await prisma.chargeScheduleItem.create({ data: { scheduleId: schedule.id, code, description, feeCents: Math.round(fee * 100), revenueCode: revenue || null } });
   await logAudit(user.practiceId, user.id, "ADD_CHARGE_SCHEDULE_CODE", "ChargeSchedule", schedule.id, code);
   back(path, { ok: `${code} added.` });

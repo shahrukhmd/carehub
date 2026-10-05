@@ -11,8 +11,13 @@ const TYPE_TO_BOX1: Record<string, string> = {
   MEDICAID: "MEDICAID",
   TRICARE: "TRICARE",
   CHAMPVA: "CHAMPVA",
-  GROUP_HEALTH: "GROUP",
-  FECA: "FECA",
+  // Box 1 has no box of its own for these: a Medicaid managed-care plan is Medicaid; commercial coverage is the
+  // group health plan box; Medicare Advantage and Medicare Supplemental plans are private plans, marked Other.
+  MEDICAID_MCO: "MEDICAID",
+  COMMERCIAL: "GROUP",
+  MEDICARE_ADVANTAGE: "OTHER",
+  MEDICARE_SUPPLEMENTAL: "OTHER",
+  FEDERAL_PROGRAM: "OTHER",
 };
 
 function decodeDataUrl(value: string | null | undefined) {

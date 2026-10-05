@@ -471,6 +471,8 @@ model Payer {
   childPayers  Payer[]     @relation("PayerFollows")
   // Unified "Add Insurance" fields. payerCode doubles as the EDI (claims) payer ID.
   insuranceType         String?
+  // The name staff see: made from the insurance name and type, unless someone typed their own.
+  displayName           String?
   eraPayerId            String?
   eligibilityPayerId    String?
   alternatePayerId      String?
@@ -2930,4 +2932,54 @@ model PayerPlan {
 
   @@unique([payerId, nameKey])
   @@index([practiceId, status])
+}
+
+// A clearinghouse's published payer list: one row per payer with the ID that clearinghouse uses for it and the
+// transactions it takes. Shared by every practice on that clearinghouse; the insurance form looks payers up here.
+model PayerCatalogEntry {
+  id            String   @id @default(cuid())
+  clearinghouse String
+  payerId       String
+  name          String
+  relatedNames  String?
+  payerClass    String?
+  // Where a clearinghouse uses one ID per transaction: institutional claims, remits, eligibility, and the
+  // payer's industry-standard ID. payerId is the (professional) claims ID.
+  institutionalId String?
+  eraId           String?
+  eligibilityId   String?
+  standardId      String?
+  enrollmentNote  String?
+  professional  Boolean  @default(true)
+  institutional Boolean  @default(false)
+  remits        Boolean  @default(false)
+  eligibility   Boolean  @default(false)
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  state         String?
+  zip           String?
+  phone         String?
+  loadedAt      DateTime @default(now())
+
+  @@index([clearinghouse, payerId])
+  @@index([clearinghouse, name])
+}
+
+// The code library: ICD-10-CM, HCPCS Level II and (from the practice's licensed file) CPT, held once for every
+// practice. Charge schedules, the superbill and practice code lists pick from it.
+model MasterCode {
+  id               String   @id @default(cuid())
+  // ICD10 | HCPCS | CPT
+  codeSet          String
+  code             String
+  description      String
+  shortDescription String?
+  // False for ICD-10-CM category headings, which cannot go on a claim.
+  billable         Boolean  @default(true)
+  edition          String?
+  loadedAt         DateTime @default(now())
+
+  @@unique([codeSet, code])
+  @@index([codeSet, billable])
 }

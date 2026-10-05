@@ -1,3 +1,4 @@
+import { PayerLookup } from "./payer-lookup";
 import type { Payer } from "@prisma/client";
 import { US_STATES, insuranceTypeLabel, timelyFilingUnitLabel } from "@/lib/format";
 
@@ -6,9 +7,11 @@ type Props = {
   payer?: Payer | null;
   otherPayers: { id: string; name: string }[];
   submitLabel: string;
+  // Where the add was started ("credentialing"); saving and cancelling go back there.
+  from?: string;
 };
 
-export function InsuranceForm({ action, payer, otherPayers, submitLabel }: Props) {
+export function InsuranceForm({ action, payer, otherPayers, submitLabel, from }: Props) {
   const v = (k: keyof Payer) => {
     const value = payer?.[k];
     return value === null || value === undefined ? "" : String(value);
@@ -16,6 +19,8 @@ export function InsuranceForm({ action, payer, otherPayers, submitLabel }: Props
 
   return (
     <form action={action} className="panel provider-form">
+      {from && <input type="hidden" name="from" value={from} />}
+      <PayerLookup />
       <div className="provider-columns">
         <section>
           <h3>Payer identifiers</h3>
@@ -61,6 +66,14 @@ export function InsuranceForm({ action, payer, otherPayers, submitLabel }: Props
                   </option>
                 ))}
               </select>
+            </label>
+            <label style={{ gridColumn: "1 / -1" }}>
+              Display name
+              <input name="displayName" defaultValue={v("displayName")} maxLength={160} placeholder="Created from the insurance name and type when you save" />
+              <span className="muted">
+                The name staff see in the system. Leave it as it is and it follows the insurance name and type (Aetna + Medicare Advantage reads &quot;Aetna Medicare Advantage&quot;). Type your own
+                and it is kept.
+              </span>
             </label>
             <label>
               Credentialing follows
@@ -191,7 +204,7 @@ export function InsuranceForm({ action, payer, otherPayers, submitLabel }: Props
       </div>
 
       <div className="form-actions">
-        <a className="btn secondary" href="/settings/directories?section=insurance">
+        <a className="btn secondary" href={from === "credentialing" ? "/credentialing" : "/settings/directories?section=insurance"}>
           Cancel
         </a>
         <button className="btn" type="submit">

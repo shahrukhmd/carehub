@@ -58,6 +58,8 @@ type Props = {
   groupNames: string[];
   submitLabel: string;
   cancelHref: string;
+  // Where the add was started ("credentialing"); saving goes back there.
+  from?: string;
 };
 
 const ROLES = Object.entries(providerRoleLabel) as [Role, string][];
@@ -84,7 +86,7 @@ function YesNo({ name, defaultChecked }: { name: string; defaultChecked: boolean
   );
 }
 
-export function ProviderForm({ action, lookupNpi, initial = {}, users, supervisors, groupNames, submitLabel, cancelHref }: Props) {
+export function ProviderForm({ action, lookupNpi, initial = {}, users, supervisors, groupNames, submitLabel, cancelHref, from }: Props) {
   const formRef = useRef<HTMLFormElement>(null);
   const [roles, setRoles] = useState<Record<Role, boolean>>({
     isReferring: initial.isReferring ?? false,
@@ -138,6 +140,7 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
 
   return (
     <form ref={formRef} action={action} className="panel provider-form">
+      {from && <input type="hidden" name="from" value={from} />}
       <section className="provider-types">
         <h2>
           <span>Provider type <span className="req">*</span></span>

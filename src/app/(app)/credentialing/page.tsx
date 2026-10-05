@@ -93,6 +93,13 @@ export default async function CredentialingPage({
           <h1>Credentialing</h1>
         </div>
         <div className="stack" style={{ gridAutoFlow: "column", gap: "0.5rem" }}>
+          {/* Straight to the add screens; saving lands back in credentialing. */}
+          <Link className="btn" href="/settings/directories/providers/new?from=credentialing">
+            + Add provider
+          </Link>
+          <Link className="btn" href="/settings/directories/insurance/new?from=credentialing">
+            + Add insurance
+          </Link>
           <a className="btn secondary" href={`/api/credentialing/export?x=1${scopeQuery}`}>
             {multi ? "Download combined report (CSV)" : "Export to Excel (CSV)"}
           </a>

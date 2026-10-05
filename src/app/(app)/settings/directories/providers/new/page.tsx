@@ -4,8 +4,9 @@ import { ProviderForm } from "@/components/ProviderForm";
 import { lookupNpi, saveProvider } from "../../actions";
 import { providerFormOptions } from "../provider-form-data";
 
-export default async function NewProviderPage() {
+export default async function NewProviderPage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
   const user = await requireUser(["ADMIN", "CREDENTIALING", "FRONT_DESK"]);
+  const fromCredentialing = (await searchParams).from === "credentialing";
   const options = await providerFormOptions(user.practiceId);
 
   return (
@@ -13,7 +14,13 @@ export default async function NewProviderPage() {
       <div className="page-head">
         <div>
           <p className="muted">
-            <Link href="/settings">Settings</Link> · <Link href="/settings/directories?section=providers">Directories</Link>
+            {fromCredentialing ? (
+              <Link href="/credentialing">« Credentialing</Link>
+            ) : (
+              <>
+                <Link href="/settings">Settings</Link> · <Link href="/settings/directories?section=providers">Directories</Link>
+              </>
+            )}
           </p>
           <h1>Add provider</h1>
         </div>
@@ -25,7 +32,8 @@ export default async function NewProviderPage() {
         supervisors={options.supervisors}
         groupNames={options.groupNames}
         submitLabel="Add provider"
-        cancelHref="/settings/directories?section=providers"
+        cancelHref={fromCredentialing ? "/credentialing" : "/settings/directories?section=providers"}
+        from={fromCredentialing ? "credentialing" : undefined}
       />
     </>
   );

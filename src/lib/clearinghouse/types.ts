@@ -1,3 +1,4 @@
+import type { CatalogRow } from "@/lib/payer-catalog";
 export interface EligibilityRequest {
   patientId: string;
   payerId: string;
@@ -88,4 +89,8 @@ export interface ClearinghouseAdapter {
   name: string;
   checkEligibility(req: EligibilityRequest): Promise<EligibilityResult>;
   submitClaim(req: ClaimSubmissionRequest): Promise<ClaimSubmissionResult>;
+  // The clearinghouse's payer directory, searched live by payer ID or name. An adapter connected by API
+  // implements this and the insurance form's payer lookup uses it; without it (or when it returns null, e.g. the
+  // service is down) the lookup falls back to the payer list loaded under Practice setup.
+  searchPayers?(clearinghouse: string, query: string): Promise<CatalogRow[] | null>;
 }

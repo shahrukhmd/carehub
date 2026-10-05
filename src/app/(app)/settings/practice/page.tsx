@@ -1,6 +1,10 @@
 import { requireUser } from "@/lib/auth";
 import { getPracticeSettings } from "@/lib/chart-setup";
 import { CLEARINGHOUSES, MONTHS } from "@/lib/practice-settings";
+import { prisma } from "@/lib/prisma";
+import { formatDate } from "@/lib/format";
+import { PAYER_LIST_SOURCE } from "@/lib/payer-catalog";
+import { importPayerList } from "../directories/payer-lookup-actions";
 import { SettingsNav } from "../settings-nav";
 import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 import { FAX_PROVIDERS } from "@/lib/fax";
@@ -51,10 +55,16 @@ function AddressBlock({ s, block }: { s: S; block: (typeof BLOCKS)[number] }) {
   );
 }
 
-export default async function PracticeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
+export default async function PracticeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; listOk?: string; listError?: string }> }) {
   const user = await requireUser(["ADMIN"]);
   const sp = await searchParams;
   const s = await getPracticeSettings(user.practiceId);
+  // The payer list held for the practice's clearinghouse (shared by every practice on that clearinghouse).
+  const [listCount, listNewest] = await Promise.all([
+    prisma.payerCatalogEntry.count({ where: { clearinghouse: s.clearinghouse } }),
+    prisma.payerCatalogEntry.findFirst({ where: { clearinghouse: s.clearinghouse }, orderBy: { loadedAt: "desc" }, select: { loadedAt: true } }),
+  ]);
+  const listSource = PAYER_LIST_SOURCE[s.clearinghouse];
 
   return (
     <div className="stack">
@@ -208,6 +218,58 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
           </button>
         </div>
       </form>
+
+      <section className="panel" id="payer-list">
+        <div className="gw-section-head">
+          <h2>Clearinghouse payer list</h2>
+          <span className="muted">
+            {CLEARINGHOUSES[s.clearinghouse] ?? s.clearinghouse} ·{" "}
+            {listCount ? `${listCount.toLocaleString("en-US")} payers loaded${listNewest ? ` on ${formatDate(listNewest.loadedAt)}` : ""}` : "no list loaded"}
+          </span>
+        </div>
+        <p className="muted">
+          Add insurance looks payers up in this list by payer ID or name and fills in the claims, ERA and eligibility IDs. Each clearinghouse uses its own payer IDs, so the list follows the clearinghouse
+          chosen above: change the clearinghouse, save, then load that clearinghouse&apos;s list here.
+        </p>
+        {sp.listOk && <p className="notice-ok">{sp.listOk}</p>}
+        {sp.listError && (
+          <p className="gw-error" role="alert">
+            {sp.listError}
+          </p>
+        )}
+        {s.clearinghouse === "MOCK" ? (
+          <p className="muted">The test clearinghouse has no published list; a few well-known payers are built in so the lookup can be tried.</p>
+        ) : (
+          <>
+            {listSource && (
+              <p>
+                1.{" "}
+                <a href={listSource.url} target="_blank" rel="noreferrer">
+                  Open the {CLEARINGHOUSES[s.clearinghouse]} payer list
+                </a>{" "}
+                — {listSource.how}
+              </p>
+            )}
+            <form action={importPayerList} className="gw-inline-form" style={{ display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
+              <span>{listSource ? "2." : ""} Load the downloaded file:</span>
+              <input type="file" name="file" accept=".xlsx,.csv,.txt,.tsv" required />
+              {listCount > 0 && (
+                <select name="mode" defaultValue="add" aria-label="How to load">
+                  <option value="add">Add to the list held</option>
+                  <option value="replace">Replace the list held</option>
+                </select>
+              )}
+              <button className="btn secondary" type="submit">
+                Load the payer list
+              </button>
+            </form>
+            <p className="muted">
+              Excel (.xlsx) or CSV. A second file is joined onto the first, so a claims list and an eligibility list make one entry per payer. Insurances already saved keep the payer IDs they
+              have.
+            </p>
+          </>
+        )}
+      </section>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { CodeLookup } from "@/components/CodeLookup";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -193,7 +194,8 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
 
         <section className="panel">
           <h2>Add a billing code</h2>
-          <form action={addScheduleCode.bind(null, schedule.id)} className="pv-inline">
+          <form action={addScheduleCode.bind(null, schedule.id)} className="pv-inline" style={{ flexWrap: "wrap" }}>
+            <CodeLookup sets={["CPT", "HCPCS"]} placeholder="Find a billing code in the code library — by code or words (e.g. A6212, alginate, debridement)" />
             <input name="code" required maxLength={5} placeholder="Code" aria-label="Billing code" style={{ flex: "0 0 6rem" }} />
             <input name="description" maxLength={300} placeholder="Description (from the code list if blank)" aria-label="Description" />
             <input name="fee" inputMode="decimal" placeholder="Fee" aria-label="Fee" style={{ flex: "0 0 6rem" }} />

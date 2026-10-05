@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { SettingsNav, settingsFor } from "./settings-nav";
+import { SETTINGS_GROUPS, settingsFor } from "./settings-nav";
+import { SettingsHome } from "./settings-home";
 
 export default async function SettingsHomePage() {
   const user = await requireUser();
@@ -14,19 +14,16 @@ export default async function SettingsHomePage() {
     <div className="stack">
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
-          <p className="muted">Practice management</p>
+          <p className="muted">Practice management · {sections.length} settings in {new Set(sections.map((s) => s.group)).size} groups</p>
           <h1>Settings</h1>
         </div>
       </div>
-      <SettingsNav current="" role={user.role} />
-      <div className="st-cards">
-        {sections.map((s) => (
-          <Link key={s.key} href={s.href} className="panel st-card">
-            <strong>{s.label}</strong>
-            <span className="muted">{s.description}</span>
-          </Link>
-        ))}
-      </div>
+      <SettingsHome
+        groups={SETTINGS_GROUPS.map((g) => ({
+          ...g,
+          cards: sections.filter((s) => s.group === g.key).map(({ key, href, label, description }) => ({ key, href, label, description })),
+        })).filter((g) => g.cards.length > 0)}
+      />
     </div>
   );
 }

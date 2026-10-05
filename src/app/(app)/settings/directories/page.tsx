@@ -229,7 +229,8 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
           <table>
             <thead>
               <tr>
-                <th>Insurance</th>
+                <th>Insurance name</th>
+                <th>Display name</th>
                 <th>Type</th>
                 <th>EDI / ERA / eligibility ID</th>
                 <th>Phone</th>
@@ -249,6 +250,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
                       {p.alternatePayer ? ` · alternate: ${p.alternatePayer.name}` : ""}
                     </div>
                   </td>
+                  <td>{p.displayName ?? p.name}</td>
                   <td>{p.insuranceType ? insuranceTypeLabel[p.insuranceType] : "—"}</td>
                   <td>
                     {p.payerCode ?? "—"} / {p.eraPayerId ?? "—"} / {p.eligibilityPayerId ?? "—"}
@@ -271,7 +273,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
               ))}
               {payers.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="muted">
+                  <td colSpan={8} className="muted">
                     No insurances match.
                   </td>
                 </tr>

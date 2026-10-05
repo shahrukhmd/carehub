@@ -1,5 +1,6 @@
 "use server";
 
+import { insuranceDisplayName } from "@/lib/format";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -50,14 +51,22 @@ export async function saveInsurance(payerId: string | null, formData: FormData) 
   const alertDays = optionalNumber(formData, "timelyFilingAlertDays");
   const appealDays = optionalNumber(formData, "appealLimitDays");
 
+  // The display name follows the name and type until someone types their own; a hand-typed one is kept.
+  const name = required(formData, "name");
+  const insuranceType = optional(formData, "insuranceType");
+  const typed = optional(formData, "displayName")?.replace(/\s+/g, " ").slice(0, 160) ?? null;
+  const previousAuto = existing ? insuranceDisplayName(existing.name, existing.insuranceType) : null;
+  const displayName = !typed || typed === previousAuto || typed === existing?.name ? insuranceDisplayName(name, insuranceType) : typed;
+
   const data = {
-    name: required(formData, "name"),
+    name,
+    displayName,
     payerCode: optional(formData, "payerCode"),
     eraPayerId: optional(formData, "eraPayerId"),
     eligibilityPayerId: optional(formData, "eligibilityPayerId"),
     alternatePayerId: optional(formData, "alternatePayerId"),
     parentPayerId: optional(formData, "parentPayerId"),
-    insuranceType: optional(formData, "insuranceType"),
+    insuranceType,
     portalName: optional(formData, "portalName"),
     addressLine1: optional(formData, "addressLine1"),
     addressLine2: optional(formData, "addressLine2"),
@@ -88,6 +97,9 @@ export async function saveInsurance(payerId: string | null, formData: FormData) 
   await logAudit(user.practiceId, user.id, existing ? "UPDATE_PAYER" : "CREATE_PAYER", "Payer", payer.id, data.name);
   revalidatePath("/settings/directories");
   revalidatePath("/patients/new");
+  revalidatePath("/credentialing", "layout");
+  // Added from credentialing: on to the payer lines, where the new insurance is linked to a group.
+  if (formData.get("from") === "credentialing") redirect("/credentialing?tab=board&view=setup");
   redirect("/settings/directories?section=insurance");
 }
 
@@ -233,6 +245,8 @@ export async function saveProvider(providerId: string | null, formData: FormData
   );
   revalidatePath("/settings/directories");
   revalidatePath("/credentialing", "layout");
+  // Added from credentialing: on to the provider's credentialing file (documents, payer enrollments, numbers).
+  if (formData.get("from") === "credentialing") redirect(provider.isRendering ? `/credentialing/providers/${provider.id}` : "/credentialing");
   redirect("/settings/directories?section=providers");
 }
 
