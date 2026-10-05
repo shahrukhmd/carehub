@@ -1,10 +1,13 @@
 // Visit workflow after scheduling: the provider and clinical team document the visit, CDS reviews the
-// record and builds the superbill, the provider (and supervising physician) sign, then billing.
+// documentation, the coding team builds the superbill (asking CDS when something needs correcting), the provider
+// (and supervising physician) sign, then billing.
 
 export const visitStatusLabel: Record<string, string> = {
   IN_PROGRESS: "Documentation in progress",
   READY_FOR_CDS: "Ready for CDS",
   CDS_QUERY: "Incomplete documentation HOLD (CDS)",
+  READY_FOR_CODING: "Ready for coding",
+  CODING_QUERY: "Coding query (with CDS)",
   READY_FOR_SIGNATURE: "Ready for signature",
   READY_FOR_BILLING: "Ready for billing",
   BILLED: "Billing completed",
@@ -32,29 +35,32 @@ export type VisitTone = "ok" | "warn" | "bad" | "info" | "muted";
 
 export function visitStatusTone(status: string): VisitTone {
   if (SIGNED_STATUSES.includes(status) || status === "COMPLETED") return "ok";
-  if (["CDS_QUERY", "BILLING_HOLD", "HOLD_FOR_AUDIT", "NO_SHOW", "CANCELLED"].includes(status)) return "bad";
-  if (["READY_FOR_CDS", "READY_FOR_SIGNATURE"].includes(status)) return "warn";
+  if (["CDS_QUERY", "CODING_QUERY", "BILLING_HOLD", "HOLD_FOR_AUDIT", "NO_SHOW", "CANCELLED"].includes(status)) return "bad";
+  if (["READY_FOR_CDS", "READY_FOR_CODING", "READY_FOR_SIGNATURE"].includes(status)) return "warn";
   if (status === "DO_NOT_BILL") return "muted";
   return "info";
 }
 
 // Who works each stage.
-export const VISIT_VIEW_ROLES = ["ADMIN", "CLINICIAN", "CDS", "BILLER", "FRONT_DESK", "SCHEDULER"];
-export const ENCOUNTER_VIEW_ROLES = ["ADMIN", "CLINICIAN", "CDS", "BILLER"];
+export const VISIT_VIEW_ROLES = ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER", "FRONT_DESK", "SCHEDULER"];
+export const ENCOUNTER_VIEW_ROLES = ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER"];
 const CLINICAL_ROLES = ["ADMIN", "CLINICIAN"];
-const CODING_ROLES = ["ADMIN", "CDS"];
-const HOLD_ROLES = ["ADMIN", "CDS", "BILLER"];
+// CDS reviews the documentation; the coding team owns the superbill. They are separate teams.
+export const CDS_ROLES = ["ADMIN", "CDS"];
+export const CODING_ROLES = ["ADMIN", "CODER"];
+const HOLD_ROLES = ["ADMIN", "CDS", "CODER", "BILLER"];
+// The stages with CDS: a first review, and a coding query to answer.
+export const CDS_STAGES = ["READY_FOR_CDS", "CODING_QUERY"];
 
 // The provider and clinical team own the chart until it goes to CDS, and again if CDS queries it.
 export function canEditClinical(status: string, role: string) {
   return CLINICAL_ROLES.includes(role) && ["IN_PROGRESS", "CDS_QUERY"].includes(status);
 }
 
-// Providers may suggest codes while documenting; CDS owns the superbill once the chart is submitted.
+// The superbill belongs to the coding team alone, and only while the chart is with them: after CDS has reviewed
+// the documentation and before the provider signs.
 export function canEditCoding(status: string, role: string) {
-  if (["IN_PROGRESS", "CDS_QUERY"].includes(status)) return CLINICAL_ROLES.includes(role) || CODING_ROLES.includes(role);
-  if (status === "READY_FOR_CDS") return CODING_ROLES.includes(role);
-  return false;
+  return status === "READY_FOR_CODING" && CODING_ROLES.includes(role);
 }
 
 export function canHold(role: string) {
@@ -62,6 +68,10 @@ export function canHold(role: string) {
 }
 
 export function isCdsRole(role: string) {
+  return CDS_ROLES.includes(role);
+}
+
+export function isCoderRole(role: string) {
   return CODING_ROLES.includes(role);
 }
 

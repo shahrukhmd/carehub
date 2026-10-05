@@ -704,6 +704,10 @@ model Problem {
   description String
   status      String    @default("ACTIVE")
   onsetDate   DateTime?
+  // Whether coding should take this problem onto the visit's superbill, and how sure the provider is of it.
+  sendToSuperbill    Boolean   @default(true)
+  verificationStatus String    @default("CONFIRMED")
+  resolvedDate       DateTime?
 }
 
 model Medication {
@@ -817,6 +821,8 @@ model Encounter {
   supervisingProvider RenderingProvider? @relation("EncounterSupervisor", fields: [supervisingProviderId], references: [id], onDelete: SetNull)
   submittedToCdsAt    DateTime?
   cdsQueryNote        String?
+  // What the coding team asked CDS to check or correct (cleared when the chart goes back to coding).
+  codingQueryNote     String?
   codedById           String?
   codedBy             User?     @relation("EncounterCoder", fields: [codedById], references: [id], onDelete: SetNull)
   codedAt             DateTime?

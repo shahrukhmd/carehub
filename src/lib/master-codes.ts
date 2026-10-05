@@ -160,9 +160,18 @@ export type CodeHit = { codeSet: string; code: string; description: string; shor
 // Finds codes by the start of the code or by every word of the description. Billable codes come first.
 export async function searchMasterCodes(q: string, sets: CodeSet[], take = 30): Promise<CodeHit[]> {
   const needle = q.trim().slice(0, 80);
-  if (needle.length < 2) return [];
+  // Nothing typed: the set itself, in code order, so a set can be browsed.
+  if (!needle) {
+    return prisma.masterCode.findMany({
+      where: { codeSet: { in: sets }, billable: true },
+      orderBy: [{ codeSet: "asc" }, { code: "asc" }],
+      take,
+      select: { codeSet: true, code: true, description: true, shortDescription: true, billable: true },
+    });
+  }
   const words = needle.split(/\s+/).filter(Boolean);
-  const looksLikeCode = /^[A-Za-z]?\d[\dA-Za-z.]*$/.test(needle);
+  // A single letter or a code-like entry is matched against the start of the code only.
+  const looksLikeCode = needle.length === 1 || /^[A-Za-z]?\d[\dA-Za-z.]*$/.test(needle);
   const rows = await prisma.masterCode.findMany({
     where: {
       codeSet: { in: sets },

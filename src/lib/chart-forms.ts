@@ -13,6 +13,8 @@ export const FIELD_TYPES = {
   radio: "Buttons (one choice)",
   checkboxes: "Checkboxes (several choices)",
   checkbox: "Single checkbox",
+  careitems: "Statements, each with a comment, status and date",
+  wounds: "The patient's wounds (tick which apply)",
   score: "Score total (calculated)",
   // Patient Connect (patient-facing forms)
   consent: "Consent (patient agrees to the help text)",
@@ -37,7 +39,20 @@ export type FieldDef = {
 };
 
 export const CHOICE_TYPES: FieldType[] = ["select", "radio", "checkboxes"];
-export const INPUT_TYPES: FieldType[] = ["text", "textarea", "number", "date", "yesno", "select", "radio", "checkboxes", "checkbox", "consent", "signature"];
+export const INPUT_TYPES: FieldType[] = ["text", "textarea", "number", "date", "yesno", "select", "radio", "checkboxes", "checkbox", "careitems", "wounds", "consent", "signature"];
+
+// Plan-of-care statements: each ticked statement carries a status, the date of that status and a comment.
+export const CARE_ITEM_STATUSES = ["Initiated", "Continued", "Completed", "Discontinued"];
+const CARE_SEP = "\u001f";
+
+export type CareItem = { statement: string; status: string; date: string; comment: string };
+
+export function parseCareItems(value: string | string[] | undefined): CareItem[] {
+  return ([] as string[]).concat(value ?? []).map((v) => {
+    const [statement, status = "", date = "", comment = ""] = v.split(CARE_SEP);
+    return { statement, status, date, comment };
+  });
+}
 
 export const DOCUMENT_SECTIONS = {
   DOCUMENTATION: "Documentation",
@@ -153,6 +168,23 @@ export function collectValues(fields: FieldDef[], fd: FormData) {
       const allowed = new Set((f.options ?? []).map(optionLabel));
       const picked = fd.getAll(key).map(String).filter((v) => allowed.has(v));
       if (picked.length) values[f.id] = picked;
+    } else if (f.type === "careitems") {
+      // Inputs per statement i: f_<id>__on_<i>, __s_<i> (status), __d_<i> (date), __c_<i> (comment).
+      const today = new Date().toISOString().slice(0, 10);
+      const picked = (f.options ?? []).flatMap((o, i) => {
+        if (!fd.get(`${key}__on_${i}`)) return [];
+        const status = String(fd.get(`${key}__s_${i}`) ?? "");
+        const date = String(fd.get(`${key}__d_${i}`) ?? "");
+        const comment = String(fd.get(`${key}__c_${i}`) ?? "").trim().replaceAll(CARE_SEP, " ").slice(0, 2000);
+        const st = CARE_ITEM_STATUSES.includes(status) ? status : "";
+        // A status with no date takes today's.
+        const dt = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : st ? today : "";
+        return [[optionLabel(o), st, dt, comment].join(CARE_SEP)];
+      });
+      if (picked.length) values[f.id] = picked;
+    } else if (f.type === "wounds") {
+      const picked = [...new Set(fd.getAll(key).map((v) => String(v).trim().slice(0, 160)).filter(Boolean))].slice(0, 40);
+      if (picked.length) values[f.id] = picked;
     } else if (f.type === "checkbox") {
       if (fd.get(key)) values[f.id] = "Yes";
     } else if (f.type === "consent") {
@@ -195,6 +227,15 @@ export function withClinic(fields: FieldDef[], clinic: string): FieldDef[] {
 
 export function displayValue(field: FieldDef, value: string | string[] | undefined) {
   if (!hasValue(value)) return "";
+  if (field.type === "careitems") {
+    return parseCareItems(value)
+      .map((c) => {
+        const when = c.date ? c.date.replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$2/$3/$1") : "";
+        const state = [c.status, when].filter(Boolean).join(" ");
+        return `• ${c.statement}${state ? ` [${state}]` : ""}${c.comment ? ` — ${c.comment}` : ""}`;
+      })
+      .join("\n");
+  }
   if (Array.isArray(value)) return value.join(", ");
   if (field.type === "signature") {
     const typed = typedSignature(value);

@@ -4,7 +4,7 @@ import { settingsAddress } from "@/lib/practice-settings";
 import { Flow, INK, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
 
 export const RX_WRITE_ROLES = ["ADMIN", "CLINICIAN"];
-export const RX_VIEW_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "CDS", "INTAKE"];
+export const RX_VIEW_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "CDS", "CODER", "INTAKE"];
 
 // Common wound-care prescriptions (drug, strength, form, sig, qty) to speed up writing.
 export const RX_FAVORITES: { drug: string; strength: string; form: string; route: string; sig: string; quantity: string; unit: string; days: number }[] = [

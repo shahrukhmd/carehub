@@ -7,7 +7,7 @@ import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import { ensureRenderingProviderForUser } from "@/lib/credentialing";
 
-const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"];
+const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();

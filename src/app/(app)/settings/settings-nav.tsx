@@ -20,7 +20,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     href: "/settings/directories",
     label: "Providers, insurance & codes",
     description: "Providers, insurance payers, billing groups, superbill templates, code lists & fees",
-    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"],
+    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"],
   },
   {
     key: "documentation",
@@ -60,7 +60,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     href: "/settings/code-library",
     label: "Code library",
     description: "Every ICD-10 diagnosis code and HCPCS / CPT billing code, fetched from the publishers and searchable; charge schedules and the superbill pick from it",
-    roles: ["ADMIN", "BILLER", "CDS"],
+    roles: ["ADMIN", "BILLER", "CDS", "CODER"],
   },
   {
     key: "scheduling",

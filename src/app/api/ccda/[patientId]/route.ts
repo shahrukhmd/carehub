@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { buildCcd } from "@/lib/ccda";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ patientId: string }> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "BILLER"]);
+  const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "CODER", "BILLER"]);
   const { patientId } = await params;
   const p = await prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId } });
   if (!p) return new NextResponse("Not found", { status: 404 });

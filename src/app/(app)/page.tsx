@@ -23,7 +23,7 @@ const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
 export default async function PatientGatewayPage({ searchParams }: { searchParams: Promise<GatewaySearch> }) {
   const user = await requireUser();
   // Billing and credentialing staff work outside the gateway; send them to their own home.
-  if (!GATEWAY_ROLES.includes(user.role)) redirect(user.role === "CREDENTIALING" ? "/credentialing" : user.role === "CDS" ? "/encounters" : "/billing");
+  if (!GATEWAY_ROLES.includes(user.role)) redirect(user.role === "CREDENTIALING" ? "/credentialing" : ["CDS", "CODER"].includes(user.role) ? "/encounters" : "/billing");
 
   const sp = await searchParams;
   const ownTeam = defaultTeamForRole(user.role);

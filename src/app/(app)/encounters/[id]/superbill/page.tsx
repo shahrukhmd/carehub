@@ -10,6 +10,7 @@ import {
   addChargesBulk,
   addDiagnosesBulk,
   addDiagnosis,
+  importProblemDiagnoses,
   moveDiagnosis,
   removeCharge,
   removeDiagnosis,
@@ -207,6 +208,13 @@ export default async function SuperbillPage({
         <section className="panel">
           <div className="gw-section-head">
             <h2>Diagnosis codes</h2>
+            {editable && (
+              <form action={importProblemDiagnoses.bind(null, encounter.id)}>
+                <button className="btn secondary" type="submit" title="Adds the active, confirmed problems the provider marked 'send to superbill' that are not on the superbill yet">
+                  Import from problem list
+                </button>
+              </form>
+            )}
             <form method="get" className="sb-search">
               {cq && <input type="hidden" name="cq" value={cq} />}
               <input name="dq" defaultValue={dq} placeholder="Search ICD-10 code or words (e.g. left heel stage 3)" aria-label="Search diagnoses" />

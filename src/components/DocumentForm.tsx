@@ -1,7 +1,9 @@
 import {
+  CARE_ITEM_STATUSES,
   computeScore,
   displayValue,
   optionLabel,
+  parseCareItems,
   optionScore,
   scoreBand,
   type DocValues,
@@ -9,7 +11,8 @@ import {
 } from "@/lib/chart-forms";
 
 // Inputs for a designed form. Field inputs are named f_<fieldId>; the surrounding <form> posts them.
-export function DocumentFields({ fields, values, idPrefix = "doc" }: { fields: FieldDef[]; values: DocValues; idPrefix?: string }) {
+// wounds: the patient's open wounds, offered by "wounds" fields (orders name the wounds they are for).
+export function DocumentFields({ fields, values, idPrefix = "doc", wounds }: { fields: FieldDef[]; values: DocValues; idPrefix?: string; wounds?: string[] }) {
   const score = computeScore(fields, values);
   return (
     <div className="df-grid">
@@ -131,6 +134,67 @@ export function DocumentFields({ fields, values, idPrefix = "doc" }: { fields: F
                 {help}
               </fieldset>
             );
+          case "careitems": {
+            const saved = new Map(parseCareItems(v).map((c) => [c.statement, c]));
+            return (
+              <fieldset key={f.id} className={`${cls} df-choices df-care`}>
+                <legend>{label}</legend>
+                {(f.options ?? []).map((o, i) => {
+                  const c = saved.get(optionLabel(o));
+                  return (
+                    <div key={o} className="df-care-item">
+                      <label className="df-option">
+                        <input type="checkbox" name={`${name}__on_${i}`} value="on" defaultChecked={Boolean(c)} />
+                        <span>{optionLabel(o)}</span>
+                      </label>
+                      {/* Shown once the statement is ticked. */}
+                      <div className="df-care-detail">
+                        <textarea name={`${name}__c_${i}`} defaultValue={c?.comment ?? ""} rows={2} placeholder="Comment" aria-label="Comment" />
+                        <label>
+                          Plan of care status
+                          <select name={`${name}__s_${i}`} defaultValue={c?.status ?? ""}>
+                            <option value="">—</option>
+                            {CARE_ITEM_STATUSES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Status date
+                          <input type="date" name={`${name}__d_${i}`} defaultValue={c?.date ?? ""} />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+                {help}
+              </fieldset>
+            );
+          }
+          case "wounds": {
+            // Wounds named on an earlier save stay listed even if they have since closed.
+            const all = [...new Set([...(wounds ?? []), ...many])];
+            return (
+              <fieldset key={f.id} className={`${cls} df-choices`}>
+                <legend>{label}</legend>
+                {all.length === 0 ? (
+                  <p className="df-help">{wounds ? "The patient has no open wounds on the chart." : "Lists the patient's open wounds when the form is used in a chart."}</p>
+                ) : (
+                  <div className="df-options">
+                    {all.map((w) => (
+                      <label key={w} className="df-option">
+                        <input type="checkbox" name={name} value={w} defaultChecked={many.has(w)} />
+                        <span>{w}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {help}
+              </fieldset>
+            );
+          }
           case "consent":
             return (
               <div key={f.id} className={`${cls} df-consent`}>

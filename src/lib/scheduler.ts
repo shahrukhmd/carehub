@@ -59,6 +59,8 @@ export const CALENDAR_STATUSES: [string, string, ColorPair][] = [
   ["IN_PROGRESS", "Documentation in progress", { text: "#000000", bg: "#9fd8f5" }],
   ["READY_FOR_CDS", "Ready for CDS", { text: "#000000", bg: "#18954a" }],
   ["CDS_QUERY", "Incomplete Documentation HOLD (CDS)", { text: "#ffffff", bg: "#0b5cb8" }],
+  ["READY_FOR_CODING", "Ready for Coding", { text: "#000000", bg: "#5cc4b8" }],
+  ["CODING_QUERY", "Coding Query (with CDS)", { text: "#ffffff", bg: "#7a4fc4" }],
   ["READY_FOR_SIGNATURE", "Ready for Signature", { text: "#000000", bg: "#f7931e" }],
   ["READY_FOR_BILLING", "Ready for Billing", { text: "#000000", bg: "#c56fd1" }],
   ["BILLED", "Billing Completed", { text: "#000000", bg: "#ee8b8f" }],

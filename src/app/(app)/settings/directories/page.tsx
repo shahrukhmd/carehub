@@ -29,7 +29,7 @@ const ROLE_FILTERS = [["", "All types"], ...Object.entries(providerRoleLabel)] a
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 export default async function DirectoriesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"]);
+  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"]);
   const sp = await searchParams;
   const section = SECTIONS.some((x) => x.key === sp.section) ? sp.section! : "providers";
   const canEditProviders = ["ADMIN", "CREDENTIALING", "FRONT_DESK"].includes(user.role);
@@ -77,7 +77,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
           orderBy: [{ type: "asc" }, { active: "desc" }, { code: "asc" }],
         })
       : [];
-  const canEditCodes = ["ADMIN", "BILLER", "CDS"].includes(user.role);
+  const canEditCodes = ["ADMIN", "BILLER", "CDS", "CODER"].includes(user.role);
 
   return (
     <>

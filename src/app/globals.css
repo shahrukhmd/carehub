@@ -7432,3 +7432,34 @@ td.num {
   gap: 0.3rem;
 }
 .cl-box .pl-results { max-height: 16rem; }
+
+.cl-addbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--surface-2, rgba(20, 20, 60, 0.03));
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* ---- Plan-of-care statements: detail appears once the statement is ticked ---- */
+.df-care-item { padding: 0.15rem 0; }
+.df-care-detail {
+  display: none;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.5rem 0.8rem;
+  align-items: end;
+  margin: 0.3rem 0 0.6rem 1.6rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--surface-2, rgba(20, 20, 60, 0.04));
+  border-radius: 0.4rem;
+}
+.df-care-item:has(> .df-option input:checked) .df-care-detail { display: grid; }
+.df-care-detail label { display: grid; gap: 0.2rem; font-size: 0.8rem; }
+@media (max-width: 800px) { .df-care-detail { grid-template-columns: 1fr; margin-left: 0.4rem; } }

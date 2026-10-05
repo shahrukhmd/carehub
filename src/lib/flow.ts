@@ -14,7 +14,7 @@ export const FLOW_STAGES: [string, string, string[]][] = [
   ["expected", "Expected", ["SCHEDULED", "CONFIRMED"]],
   ["waiting", "Waiting room", ["CHECKED_IN"]],
   ["room", "In room", ["IN_ROOM", "IN_PROGRESS"]],
-  ["out", "Checked out", ["COMPLETED", "READY_FOR_CDS", "CDS_QUERY", "READY_FOR_SIGNATURE", "READY_FOR_BILLING", "BILLED"]],
+  ["out", "Checked out", ["COMPLETED", "READY_FOR_CDS", "CDS_QUERY", "READY_FOR_CODING", "CODING_QUERY", "READY_FOR_SIGNATURE", "READY_FOR_BILLING", "BILLED"]],
   ["missed", "No-show / cancelled", ["NO_SHOW", "CANCELLED"]],
 ];
 

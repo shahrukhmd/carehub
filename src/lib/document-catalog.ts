@@ -17,6 +17,10 @@ const n = (label: string, unit?: string, o: Opt = {}): Spec => ({ label, type: "
 const sel = (label: string, options: string[], o: Opt = {}): Spec => ({ label, type: "select", options, ...o });
 const rad = (label: string, options: string[], o: Opt = {}): Spec => ({ label, type: "radio", options, ...o });
 const cbs = (label: string, options: string[], o: Opt = {}): Spec => ({ label, type: "checkboxes", options, ...o });
+// Plan-of-care statements: each ticked one takes a comment, a status and a status date.
+const care = (label: string, options: string[], o: Opt = {}): Spec => ({ label, type: "careitems", options, ...o });
+// The patient's open wounds as tick boxes.
+const wnd = mk("wounds");
 const score = (label: string, bands: string[]): Spec => ({ label, type: "score", options: bands });
 const req: Opt = { required: true };
 const half: Opt = { width: "half" };
@@ -86,7 +90,7 @@ const leftRight = (label: string, options: string[]): Spec[] => [sel(`Left — $
 
 // Templates whose standard layout changed to follow the practice's visit report (Review of Systems, Physician Orders...).
 // A practice that never edited or used the old layout gets the new one in place; otherwise it is added beside the old.
-export const REVISED_TEMPLATES = ["physician_orders", "allergy_list", "ctp", "lower_extremity", "physical_exam_systems", "plan_of_care", "ros"];
+export const REVISED_TEMPLATES = ["physician_orders", "allergy_list", "ctp", "lower_extremity", "physical_exam_systems", "plan_of_care", "ros", "telemedicine_consent"];
 
 export const STANDARD_TEMPLATES: CatalogTemplate[] = [
   // ---- Documentation ----
@@ -99,32 +103,164 @@ export const STANDARD_TEMPLATES: CatalogTemplate[] = [
     "Physician Orders",
     "DOCUMENTATION",
     [
-      h("Wound orders"),
-      t("Wound(s) these orders are for", { help: "e.g. Wound #1 Left Lower Leg" }),
-      ta("Wound cleansing"),
+      cb1("Verbal / phone orders"),
+      wnd("Select wound(s) for these orders", { help: "Tick every wound the orders below apply to. Leave all unticked for an order that is not wound specific." }),
+
+      h("Wound care cleansing"),
+      cbs("Wound care cleansing", [
+        "Cleanse wound with Normal Saline",
+        "Cleanse wound with wound cleanser of choice",
+        "Cleanse wound with Dakin's solution",
+        "Cleanse wound with Dakin's solution half strength",
+        "Cleanse wound daily",
+        "Cleanse wound 2x per day",
+        "Cleanse wound every other day",
+        "May cleanse wound in shower",
+        "Do not shower or bath",
+      ]),
+      t("Cleanse wound with / other cleansing instructions"),
+
+      h("Topical"),
       ta("Topical", { help: "e.g. Apply Gentamicin ointment to wound bed — which days" }),
-      ta("Wound dressing choice", { ...req, help: "Primary and secondary dressing, when to change the outer dressing, what to leave in place" }),
-      sel("Dressing change frequency", ["Daily", "Twice daily", "Every other day", "3x per week", "2x per week", "Weekly", "As ordered above", "PRN"], half),
-      n("Duration", "weeks", half),
+
+      h("Wound packing"),
+      cbs("Wound packing", ["Loosely pack with 1/2\" iodoform packing or comparable", "Pack wound daily", "Pack wound 2x per week", "Pack wound every other day"]),
+      t("Pack wound / tunneling with", half),
+
+      h("Wound dressing choice"),
+      cbs("Wound dressing choice", [
+        "Cellular Tissue applied to wound site today, LEAVE IN PLACE. Change outer dressing as ordered.",
+        "Cellular Tissue applied today. Dressing to remain dry and intact. Hold Home Health Wound Care Visit for one week. DO NOT REMOVE DRESSING",
+        "Actigraft applied to wound site today, LEAVE IN PLACE. Change outer dressing as ordered.",
+        "Actigraft applied today. Dressing to remain dry and intact. Hold Home Health Wound Care Visit for one week. DO NOT REMOVE DRESSING",
+        "Apply Skin Prep or similar skin protectant at periwound area",
+        "Apply Calcium Alginate",
+        "Apply Calcium Alginate with Silver dressing",
+        "Apply Collagen",
+        "Apply Collagen with Silver dressing",
+        "Apply Bordered Gauze",
+        "Apply Hydrocolloid",
+        "Apply Foam dressing",
+        "Apply Foam with Silver dressing",
+        "Apply Bordered Foam with Silver dressing",
+        "Apply Bordered Foam dressing",
+        "Apply Non Adhesive Wound Veil (contact layer) directly to wound",
+        "Apply Hydrofiber dressing",
+        "Apply Hydrofiber with silver dressing",
+        "Apply 4x4 Gauze",
+        "Apply ABD pad.",
+        "Apply steri-strips",
+        "Apply Iodoflex or comparable.",
+        "Apply Hydrofera Blue or comparable.",
+        "Apply Aquacel Ag or comparable Hydrofiber with silver dressing",
+        "Apply Aquacel or comparable Hydrofiber dressing",
+        "Apply Optifoam AG dressing or comparable foam dressing with silver.",
+        "Apply Xeroform or comparable petroleum wound veil",
+        "Cover with moist to dry dressing.",
+        "Cover with bordered dressing",
+        "Cover with bordered foam dressing",
+        "Secure dressing with rolled gauze and tape.",
+        "Secure dressing with Coban or comparable",
+        "Reinforce dressing with Ace Wrap or comparable",
+        "Reinforce dressing with Netting",
+        "Wound dressing to be changed daily",
+        "Wound dressing to be changed every other day.",
+        "Wound dressing to be changed twice weekly.",
+        "Wound dressing to be changed three times weekly.",
+        "Change dressing as needed for soiling, saturation, or accidental removal.",
+      ]),
+      t("Cover / secure wound with", half),
+      t("Wound dressing frequency change as follows", half),
+
       h("Compression therapy"),
       cbs("Compression", ["Left Leg", "Right Leg", "Apply Unna Boot and cover with rolled gauze and coban or comparable", "Multi-layer compression wrap", "Compression stockings", "Elevate legs whenever possible"]),
       t("Compression instructions"),
-      h("Offloading"),
-      cbs("Offloading orders", OFFLOADING_DEVICES),
+
+      h("Negative pressure wound therapy (NPWT)"),
+      ta("NPWT order", { help: "Pressure setting, mode, canister and dressing change frequency" }),
+
+      h("DME equipment"),
+      cbs("DME equipment", ["Group 1 offloading device", "Group 2 offloading device", "Group 3 offloading device"]),
+      t("Other DME"),
+
+      h("Pressure relief / offloading"),
+      cbs("Pressure relief / offloading", ["Offloading Foam Heel Boots", "Facility Pressure Injury Prevention Protocol", "Wheelchair Pressure Redistribution Cushion", "Multipodus Boot", "Camwalker", "Roho Cushion", "OrthoWedge Shoe"]),
+      t("Other offloading"),
+
+      h("Pressure redistribution mattress"),
+      cbs("Pressure redistribution mattress", [
+        "Continue Group 1 pressure reducing support surface; nutrition optimized and regular repositioning schedule followed",
+        "Group 2 pressure relieving support surface — wounds have not improved on a Group 1 surface for over 30 days",
+        "Group 3 Air Immersion Mattress — wounds continue to deteriorate on a Group 2 surface; patient is bed-bound",
+        "Continue Group 3 Air Immersion Mattress",
+        "Continue Group 3 Air Fluidized Bed",
+      ]),
+      ta("Mattress justification", { help: "Time on the current surface, nutrition, repositioning schedule, and what was discussed with patient, family and caregiver" }),
+
+      h("Diabetic shoes and fillers"),
+      ta("Diabetic shoes and fillers"),
+
+      h("Ultrasound Mist treatment order"),
+      cbs("Ultrasound Mist treatment order", [
+        "Ultrasound Mist Therapy to be performed 2X/week X 3 weeks OR 2x/week for a total of 6 treatments (whichever comes first)",
+        "Ultrasound Mist Therapy to be performed 3x/week X 2 weeks OR 3x/week for a total of 6 treatments (whichever comes first)",
+        "Ulcers/Wounds/Burns which have failed conventional debridement and are too painful for sharp/excisional debridement.",
+        "Ulcers/Wounds/Burns with any documented contraindications to sharp/excisional debridement.",
+        "Ulcers/Wounds/Burns with documented evidence of no signs of improvement after 30 days of standard wound care.",
+        "Discontinue Ultrasound Mist Therapy",
+      ]),
+
+      h("Ankle Brachial Index"),
+      ta("Ankle Brachial Index order"),
+
       h("Home health"),
       cbs("Home health", [
-        "Patient is eligible for home health and meets the criteria for home health services based on patient's homebound status and inability to leave the home or requires considerable and taxing effort to leave the home",
+        "Patient is eligible for home health and meets the criteria for home health services based on patient's homebound status.",
         "Skilled Nursing is required for wound care",
+        "Home Health: Patient to be seen by home health daily",
+        "Home Health: Patient to be seen by home health 1x per week prior to next wound care visit",
+        "Home Health: Patient to be seen by home health 2x per week prior to next wound care visit",
+        "Home Health: Patient to be seen by home health 3x per week prior to next wound care visit",
+        "Continue current wound dressing regimen until follow-up evaluation with the wound care provider",
       ]),
-      sel("Patient to be seen by home health prior to next wound care visit", ["1x per week", "2x per week", "3x per week", "Daily", "Not applicable"], half),
       t("Home health agency / facility", half),
       ta("Home health instructions", { help: "Include the number to call if unsure" }),
+
+      h("Telehealth and treatment plan orders"),
+      cbs("Telehealth and treatment plan orders", [
+        "1A: Patient does not have a wound and/or does not require advanced wound care treatment. OK to discharge.",
+        "1B: Conservative wound care needed. Follow-up as needed for 4-6 weeks; between wound care visits, cleanse wound(s) daily, apply the ordered dressing and offload the affected area.",
+        "2A: Moderate wound care needed, partial thickness wound(s). Provider to follow up and provide wound care as needed for about 10 weeks.",
+        "2B: Moderate wound care needed, full thickness wound(s). Provider to follow up and perform surgical debridement as needed, wound care weekly for approximately 12-14 weeks.",
+        "3A: Advanced wound care needed, full thickness wound(s). Provider to follow up and perform Ultrasound Mist Therapy 2-3x per week for 6 weeks.",
+        "3B: Advanced wound care needed, full thickness wound(s). Provider to perform surgical debridement/wound care weekly for 12 weeks with possible skin substitute if indicated.",
+        "WET wound protocol: cleanse with wound cleanser 3x/weekly, cover with calcium alginate of choice, cover with bordered foam dressing; secure with rolled gauze and tape if necessary.",
+        "DRY wound protocol: cleanse with wound cleanser 3x/weekly, cover with non-adherent petrolatum-based gauze dressing or wound veil, cover with bordered gauze dressing; secure with rolled gauze and tape if necessary.",
+      ]),
+
+      h("Products"),
+      cbs("Commonly used products", ["Normal Saline", "Drawtex"]),
+      ta("Products ordered", { help: "Product name, brand or category, size and quantity" }),
+
+      h("Ancillary services"),
+      cbs("Ancillary services", ["Laboratory", "Radiology", "Vascular studies (ABI / TBI)", "Wound biopsy / culture", "Nutrition consult", "Physical therapy", "Referral"]),
+      ta("Tests / studies ordered", { help: "e.g. Bacteria identified in Tissue by Biopsy culture; XR foot 3 views, left" }),
+      cbs("Goes with the order", ["Prescription", "Discharge instructions", "Referred away"]),
+      t("ICD-10 for the order", half),
+
+      h("Advanced treatments"),
+      t("Cell and tissue based product", half),
+      ta("Cell and tissue based product order"),
+      ta("HBO order"),
+      ta("Pneumatic compression order"),
+
       h("Other orders"),
-      cbs("Orders", ["Nutrition consult", "Labs", "Imaging", "Vascular studies (ABI / TBI)", "Physical therapy", "Culture / biopsy", "Referral"]),
-      ta("Additional orders"),
+      ta("Other provider orders"),
+
       h("Follow up"),
       sel("Patient follow up visit in", ["One week", "Two weeks", "Three weeks", "One month", "PRN"], half),
       d("Provider is scheduled to see patient on", half),
+      ta("Notes"),
     ],
     { signatureRequired: true }
   ),
@@ -210,6 +346,11 @@ export const STANDARD_TEMPLATES: CatalogTemplate[] = [
     t("Healthcare agent", half),
     t("Agent phone", half),
     yn("Information provided on advance directives?"),
+    ta("Notes"),
+  ]),
+  form("code_status", "Code Status / DNR", "ADDITIONAL", [
+    rad("Code status", ["Full code", "DNR", "DNR / DNI", "Comfort measures only", "Unknown"], req),
+    yn("DNR on file", half),
     ta("Notes"),
   ]),
   form("allergy_list", "Allergy List", "ADDITIONAL", [
@@ -494,29 +635,91 @@ export const STANDARD_TEMPLATES: CatalogTemplate[] = [
     ta("Other findings"),
   ]),
   form("plan_of_care", "Plan Of Care", "ADDITIONAL", [
-    cbs("Cellular Tissue Product Education", [
-      "Patient's wound site has been present for greater than 4 weeks without significant improvement or complete healing. We have discussed at length the need to consider advanced biologic modalities in order to obtain the most optimal long term results. Understanding and agreement verbalized by patient.",
+    n("Weeks in treatment", "weeks", half),
+    note("Tick each statement that applies. A ticked statement takes a comment, a plan of care status and the date of that status."),
+    care("Actigraft Education", [
+      "Patient's wound site has been present for greater than 4 weeks without significant or measurable improvement. We have discussed at length the need to consider actigraft in order to obtain the most optimal long term results. Understanding and agreement verbalized by patient.",
+      "We will plan to re-apply on a weekly basis. Clinical evaluation will be made to determine if future applications are medically necessary as an adjunct therapy to standard wound care for further wound healing progression.",
+      "Provided and reviewed educational material concerning the use, risks and benefits of Actigraft.",
+    ]),
+    care("Cellular Tissue Product Education", [
+      "Patient's wound site has been present for greater than 4 weeks without significant or measurable improvement. We have discussed at length the need to consider advanced biologic modalities in order to obtain the most optimal long term results. Understanding and agreement verbalized by patient.",
       "We will plan to re-apply the cellular tissue product on a weekly basis. Clinical evaluation will be made to determine if future applications are medically necessary as an adjunct therapy to standard wound care for further wound healing progression.",
       "Provided and reviewed educational material concerning the use, risks and benefits of a cellular tissue product.",
     ]),
-    cbs("Compliance with Treatment Education", ["Importance of compliance with treatment plan in wound healing discussed at length today. Patient and/or caregiver verbalized understanding."]),
-    cbs("Debridement", ["Discussed the importance of debridement in the wound healing process and why it is being used as part of the treatment plan."]),
-    cbs("Edema Management", [
+    care("Compliance with Treatment Education", ["Importance of compliance with treatment plan in wound healing discussed at length today. Patient and/or caregiver verbalized understanding."]),
+    care("Debridement", [
+      "Discussed the importance of debridement in the wound healing process and why it is being used as part of the treatment plan.",
+      "Discussed the importance of utilizing ultramist as a form of debridement in the wound healing process and why it is being used as part of the treatment plan.",
+      "Provided and reviewed educational material concerning the use, risks and benefits of low-frequency, non-contact, non-thermal ultrasound.",
+    ]),
+    care("Diabetes Education", [
+      "Time was taken to discuss common wound specific diabetic complications, as well as preventative measures with patient today at length. Discussed importance of close monitoring and proper blood sugar control in preventing such complications.",
+    ]),
+    care("Diabetic Foot Education", [
+      "Discussed at length common lower extremity diabetic complications and preventative measures. Discussed importance to monitor feet closely and contact our office if any concerns arise.",
+    ]),
+    care("Edema Management", [
       "Patient was educated on edema management and proper skin care. Discussed importance of elevating lower extremities throughout the day when resting at home. Discussed importance of monitoring dietary sodium intake daily.",
+      "Patient with Lymphedema and will benefit from Compression Therapy to reduce edema, increase lymph drainage and promote skin integrity. Discussed treatment plan for Lymphedema including a course of compression therapy twice weekly for a period of 2 to 4 weeks.",
+      "Discussed possible need for Lymphedema pumps today if minimal improvement is seen after conservative 4 weeks course of therapy, including compression, exercise and elevation.",
       "Time was taken to discuss and demonstrate the importance of compliance with compression and the role it plays in controlling edema.",
     ]),
-    cbs("Fall Risk", ["Educate patient to get up slowly from lying to sitting / pause / dangle / pause / ambulate."]),
-    cbs("Nutrition Education", ["Importance of a balanced diet in the patient's overall health discussed."]),
-    cbs("Smoking/Nicotine Cessation", ["Patient is a non-smoker and does not use nicotine.", "Smoking / nicotine cessation and its effect on wound healing discussed with the patient."]),
-    cbs("Offloading / Pressure Relief", ["Importance of offloading and pressure redistribution in wound healing discussed with patient and/or caregiver."]),
-    cbs("Wound Care", [
+    care("Fall Risk", [
+      "Inform patient and family of high risk of falling and discuss prevention strategies.",
+      "Keep the bed/chair in low position with wheels locked at all times.",
+      "Monitor Blood Pressure and Blood Glucose.",
+      "Educate patient to get up slowly from lying to sitting / pause / dangle / pause / ambulate.",
+      "Encourage exercise, strength-training, and balance enhancing activities to patient's level of tolerance.",
+      "Use assistive devices in good operating condition as needed to enhance mobility.",
+      "Modify environment to decrease risk of falls.",
+    ]),
+    care("Negative Pressure Wound Therapy", [
+      "Education was provided to patient and/or caregiver regarding negative pressure wound therapy",
+      "Patient and/or caregiver verbalized understanding of negative pressure wound therapy",
+    ]),
+    care("Nutrition Education", [
+      "Education and counseling was provided to the patient on the importance of a balanced diet in the patient's overall health and wound healing.",
+      "Recommend increased protein intake to aid with wound healing.",
+      "Recommend supplementation discussed such as Vitamin A, Vitamin B12, Vitamin C, Vitamin D, Vitamin E, Zinc, L-Arginine, L-Glutamine to aid with wound healing.",
+    ]),
+    care("Offloading / Pressure Relief", ["Importance of offloading and pressure redistribution in wound healing discussed with patient and/or caregiver."]),
+    care("Pressure Ulcer Education", [
+      "Pressure Ulcer education was assessed and time was taken to discuss essential measures to prevent complications such as bed shifting throughout the day and proper offloading of at-risk areas at all times.",
+    ]),
+    care("Smoking/Nicotine Cessation", [
+      "Patient is a non-smoker and does not use nicotine.",
+      "Educated and counseled the patient on smoking and nicotine cessation and the role it plays in wound healing.",
+      "Patient has refrained from smoking and nicotine use for at least 6 weeks and continues to be compliant.",
+      "Patient remains non-compliant, despite counseling and educating the patient on smoking and nicotine cessation. Will continue to educate.",
+    ]),
+    care("Venous Leg Ulcer", [
+      "Wound description: venous ulcers are chronic wounds that occur due to poor blood circulation, typically caused by venous insufficiency. They form when leg veins are damaged or inefficient at pumping blood back to the heart, leading to blood pooling in the legs, swelling and ulcer formation from the pressure build-up. They tend to appear as shallow sores with red bases, uneven borders, and shiny, tight, warm or discolored periwound skin.",
+      "Common locations: lower legs, between the knee and the ankle. Staging — partial thickness: loss of epidermis and dermis only; full thickness: tissue loss extending into subcutaneous tissue, adipose, bone, tendon or muscle; unstageable: wound bed covered in eschar/slough, unable to visualize the wound base.",
+    ]),
+    care("Wound Care", [
       "Will impliment and follow standard wound care to include: appropriate serial debridement, offloading when needed, edema control, mitigating and resolving potential and/or current infections, vascular status assessment when needed, product use to promote a wound healing environment, monitoring of patient's nutrition status and coordination with other health care providers who are managing other aspects of the patient's overall health, which contributes to the wound healing process.",
       "Patient's wound plan of care reviewed today. We discussed current regimen and recommendations in order to obtain the most optimal long term results. Understanding and agreement verbalized by patient and/or family / caregiver.",
-      "Current wound(s) status documented in the EHR. Reassessment performed today and updated orders discussed.",
+      "Current wound(s) status documented in the EHR. Assessment and treatment performed today and updated orders discussed.",
+      "Discussed and demonstrated the proper application and importance of utilizing the dressings needed to maintain a moist wound environment to promote healing.",
+      "Discussed the importance of compliance with the prescribed medication(s) being utilized for wound healing and comorbidity management.",
     ]),
-    sel("Status", ["Initiated", "Continued", "Completed", "Discontinued"], { ...req, width: "half" }),
+    h("Surveillance goals"),
+    sel("Surveillance goals", ["Wound healing", "Wound stabilization / maintenance", "Infection prevention", "Pain and symptom control (palliative)", "Prevention of new wounds", "Not applicable"]),
+    h("Treatment plan"),
+    sel("Conservative Wound Care", ["Not applicable", "Initiated", "Continued", "Completed", "Discontinued"], half),
+    sel("Moderate Wound Care", ["Not applicable", "Initiated", "Continued", "Completed", "Discontinued"], half),
+    sel("Advanced Wound Care", ["Not applicable", "Initiated", "Continued", "Completed", "Discontinued"], half),
+    h("Data reviewed"),
+    ta("Reviewed wound nurse measurements/photos from home visit dated"),
+    ta("Reviewed prior encounter notes or external records (source & date)"),
+    ta("Reviewed labs or imaging (specify)"),
+    ta("Independent interpretation of a test/image performed by me (not just acknowledged)"),
+    ta("Discussed case with HHA RN / PCP / specialist / caregiver / pharmacy (who & what)"),
+    h("Risk of deterioration"),
+    sel("Risk of deterioration", ["Low", "Moderate", "High"], half),
     sel("Frequency of visits", ["Weekly", "Twice weekly", "Every 2 weeks", "Monthly"], half),
-    ta("General notes"),
+    ta("Notes"),
   ]),
   form("pneumatic_compression", "Pneumatic Compression Module", "ADDITIONAL", [
     t("Device", half),
@@ -583,10 +786,12 @@ export const STANDARD_TEMPLATES: CatalogTemplate[] = [
     "Telemedicine Consent",
     "ADDITIONAL",
     [
-      note("The patient was informed of the nature of telemedicine, its benefits and limits, privacy protections, and the right to refuse or request an in-person visit."),
-      rad("Consent", ["Consent given", "Consent declined"], req),
-      sel("Consent obtained by", ["Verbal", "Written", "Portal"], half),
-      t("Patient location (state)", half),
+      note("These questions are verbally asked to gain the patient's consent for the telemedicine visit."),
+      rad("I consent to engage in a virtual check-in with my healthcare provider.", ["Yes", "No"], req),
+      rad("I understand there are potential risks to the use of technology in this virtual check-in, including interruptions and/or interception of my information by an unauthorized party.", ["Yes", "No"], req),
+      rad("I agree to not hold my provider responsible for any claims, damages, or expenses that may arise from technical issues during the session, including any costs related to legal or investigative actions.", ["Yes", "No"], req),
+      rad("I consent to have this telehealth appointment recorded for review and documentation purposes of my healthcare provider.", ["Yes", "No"], req),
+      ta("Notes"),
     ],
     { critical: true }
   ),
@@ -752,7 +957,9 @@ export const STANDARD_TEMPLATES: CatalogTemplate[] = [
   ]),
 ];
 
-export type CatalogWorkflow = { name: string; description: string; visitTypes: string[]; isDefault?: boolean; steps: [string, boolean][] };
+// previousSteps: step lists this workflow shipped with before. A practice whose workflow still matches one of
+// them never changed it, and takes the current steps; one that edited its workflow keeps its own.
+export type CatalogWorkflow = { name: string; description: string; visitTypes: string[]; isDefault?: boolean; steps: [string, boolean][]; previousSteps?: string[][] };
 
 // [template key, required to finalize]
 export const STANDARD_WORKFLOWS: CatalogWorkflow[] = [
@@ -795,18 +1002,130 @@ export const STANDARD_WORKFLOWS: CatalogWorkflow[] = [
   },
   {
     name: "Telehealth Visit",
-    description: "Audio/video visit with telemedicine consent.",
+    description: "Telehealth wound care visit: consent, wounds, HPI, plan of care, problem list, orders, history, review of systems and exam.",
     visitTypes: ["TELE", "TELE_INIT", "TELE_EST"],
+    // The order the clinical team charts a telehealth wound care visit in.
     steps: [
       ["telemedicine_consent", true],
-      ["cc", true],
       ["telemedicine_visit", true],
-      ["wounds", false],
+      ["wounds", true],
+      ["cc", true],
+      ["plan_of_care", false],
+      ["wound_management_plan", false],
+      ["problems", true],
+      ["physician_orders", false],
+      ["telehealth_plans", false],
       ["assessment", true],
       ["progress", false],
+      ["vitals", false],
+      ["code_status", false],
+      ["treatment_notes", false],
+      ["allergy_list", false],
+      ["meds", false],
+      ["medical_history", false],
+      ["surgical_history", false],
+      ["family_history", false],
+      ["social_history", false],
+      ["ros", false],
+      ["physical_exam_systems", false],
+      ["attestation_statements", false],
       ["superbill", false],
       ["signatures", false],
     ],
+    previousSteps: [
+      ["telemedicine_consent", "cc", "telemedicine_visit", "wounds", "assessment", "progress", "superbill", "signatures"],
+      ["telemedicine_consent", "telemedicine_visit", "wounds", "cc", "plan_of_care", "wound_management_plan", "problems", "physician_orders", "telehealth_plans", "assessment", "progress", "vitals", "treatment_notes", "allergy_list", "meds", "medical_history", "surgical_history", "family_history", "social_history", "ros", "physical_exam_systems", "attestation_statements", "superbill", "signatures"],
+    ],
+  },
+  // The visit types below each chart with their own set of documents, as the clinical team is used to.
+  {
+    name: "Initial Wound Care",
+    description: "First provider wound care visit: full history, exam, risk assessments, plan of care and orders.",
+    visitTypes: ["INIT_WOUND", "NEW"],
+    steps: [
+      ["wounds", true], ["problems", true], ["procedures", false], ["physician_orders", false], ["meds", false], ["cc", true], ["vitals", false], ["code_status", false],
+      ["allergy_list", false], ["medical_history", false], ["surgical_history", false], ["family_history", false], ["social_history", false], ["ros", false],
+      ["physical_exam_systems", false], ["nutrition_risk", false], ["lower_extremity", false], ["diabetic_foot_exam", false], ["plan_of_care", false], ["fall_risk", false],
+      ["em_time", false], ["prescriptions", false], ["assessment", true], ["attestation_statements", false], ["progress", false], ["superbill", false], ["signatures", false],
+    ],
+  },
+  {
+    name: "Established Wound Care",
+    description: "Follow-up provider wound care visit.",
+    visitTypes: ["EST_WOUND", "FOLLOW_UP", "WOUND_CARE"],
+    steps: [
+      ["wounds", true], ["problems", false], ["procedures", false], ["physician_orders", false], ["meds", false], ["cc", true], ["vitals", false], ["allergy_list", false],
+      ["ros", false], ["physical_exam_systems", false], ["lower_extremity", false], ["plan_of_care", false], ["treatment_notes", false], ["prescriptions", false],
+      ["assessment", true], ["attestation_statements", false], ["progress", false], ["superbill", false], ["signatures", false],
+    ],
+  },
+  {
+    name: "SNF Established Visit",
+    description: "Follow-up wound care visit in a skilled nursing facility, with pressure risk and support surface checks.",
+    visitTypes: ["SNF_EST"],
+    steps: [
+      ["wounds", true], ["problems", false], ["procedures", false], ["physician_orders", false], ["meds", false], ["cc", true], ["vitals", false], ["code_status", false],
+      ["allergy_list", false], ["ros", false], ["physical_exam_systems", false], ["braden", false], ["offloading", false], ["plan_of_care", false], ["treatment_notes", false],
+      ["assessment", true], ["attestation_statements", false], ["progress", false], ["superbill", false], ["signatures", false],
+    ],
+  },
+  {
+    name: "Surveillance Visit",
+    description: "Monitoring visit for a healed or stable wound.",
+    visitTypes: ["SURVEILLANCE"],
+    steps: [
+      ["wounds", true], ["cc", true], ["vitals", false], ["problems", false], ["braden", false], ["offloading", false], ["plan_of_care", false], ["physician_orders", false],
+      ["assessment", true], ["progress", false], ["superbill", false], ["signatures", false],
+    ],
+  },
+  {
+    name: "Provider Ultrasound Mist Therapy",
+    description: "Ultrasound mist therapy performed by the provider or NP / WCN.",
+    visitTypes: ["PROV_MIST", "NPWCN_MIST"],
+    steps: [
+      ["wounds", true], ["problems", false], ["procedures", false], ["physician_orders", false], ["meds", false], ["cc", true], ["vitals", false], ["allergy_list", false],
+      ["ros", false], ["physical_exam_systems", false], ["lower_extremity", false], ["plan_of_care", false], ["treatment_notes", true], ["prescriptions", false],
+      ["attestation_statements", false], ["progress", false], ["superbill", false], ["signatures", false],
+    ],
+  },
+  {
+    name: "Actigraft Application",
+    description: "Application of Actigraft or another cell and tissue product.",
+    visitTypes: ["ACTIGRAFT"],
+    steps: [
+      ["wounds", true], ["problems", false], ["procedures", false], ["ctp", true], ["physician_orders", false], ["cc", true], ["vitals", false], ["plan_of_care", false],
+      ["assessment", false], ["attestation_statements", false], ["progress", false], ["superbill", false], ["signatures", false],
+    ],
+  },
+  {
+    name: "Ankle Brachial Index Assessment",
+    description: "ABI study with the lower extremity assessment.",
+    visitTypes: ["ABI"],
+    steps: [["lower_extremity", true], ["vitals", false], ["problems", false], ["physician_orders", false], ["progress", false], ["superbill", false], ["signatures", false]],
+  },
+  {
+    name: "Principal Care Management",
+    description: "Monthly principal care management for one serious chronic condition.",
+    visitTypes: ["PCM"],
+    steps: [["pcm", true], ["problems", false], ["meds", false], ["plan_of_care", false], ["em_time", false], ["progress", false], ["superbill", false], ["signatures", false]],
+  },
+  {
+    name: "Provider Orders",
+    description: "Orders written outside a visit.",
+    visitTypes: ["PROVIDER_ORDERS"],
+    steps: [["wounds", false], ["problems", false], ["physician_orders", true], ["signatures", false]],
+  },
+  {
+    name: "Communication Log",
+    description: "A call or message with the patient, family or another provider.",
+    visitTypes: ["COMM_LOG"],
+    steps: [["communication_log", true], ["narrative_notes", false]],
+  },
+  {
+    name: "Medical Records / Data Entry",
+    description: "Entering history and records received from elsewhere.",
+    visitTypes: ["RECORDS", "DATA_ENTRY"],
+    steps: [["narrative_notes", false], ["problems", false], ["allergy_list", false], ["meds", false], ["medical_history", false], ["surgical_history", false], ["family_history", false], ["social_history", false]],
   },
 ];
 

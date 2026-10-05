@@ -349,7 +349,7 @@ export async function removeSuperbillTemplateItem(itemId: string, templateId: st
 // ---- Practice code lists (superbill favorites & fee schedule) ----
 
 export async function savePracticeCode(formData: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER", "CDS"]);
+  const user = await requireUser(["ADMIN", "BILLER", "CDS", "CODER"]);
   const type = formData.get("type") === "CPT" ? "CPT" : "ICD10";
   const code = String(formData.get("code") ?? "").trim().toUpperCase();
   const description = String(formData.get("description") ?? "").trim();
@@ -374,7 +374,7 @@ export async function savePracticeCode(formData: FormData) {
 }
 
 export async function togglePracticeCode(codeId: string) {
-  const user = await requireUser(["ADMIN", "BILLER", "CDS"]);
+  const user = await requireUser(["ADMIN", "BILLER", "CDS", "CODER"]);
   const code = await prisma.practiceCode.findFirst({ where: { id: codeId, practiceId: user.practiceId } });
   if (!code) throw new Error("Code not found");
   await prisma.practiceCode.update({ where: { id: code.id }, data: { active: !code.active } });

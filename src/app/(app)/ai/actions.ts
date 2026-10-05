@@ -24,7 +24,7 @@ const list = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).joi
 // A plan of care for the clinician to review, built from what is charted on this visit. The patient's name, MRN and
 // date of birth are not sent; age and sex are.
 export async function suggestPlanOfCare(encounterId: string): Promise<AiResult> {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS", "CODER"]);
   const e = await prisma.encounter.findFirst({
     where: { id: encounterId, practiceId: user.practiceId },
     include: {

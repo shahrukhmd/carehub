@@ -112,12 +112,13 @@ function readField(fd: FormData, previous?: FieldDef): Omit<FieldDef, "id"> {
     .filter(Boolean)
     .slice(0, 60);
   if (["select", "radio", "checkboxes"].includes(type) && options.length < 2) fail("Choice fields need at least two options (one per line).");
+  if (type === "careitems" && options.length < 1) fail("List the statements, one per line.");
   if (type === "score" && options.some((o) => !/^\d+\s*\|/.test(o))) fail('Score bands look like "9|Very high risk" — the highest score for the band, then the meaning.');
   const width = str(fd, "width") === "half" ? "half" : "full";
   return {
     label: label.slice(0, 300),
     type,
-    options: ["select", "radio", "checkboxes", "score"].includes(type) ? options : undefined,
+    options: ["select", "radio", "checkboxes", "careitems", "score"].includes(type) ? options : undefined,
     required: ["heading", "note", "score"].includes(type) ? false : on(fd, "required"),
     help: str(fd, "help").slice(0, 300) || undefined,
     unit: type === "number" ? str(fd, "unit").slice(0, 20) || undefined : undefined,

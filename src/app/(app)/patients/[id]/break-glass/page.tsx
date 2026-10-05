@@ -11,7 +11,7 @@ type Search = { next?: string; error?: string };
 
 // Shown instead of a restricted chart to someone outside the patient's care team.
 export default async function BreakGlassPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser([...new Set([...PATIENT_VIEW_ROLES, "BILLER", "CDS"])]);
+  const user = await requireUser([...new Set([...PATIENT_VIEW_ROLES, "BILLER", "CDS", "CODER"])]);
   const { id } = await params;
   const sp = await searchParams;
   const next = sp.next && sp.next.startsWith("/") && !sp.next.startsWith("//") ? sp.next : `/patients/${id}`;

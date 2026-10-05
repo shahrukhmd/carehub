@@ -70,6 +70,7 @@ async function setup(practiceId: string) {
   }
 
   await reviseTemplates(practiceId);
+  await reviseWorkflows(practiceId);
 
   // Standard views a practice doesn't have yet are added by name; its own views are left alone.
   const views = new Set((await prisma.documentationView.findMany({ where: { practiceId }, select: { name: true } })).map((v) => v.name));
@@ -83,31 +84,74 @@ async function setup(practiceId: string) {
   await prisma.practiceSettings.upsert({ where: { practiceId }, update: {}, create: { practiceId } });
 }
 
-// Standard layouts that changed in the catalog. A template the practice never edited (version 1) and never
-// documented with takes the new layout in place. One it has used or changed is kept as it is, and the new
-// layout is added next to it as "<name> (new layout)" so nothing already charted changes meaning.
+// Standard workflows. One a practice does not have yet (by name) is added, and the visit types it charts are taken
+// off the practice's other workflows so the new one is the one used. One whose steps changed in the catalog is
+// updated only if the practice still has exactly the steps it shipped with; an edited workflow is left alone.
+async function reviseWorkflows(practiceId: string) {
+  const templates = await prisma.documentTemplate.findMany({ where: { practiceId }, select: { id: true, key: true } });
+  // A layout that was revised lives on as "<key>_v2", "<key>_v3"...; a standard workflow uses the newest copy.
+  const baseOf = (key: string) => key.replace(/_v\d+$/, "");
+  const versionOf = (key: string) => Number(key.match(/_v(\d+)$/)?.[1] ?? 1);
+  const byKey = new Map<string, string>();
+  for (const t of [...templates].sort((x, y) => versionOf(x.key) - versionOf(y.key))) byKey.set(baseOf(t.key), t.id);
+  const stepsOf = (wf: (typeof STANDARD_WORKFLOWS)[number]) =>
+    wf.steps.filter(([key]) => byKey.has(key)).map(([key, required], i) => ({ templateId: byKey.get(key)!, sortOrder: (i + 1) * 10, requiredToFinalize: required }));
+
+  for (const wf of STANDARD_WORKFLOWS) {
+    const current = await prisma.chartWorkflow.findFirst({
+      where: { practiceId, name: wf.name },
+      include: { steps: { orderBy: { sortOrder: "asc" }, include: { template: { select: { key: true } } } } },
+    });
+    if (!current) {
+      const others = await prisma.chartWorkflow.findMany({ where: { practiceId } });
+      for (const o of others) {
+        const kept = (o.visitTypes ?? "").split(",").filter((v) => v && !wf.visitTypes.includes(v));
+        if (kept.join(",") !== (o.visitTypes ?? "")) await prisma.chartWorkflow.update({ where: { id: o.id }, data: { visitTypes: kept.join(",") } });
+      }
+      await prisma.chartWorkflow.create({ data: { practiceId, name: wf.name, description: wf.description, visitTypes: wf.visitTypes.join(","), steps: { create: stepsOf(wf) } } });
+      continue;
+    }
+    if (!wf.previousSteps?.length) continue;
+    const keys = current.steps.map((s) => baseOf(s.template.key)).join(",");
+    if (!wf.previousSteps.some((old) => old.join(",") === keys)) continue;
+    await prisma.$transaction([
+      prisma.chartWorkflowStep.deleteMany({ where: { workflowId: current.id } }),
+      prisma.chartWorkflow.update({ where: { id: current.id }, data: { description: wf.description, steps: { create: stepsOf(wf) } } }),
+    ]);
+  }
+}
+
+// Standard layouts that changed in the catalog. The practice's newest copy of the layout (the original, or a
+// "(new layout)" copy added by an earlier change) takes the new fields in place if it was never edited and never
+// documented with. Otherwise it is kept as it is, and the new layout is added beside it, so nothing already
+// charted changes meaning.
 async function reviseTemplates(practiceId: string) {
   for (const key of REVISED_TEMPLATES) {
     const latest = STANDARD_TEMPLATES.find((t) => t.key === key);
-    const current = await prisma.documentTemplate.findUnique({ where: { practiceId_key: { practiceId, key } }, include: { _count: { select: { documents: true } } } });
-    if (!latest || !current) continue;
+    if (!latest) continue;
     const fields = JSON.stringify(latest.fields ?? []);
-    if (current.fields === fields) continue;
+    const copies = await prisma.documentTemplate.findMany({
+      where: { practiceId, OR: [{ key }, { key: { startsWith: `${key}_v` } }] },
+      include: { _count: { select: { documents: true } } },
+    });
+    const versionOf = (k: string) => (k === key ? 1 : Number(k.slice(key.length + 2)) || 0);
+    const ordered = copies.filter((c) => versionOf(c.key) > 0).sort((a, b) => versionOf(a.key) - versionOf(b.key));
+    const current = ordered[ordered.length - 1];
+    const original = ordered[0];
+    if (!current || !original || ordered.some((c) => c.fields === fields)) continue;
     if (current.standard && current.version === 1 && current._count.documents === 0) {
       await prisma.documentTemplate.update({
         where: { id: current.id },
-        data: { name: latest.name, fields, section: latest.section, perWound: Boolean(latest.perWound), signatureRequired: Boolean(latest.signatureRequired) },
+        data: { fields, section: latest.section, perWound: Boolean(latest.perWound), signatureRequired: Boolean(latest.signatureRequired), ...(current.key === key ? { name: latest.name } : {}) },
       });
       continue;
     }
-    const newKey = `${key}_v2`;
-    const added = await prisma.documentTemplate.findUnique({ where: { practiceId_key: { practiceId, key: newKey } } });
-    if (added) continue;
+    const next = versionOf(current.key) + 1;
     await prisma.documentTemplate.create({
       data: {
         practiceId,
-        key: newKey,
-        name: `${latest.name} (new layout)`,
+        key: `${key}_v${next}`,
+        name: `${latest.name} (new layout${next > 2 ? ` ${next - 1}` : ""})`,
         description: latest.description ?? null,
         section: latest.section,
         kind: "FORM",
@@ -115,7 +159,7 @@ async function reviseTemplates(practiceId: string) {
         fields,
         standard: true,
         signatureRequired: Boolean(latest.signatureRequired),
-        inProgressNote: current.inProgressNote,
+        inProgressNote: original.inProgressNote,
         noteOrder: current.noteOrder + 1,
         sortOrder: current.sortOrder + 1,
       },

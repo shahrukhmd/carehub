@@ -23,6 +23,7 @@ const QUEUES = [
   { key: "all", label: "All visits" },
   { key: "mine", label: "My charts" },
   { key: "cds", label: "CDS review" },
+  { key: "coding", label: "Coding" },
   { key: "signature", label: "Awaiting signature" },
   { key: "billing", label: "Ready for billing" },
   { key: "holds", label: "Holds & queries" },
@@ -32,15 +33,17 @@ const QUEUES = [
 const QUEUE_STATUSES: Record<string, string[] | null> = {
   all: null,
   mine: ["IN_PROGRESS", "CDS_QUERY", "READY_FOR_SIGNATURE"],
-  cds: ["READY_FOR_CDS"],
+  cds: ["READY_FOR_CDS", "CODING_QUERY"],
+  coding: ["READY_FOR_CODING"],
   signature: ["READY_FOR_SIGNATURE"],
   billing: ["READY_FOR_BILLING"],
-  holds: ["CDS_QUERY", ...HOLD_STATUSES],
+  holds: ["CDS_QUERY", "CODING_QUERY", ...HOLD_STATUSES],
 };
 
 function defaultQueue(role: string) {
   if (role === "CLINICIAN") return "mine";
   if (role === "CDS") return "cds";
+  if (role === "CODER") return "coding";
   if (role === "BILLER") return "billing";
   return "all";
 }
@@ -279,7 +282,7 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
               const noteDone = Boolean(e.chiefComplaint && e.subjective && e.objective && e.assessment && e.plan);
               const pointersOk = e.charges.every((c) => parsePointerIds(c.diagnosisPointers).length > 0);
               return (
-                <tr key={`e-${e.id}`} className={e.status === "CDS_QUERY" || HOLD_STATUSES.includes(e.status) ? "gw-row-urgent" : undefined}>
+                <tr key={`e-${e.id}`} className={e.status === "CDS_QUERY" || e.status === "CODING_QUERY" || HOLD_STATUSES.includes(e.status) ? "gw-row-urgent" : undefined}>
                   <td>
                     <Link href={`/encounters/${e.id}`}>
                       {formatDate(row.at)} {e.appointment ? formatTime(row.at) : ""}

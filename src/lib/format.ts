@@ -199,7 +199,8 @@ export const roleLabel: Record<string, string> = {
   INTAKE: "Gateway · Data entry",
   VERIFICATION: "Gateway · Verification",
   SCHEDULER: "Gateway · Scheduling",
-  CDS: "CDS / Coding",
+  CDS: "CDS · Documentation review",
+  CODER: "Coding",
 };
 
 export const credentialingStatusLabel: Record<string, string> = {

@@ -1,3 +1,4 @@
+import { CodeLookup } from "@/components/CodeLookup";
 import { copyForward, setTransferOfCare, toggleReconciled } from "./reconcile-actions";
 import { requireEncounterAccess } from "@/lib/privacy";
 import { AiAssist } from "@/components/AiAssist";
@@ -23,6 +24,8 @@ import {
   releaseHold,
   returnToCds,
   sendForSignature,
+  sendToCoding,
+  queryCds,
   signEncounter,
   submitToCds,
   updateCareTeam,
@@ -51,6 +54,8 @@ import {
   chartChecklist,
   gapsFor,
   isCdsRole,
+  isCoderRole,
+  CDS_STAGES,
   stepIndex,
   visitStatusLabel,
   visitStatusTone,
@@ -96,6 +101,14 @@ type Entry = {
   required: boolean;
   critical: boolean;
   sub?: boolean;
+};
+
+const PROBLEM_VERIFICATION_LABEL: Record<string, string> = {
+  CONFIRMED: "Confirmed",
+  PROVISIONAL: "Provisional",
+  DIFFERENTIAL: "Differential",
+  UNCONFIRMED: "Unconfirmed",
+  REFUTED: "Refuted",
 };
 
 export default async function EncounterPage({
@@ -261,7 +274,7 @@ export default async function EncounterPage({
   const defaultValue =
     status === "READY_FOR_SIGNATURE" || SIGNED_STATUSES.includes(status) || onHold
       ? "signatures"
-      : status === "READY_FOR_CDS"
+      : status === "READY_FOR_CODING"
         ? "superbill"
         : (entries.find((e) => !e.done)?.value ?? entries[0]?.value ?? "cc");
   let view: string;
@@ -465,44 +478,93 @@ export default async function EncounterPage({
             {encounter.patient.problems.length === 0 ? (
               <p className="muted">No problems on file.</p>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>ICD-10</th>
-                    <th>Problem</th>
-                    <th>Onset</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {encounter.patient.problems.map((p) => (
-                    <tr key={p.id}>
-                      <td className="cl-code">{p.icd10}</td>
-                      <td>{p.description}</td>
-                      <td>{p.onsetDate ? formatDate(p.onsetDate) : "—"}</td>
-                      <td>
-                        {clinicalEditable ? (
-                          <form action={setProblemStatus.bind(null, encounter.id, p.id)} className="vw-inline">
-                            <select name="status" defaultValue={p.status} aria-label={`Status of ${p.description}`}>
-                              <option value="ACTIVE">Active</option>
-                              <option value="INACTIVE">Inactive</option>
-                              <option value="RESOLVED">Resolved</option>
-                            </select>
-                            <button className="btn ghost gw-mini" type="submit">
-                              Update
-                            </button>
-                          </form>
-                        ) : (
-                          <StatusBadge value={p.status} />
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              [
+                ["Active problems", encounter.patient.problems.filter((p) => p.status !== "RESOLVED")] as const,
+                ["Resolved problems", encounter.patient.problems.filter((p) => p.status === "RESOLVED")] as const,
+              ]
+                .filter(([, list]) => list.length > 0)
+                .map(([title, list]) => (
+                  <div key={title}>
+                    <h3>{title}</h3>
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Code</th>
+                          <th>Description</th>
+                          <th>Active date</th>
+                          <th>Send to superbill</th>
+                          <th>Verification</th>
+                          <th>Status</th>
+                          <th />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.map((p) => {
+                          const fid = `problem-${p.id}`;
+                          return (
+                            <tr key={p.id}>
+                              <td className="cl-code">
+                                {p.icd10}
+                                {clinicalEditable && <form id={fid} action={setProblemStatus.bind(null, encounter.id, p.id)} />}
+                              </td>
+                              <td>
+                                {p.description}
+                                {p.status === "RESOLVED" && p.resolvedDate && <div className="muted">Resolved {formatDate(p.resolvedDate)}</div>}
+                              </td>
+                              {clinicalEditable ? (
+                                <>
+                                  <td>
+                                    <input form={fid} type="date" name="onsetDate" defaultValue={p.onsetDate ? p.onsetDate.toISOString().slice(0, 10) : ""} aria-label={`Active date of ${p.description}`} />
+                                  </td>
+                                  <td>
+                                    <input form={fid} type="checkbox" name="sendToSuperbill" defaultChecked={p.sendToSuperbill} aria-label={`Send ${p.icd10} to the superbill`} />
+                                  </td>
+                                  <td>
+                                    <select form={fid} name="verificationStatus" defaultValue={p.verificationStatus} aria-label={`Verification of ${p.description}`}>
+                                      {Object.entries(PROBLEM_VERIFICATION_LABEL).map(([k, l]) => (
+                                        <option key={k} value={k}>
+                                          {l}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <select form={fid} name="status" defaultValue={p.status} aria-label={`Status of ${p.description}`}>
+                                      <option value="ACTIVE">Active</option>
+                                      <option value="INACTIVE">Inactive</option>
+                                      <option value="RESOLVED">Resolved</option>
+                                    </select>
+                                  </td>
+                                  <td>
+                                    <button form={fid} className="btn ghost gw-mini" type="submit">
+                                      Update
+                                    </button>
+                                  </td>
+                                </>
+                              ) : (
+                                <>
+                                  <td>{p.onsetDate ? formatDate(p.onsetDate) : "—"}</td>
+                                  <td>{p.sendToSuperbill ? "Yes" : "No"}</td>
+                                  <td>{PROBLEM_VERIFICATION_LABEL[p.verificationStatus] ?? p.verificationStatus}</td>
+                                  <td>
+                                    <StatusBadge value={p.status} />
+                                  </td>
+                                  <td />
+                                </>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
             )}
             {clinicalEditable && (
               <form className="form-grid gw-grid-3" action={addProblem.bind(null, encounter.id)}>
+                <div className="gw-span-3">
+                  <CodeLookup sets={["ICD10"]} codeField="icd10" placeholder="Search for ICD-10 — by code or words (e.g. E11.9, venous insufficiency, pressure ulcer heel)" />
+                </div>
                 <label>
                   ICD-10
                   <input name="icd10" placeholder="L89.154" required />
@@ -827,7 +889,7 @@ export default async function EncounterPage({
               <p className="muted" style={{ margin: 0 }}>
                 {codingEditable
                   ? "Select diagnoses and procedures on the superbill."
-                  : `Coding is worked by ${status === "READY_FOR_CDS" ? "CDS during review" : "the provider or CDS"} — view only.`}
+                  : `The superbill belongs to the coding team${status === "READY_FOR_CODING" ? "" : ", who work it after CDS has reviewed the documentation"} — view only.`}
               </p>
               <Link className="btn" href={`/encounters/${encounter.id}/superbill`}>
                 {codingEditable ? "Open superbill →" : "View superbill →"}
@@ -1023,7 +1085,12 @@ export default async function EncounterPage({
           <form className="stack" action={saveDocument.bind(null, encounter.id, t.id, woundId ?? "")}>
             <input type="hidden" name="back" value={back} />
             <fieldset className="gw-fieldset stack" disabled={locked}>
-              <DocumentFields fields={fields} values={values} idPrefix={value.replace(".", "-")} />
+              <DocumentFields
+                fields={fields}
+                values={values}
+                idPrefix={value.replace(".", "-")}
+                wounds={encounter.patient.wounds.filter((w) => w.status === "ACTIVE").map((w) => `${w.label} — ${w.location}`)}
+              />
             </fieldset>
             {!locked && <StepSave current={value} />}
           </form>
@@ -1577,7 +1644,7 @@ export default async function EncounterPage({
               <p className="muted">
                 {gaps.length
                   ? `Still needed: ${gaps.join(", ")}`
-                  : "Required documents are complete — finalizing sends the chart to CDS to review and build the superbill."}
+                  : "Required documents are complete — finalizing sends the chart to CDS to review; coding then builds the superbill."}
               </p>
             </div>
             <form action={submitToCds.bind(null, encounter.id)}>
@@ -1588,17 +1655,34 @@ export default async function EncounterPage({
           </section>
         )}
 
-        {status === "READY_FOR_CDS" && isCdsRole(user.role) && (
+        {status === "CODING_QUERY" && encounter.codingQueryNote && (
+          <section className="panel vw-query">
+            <strong>Coding query — with CDS</strong>
+            <p>{encounter.codingQueryNote}</p>
+          </section>
+        )}
+
+        {/* CDS: first review, or a coding query to deal with. Either way the chart goes on (or back) to coding. */}
+        {CDS_STAGES.includes(status) && isCdsRole(user.role) && (
           <section className="panel gw-handoff">
             <div>
-              <strong>CDS review</strong>
+              <strong>{status === "CODING_QUERY" ? "Answer the coding team" : "CDS review"}</strong>
               <p className="muted">
-                {cdsGaps.length ? `Superbill still needs: ${cdsGaps.join(", ")}` : "Superbill coded — send it to the provider for signature."}
+                {status === "CODING_QUERY"
+                  ? "Check what coding asked. Say what was corrected or clarified and send the chart back to coding, or query the provider if the note itself must change."
+                  : "Review the documentation. When it is complete, send the chart to the coding team to build the superbill."}
               </p>
             </div>
-            <form action={sendForSignature.bind(null, encounter.id)}>
-              <button className="btn" type="submit" disabled={cdsGaps.length > 0}>
-                Send for signature →
+            <form action={sendToCoding.bind(null, encounter.id)} className="gw-inline-form" style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <input
+                name="note"
+                required={status === "CODING_QUERY"}
+                placeholder={status === "CODING_QUERY" ? "What was corrected or clarified?" : "Note for the coding team (optional)"}
+                aria-label="Note for the coding team"
+                style={{ flex: 1, minWidth: "16rem" }}
+              />
+              <button className="btn" type="submit">
+                {status === "CODING_QUERY" ? "Back to coding →" : "Send to coding →"}
               </button>
             </form>
             <details className="gw-inline-form">
@@ -1612,6 +1696,36 @@ export default async function EncounterPage({
             </details>
           </section>
         )}
+
+        {/* Coding: build the superbill, then send the chart for signature; or ask CDS. */}
+        {status === "READY_FOR_CODING" && isCoderRole(user.role) && (
+          <section className="panel gw-handoff">
+            <div>
+              <strong>Coding</strong>
+              <p className="muted">
+                {cdsGaps.length ? `Superbill still needs: ${cdsGaps.join(", ")}` : "Superbill coded — send it to the provider for signature."}
+              </p>
+            </div>
+            <Link className="btn secondary" href={`/encounters/${encounter.id}/superbill`}>
+              Open superbill
+            </Link>
+            <form action={sendForSignature.bind(null, encounter.id)}>
+              <button className="btn" type="submit" disabled={cdsGaps.length > 0}>
+                Send for signature →
+              </button>
+            </form>
+            <details className="gw-inline-form">
+              <summary>Query CDS (documentation needs checking or correcting)</summary>
+              <form action={queryCds.bind(null, encounter.id)}>
+                <input name="note" required placeholder="What needs checking or correcting?" />
+                <button className="btn secondary" type="submit">
+                  Send to CDS
+                </button>
+              </form>
+            </details>
+          </section>
+        )}
+        {status === "READY_FOR_CODING" && !isCoderRole(user.role) && <p className="muted">With the coding team — they build the superbill, then send the chart for signature.</p>}
 
         {status === "READY_FOR_SIGNATURE" && (
           <section className="panel gw-handoff vw-sign">

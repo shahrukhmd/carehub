@@ -141,7 +141,7 @@ export async function setEncounterWorkflow(encounterId: string, fd: FormData) {
   });
 }
 
-const ATTACHMENT_ROLES = ["ADMIN", "CLINICIAN", "CDS", "BILLER"];
+const ATTACHMENT_ROLES = ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER"];
 
 export async function uploadAttachment(encounterId: string, fd: FormData) {
   const back = String(fd.get("back") ?? "scans");
@@ -181,6 +181,8 @@ export async function removeAttachment(encounterId: string, attachmentId: string
 
 // ---- Problem list (Documentation → Problem List) ----
 
+const PROBLEM_VERIFICATION = ["CONFIRMED", "PROVISIONAL", "DIFFERENTIAL", "UNCONFIRMED", "REFUTED"];
+
 export async function addProblem(encounterId: string, fd: FormData) {
   return guarded(encounterId, "problems", async () => {
     const user = await requireUser(["ADMIN", "CLINICIAN"]);
@@ -210,7 +212,23 @@ export async function setProblemStatus(encounterId: string, problemId: string, f
     if (!["ACTIVE", "RESOLVED", "INACTIVE"].includes(status)) fail("Invalid problem status.");
     const problem = await prisma.problem.findFirst({ where: { id: problemId, patientId: e.patientId } });
     if (!problem) fail("Problem not found.");
-    await prisma.problem.update({ where: { id: problem.id }, data: { status } });
+    const verification = String(fd.get("verificationStatus") ?? problem.verificationStatus);
+    const onset = String(fd.get("onsetDate") ?? "");
+    await prisma.problem.update({
+      where: { id: problem.id },
+      data: {
+        status,
+        // The form always carries these; an older caller that only sends the status leaves them as they were.
+        ...(fd.has("verificationStatus")
+          ? {
+              sendToSuperbill: fd.get("sendToSuperbill") === "on",
+              verificationStatus: PROBLEM_VERIFICATION.includes(verification) ? verification : problem.verificationStatus,
+              onsetDate: /^\d{4}-\d{2}-\d{2}$/.test(onset) ? new Date(`${onset}T00:00:00Z`) : problem.onsetDate,
+            }
+          : {}),
+        resolvedDate: status === "RESOLVED" ? (problem.resolvedDate ?? new Date()) : null,
+      },
+    });
     revalidatePath(`/patients/${e.patientId}`);
   });
 }

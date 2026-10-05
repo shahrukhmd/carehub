@@ -21,7 +21,7 @@ import {
 // and clinicians.
 const PRIVACY_ROLES = [...new Set([...PATIENT_EDIT_ROLES, "CLINICIAN", "BILLER"])];
 const DECIDE_ROLES = ["ADMIN", "CLINICIAN"];
-const CHART_ROLES = [...new Set([...PATIENT_VIEW_ROLES, "BILLER", "CDS"])];
+const CHART_ROLES = [...new Set([...PATIENT_VIEW_ROLES, "BILLER", "CDS", "CODER"])];
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const day = (fd: FormData, k: string) => {

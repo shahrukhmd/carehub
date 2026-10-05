@@ -21,6 +21,10 @@ import {
   gapsFor,
   isCdsRole,
   visitStatusLabel,
+  CDS_ROLES,
+  CDS_STAGES,
+  CODING_ROLES,
+  isCoderRole,
 } from "@/lib/visit-workflow";
 import { placeOfServiceLabel } from "@/lib/superbill";
 
@@ -181,22 +185,52 @@ export async function submitToCds(encounterId: string) {
 
 // ---- CDS ----
 
+// CDS can send the chart back to the provider from its own review, or when a coding query needs the provider.
 export async function queryProvider(encounterId: string, fd: FormData) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CDS"]);
+    const user = await requireUser(CDS_ROLES);
     const e = await loadEncounter(user, encounterId);
-    requireStatus(e, ["READY_FOR_CDS"]);
+    requireStatus(e, CDS_STAGES);
     const note = text(fd, "note");
     if (!note) fail("Tell the provider what's missing or needs clarification.");
     await transition(user, e, "CDS_QUERY", note, { cdsQueryNote: note });
   });
 }
 
+// CDS has reviewed the documentation (or dealt with the coding team's query): the chart goes to coding.
+export async function sendToCoding(encounterId: string, fd: FormData) {
+  return guarded(encounterId, async () => {
+    const user = await requireUser(CDS_ROLES);
+    const e = await loadEncounter(user, encounterId);
+    requireStatus(e, CDS_STAGES);
+    const answering = e.status === "CODING_QUERY";
+    const note = text(fd, "note");
+    if (answering && !note) fail("Say what was corrected or clarified for the coding team.");
+    await transition(user, e, "READY_FOR_CODING", answering ? `CDS response to coding: ${note}` : `Documentation reviewed by CDS, sent to coding${note ? `: ${note}` : ""}`, {
+      codingQueryNote: null,
+    });
+  });
+}
+
+// ---- Coding ----
+
+// The coding team asks CDS to check or correct the documentation before the superbill can be finished.
+export async function queryCds(encounterId: string, fd: FormData) {
+  return guarded(encounterId, async () => {
+    const user = await requireUser(CODING_ROLES);
+    const e = await loadEncounter(user, encounterId);
+    requireStatus(e, ["READY_FOR_CODING"]);
+    const note = text(fd, "note");
+    if (!note) fail("Tell CDS what needs checking or correcting.");
+    await transition(user, e, "CODING_QUERY", `Coding query to CDS: ${note}`, { codingQueryNote: note });
+  });
+}
+
 export async function sendForSignature(encounterId: string) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CDS"]);
+    const user = await requireUser(CODING_ROLES);
     const e = await loadEncounter(user, encounterId);
-    requireStatus(e, ["READY_FOR_CDS"]);
+    requireStatus(e, ["READY_FOR_CODING"]);
     const gaps = gapsFor(checklistFor(e), "cds");
     if (gaps.length) fail(`Finish the superbill first: ${gaps.join(", ")}`);
     if (e.charges.some((c) => parsePointerIds(c.diagnosisPointers).length === 0)) fail("Every charge needs a diagnosis pointer.");
@@ -220,7 +254,7 @@ export async function returnToCds(encounterId: string, fd: FormData) {
     if (!note) fail("Say what should change on the superbill.");
     // The superbill may change, so earlier signatures no longer apply.
     await prisma.encounterSignature.deleteMany({ where: { encounterId: e.id } });
-    await transition(user, e, "READY_FOR_CDS", `Returned to CDS: ${note}`);
+    await transition(user, e, "READY_FOR_CODING", `Returned to coding: ${note}`);
   });
 }
 
@@ -275,7 +309,7 @@ export async function signEncounter(encounterId: string, fd: FormData) {
 
 export async function placeHold(encounterId: string, fd: FormData) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CDS", "BILLER"]);
+    const user = await requireUser(["ADMIN", "CDS", "CODER", "BILLER"]);
     if (!canHold(user.role)) fail("Your role can't place holds.");
     const e = await loadEncounter(user, encounterId);
     if (HOLD_STATUSES.includes(e.status)) fail("Release the current hold first.");
@@ -290,10 +324,10 @@ export async function placeHold(encounterId: string, fd: FormData) {
 
 export async function releaseHold(encounterId: string) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CDS", "BILLER"]);
+    const user = await requireUser(["ADMIN", "CDS", "CODER", "BILLER"]);
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, HOLD_STATUSES);
-    const back = e.holdFromStatus ?? (isCdsRole(user.role) ? "READY_FOR_CDS" : "READY_FOR_BILLING");
+    const back = e.holdFromStatus ?? (isCoderRole(user.role) && user.role !== "ADMIN" ? "READY_FOR_CODING" : isCdsRole(user.role) && user.role !== "ADMIN" ? "READY_FOR_CDS" : "READY_FOR_BILLING");
     await transition(user, e, back, "Hold released", { holdReason: null, holdFromStatus: null });
   });
 }

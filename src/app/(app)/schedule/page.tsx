@@ -311,7 +311,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
       <div className="page-head">
         <div>
           <p className="muted">Practice management</p>
-          <h1>Schedule</h1>
+          <h1>Scheduler</h1>
         </div>
         <div className="vw-view-links">
           <form className="sc-next" method="get">

@@ -27,7 +27,11 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
   ]);
   const q = sp.q?.trim().toLowerCase() ?? "";
   const onlyFees = sp.fees === "1";
-  const shown = schedule.items.filter((i) => (!q || i.code.toLowerCase().startsWith(q) || i.description.toLowerCase().includes(q)) && (!onlyFees || i.feeCents > 0));
+  // fees=0: the codes still waiting for a fee (e.g. just added from the code library).
+  const onlyNoFee = sp.fees === "0";
+  const shown = schedule.items.filter(
+    (i) => (!q || i.code.toLowerCase().startsWith(q) || i.description.toLowerCase().includes(q)) && (!onlyFees || i.feeCents > 0) && (!onlyNoFee || i.feeCents === 0)
+  );
   const withFee = schedule.items.filter((i) => i.feeCents > 0).length;
   const formId = "schedule-form";
 
@@ -125,7 +129,8 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
           <div className="cd-list-head">
             <strong>
               {schedule.items.length} billing codes · {withFee} with a fee
-              {q || onlyFees ? ` · showing ${shown.length}` : ""}
+              {schedule.items.length - withFee > 0 ? ` · ${schedule.items.length - withFee} with no fee yet` : ""}
+              {q || onlyFees || onlyNoFee ? ` · showing ${shown.length}` : ""}
             </strong>
             <span>A code at $0.00 has no fee on this schedule and uses the practice code list</span>
           </div>
@@ -144,7 +149,15 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
                 {shown.map((i) => (
                   <tr key={i.id}>
                     <td>{i.code}</td>
-                    <td>{i.description}</td>
+                    <td>
+                      {i.description}
+                      {i.feeCents === 0 && (
+                        <>
+                          {" "}
+                          <span className="gw-tag gw-tag-warn">Fee not set</span>
+                        </>
+                      )}
+                    </td>
                     <td>
                       <input name={`fee_${i.id}`} defaultValue={(i.feeCents / 100).toFixed(2)} inputMode="decimal" aria-label={`${i.code} fee`} />
                     </td>
@@ -176,14 +189,15 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
           <h2>Find a code</h2>
           <form method="get" className="pv-inline">
             <input name="q" defaultValue={sp.q ?? ""} placeholder="Code starts with, or description contains" aria-label="Find a code" />
-            <label className="cm-check">
-              <input type="checkbox" name="fees" value="1" defaultChecked={onlyFees} />
-              Only codes with a fee
-            </label>
+            <select name="fees" defaultValue={sp.fees ?? ""} aria-label="Fee filter">
+              <option value="">All codes</option>
+              <option value="1">Only codes with a fee</option>
+              <option value="0">Only codes with no fee yet</option>
+            </select>
             <button className="btn secondary" type="submit">
               Filter
             </button>
-            {(q || onlyFees) && (
+            {(q || onlyFees || onlyNoFee) && (
               <Link className="btn ghost" href={`/settings/charge-schedules/${schedule.id}`}>
                 Show all
               </Link>

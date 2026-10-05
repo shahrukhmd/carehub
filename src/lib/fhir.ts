@@ -99,7 +99,7 @@ async function resourcesFor(practiceId: string, type: string, patientIds: string
       return (await prisma.encounter.findMany({ where: { patientId: { in: patientIds }, practiceId }, include: { provider: true, diagnoses: true }, orderBy: { date: "desc" }, take: 200 })).map((e) => ({
         resourceType: "Encounter",
         id: e.id,
-        status: ["BILLED", "READY_FOR_BILLING", "READY_FOR_SIGNATURE", "READY_FOR_CDS"].includes(e.status) ? "finished" : "in-progress",
+        status: ["BILLED", "READY_FOR_BILLING", "READY_FOR_SIGNATURE", "READY_FOR_CODING", "CODING_QUERY", "READY_FOR_CDS"].includes(e.status) ? "finished" : "in-progress",
         class: { system: "http://terminology.hl7.org/CodeSystem/v3-ActCode", code: e.type === "TELEHEALTH" ? "VR" : "AMB" },
         subject: ref(e.patientId),
         participant: [{ individual: { display: e.provider.name } }],

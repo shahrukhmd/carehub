@@ -34,7 +34,7 @@ export default async function EligibilityPage({ searchParams }: { searchParams: 
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">
-            <Link href="/schedule">Schedule</Link>
+            <Link href="/schedule">Scheduler</Link>
           </p>
           <h1>Batch eligibility</h1>
           <p className="muted" style={{ margin: 0 }}>

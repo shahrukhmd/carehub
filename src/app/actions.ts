@@ -145,7 +145,7 @@ export async function setGuarantorAccount(patientId: string, formData: FormData)
 }
 
 export async function addChargeFromTemplate(encounterId: string, templateItemId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -410,7 +410,7 @@ export async function saveEncounter(id: string, formData: FormData) {
 }
 
 export async function addCharge(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -455,7 +455,7 @@ export async function addCharge(encounterId: string, formData: FormData) {
 const MAX_VISIT_DX = 12;
 
 export async function addDiagnosesBulk(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -509,7 +509,7 @@ function modifiersFrom(values: FormDataEntryValue[]) {
 }
 
 export async function addChargesBulk(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
   const encounter = await prisma.encounter.findUniqueOrThrow({ where: { id: encounterId } });
@@ -538,7 +538,7 @@ export async function addChargesBulk(encounterId: string, formData: FormData) {
 }
 
 export async function updateCharge(chargeId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   const charge = await prisma.charge.findFirst({
     where: { id: chargeId, encounterId, practiceId: user.practiceId },
@@ -563,7 +563,7 @@ export async function updateCharge(chargeId: string, encounterId: string, formDa
 }
 
 export async function removeCharge(chargeId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   // Charges already on a claim stay; correct them on the claim instead.
   await prisma.charge.deleteMany({ where: { id: chargeId, encounterId, practiceId: user.practiceId, claimLines: { none: {} } } });
@@ -572,7 +572,7 @@ export async function removeCharge(chargeId: string, encounterId: string) {
 }
 
 export async function addDiagnosis(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -590,8 +590,26 @@ export async function addDiagnosis(encounterId: string, formData: FormData) {
   revalidatePath(`/encounters/${encounterId}`, "layout");
 }
 
+// Brings the provider's problem list onto the superbill: active, confirmed problems marked "send to superbill"
+// that are not on it yet, in problem-list order after the diagnoses already there.
+export async function importProblemDiagnoses(encounterId: string) {
+  const user = await requireUser(["ADMIN", "CODER"]);
+  await assertChartEditable(encounterId, user, "coding");
+  const encounter = await prisma.encounter.findFirstOrThrow({
+    where: { id: encounterId, practiceId: user.practiceId },
+    include: { diagnoses: true, patient: { select: { problems: { where: { status: "ACTIVE", sendToSuperbill: true, verificationStatus: "CONFIRMED" }, orderBy: { icd10: "asc" } } } } },
+  });
+  const have = new Set(encounter.diagnoses.map((d) => d.icd10.toUpperCase()));
+  const fresh = encounter.patient.problems.filter((p) => !have.has(p.icd10.toUpperCase()));
+  let priority = encounter.diagnoses.length;
+  for (const p of fresh) {
+    await prisma.encounterDiagnosis.create({ data: { encounterId: encounter.id, icd10: p.icd10, description: p.description, priority: ++priority } });
+  }
+  revalidatePath(`/encounters/${encounterId}`, "layout");
+}
+
 export async function removeDiagnosis(diagnosisId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
   await prisma.encounterDiagnosis.deleteMany({ where: { id: diagnosisId, encounterId } });
@@ -599,7 +617,7 @@ export async function removeDiagnosis(diagnosisId: string, encounterId: string) 
 }
 
 export async function moveDiagnosis(diagnosisId: string, encounterId: string, direction: "up" | "down") {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
 
@@ -623,7 +641,7 @@ export async function moveDiagnosis(diagnosisId: string, encounterId: string, di
 }
 
 export async function updateEncounterBilling(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(["ADMIN", "CODER"]);
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },

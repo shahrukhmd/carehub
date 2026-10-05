@@ -19,14 +19,14 @@ type Entry = { label: string; icon: string; tabs: Tab[] };
 const MENU: { group: string; entries: Entry[] }[] = [
   {
     group: "My work",
-    entries: [{ label: "Tasks & messages", icon: "tasks", tabs: [{ href: "/tasks", label: "Tasks & messages", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] }] }],
+    entries: [{ label: "Tasks & messages", icon: "tasks", tabs: [{ href: "/tasks", label: "Tasks & messages", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"] }] }],
   },
   {
     group: "Front office",
     entries: [
       { label: "Patient Gateway", icon: "gateway", tabs: [{ href: "/", label: "Patient Gateway", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] }] },
       {
-        label: "Schedule",
+        label: "Scheduler",
         icon: "schedule",
         tabs: [
           { href: "/schedule", label: "Calendar", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
@@ -51,7 +51,7 @@ const MENU: { group: string; entries: Entry[] }[] = [
         label: "Clinical",
         icon: "visits",
         tabs: [
-          { href: "/encounters", label: "Visit worklist", roles: ["ADMIN", "CLINICIAN", "CDS", "BILLER", "FRONT_DESK", "SCHEDULER"] },
+          { href: "/encounters", label: "Visit worklist", roles: ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER", "FRONT_DESK", "SCHEDULER"] },
           { href: "/orders", label: "Lab & imaging orders", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE"] },
           { href: "/referrals", label: "Referrals", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "SCHEDULER"] },
         ],
@@ -80,12 +80,12 @@ const MENU: { group: string; entries: Entry[] }[] = [
         icon: "reports",
         tabs: [
           { href: "/reports", label: "Reports", roles: ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"] },
-          { href: "/reports/registry", label: "Patient registry", roles: ["ADMIN", "CLINICIAN", "CDS", "FRONT_DESK"] },
-          { href: "/reports/quality", label: "Quality measures", roles: ["ADMIN", "CLINICIAN", "CDS"] },
+          { href: "/reports/registry", label: "Patient registry", roles: ["ADMIN", "CLINICIAN", "CDS", "CODER", "FRONT_DESK"] },
+          { href: "/reports/quality", label: "Quality measures", roles: ["ADMIN", "CLINICIAN", "CDS", "CODER"] },
         ],
       },
       // Directories live under Settings; everyone who uses them sees Settings.
-      { label: "Settings", icon: "settings", tabs: [{ href: "/settings", label: "Settings", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS"] }] },
+      { label: "Settings", icon: "settings", tabs: [{ href: "/settings", label: "Settings", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"] }] },
     ],
   },
 ];

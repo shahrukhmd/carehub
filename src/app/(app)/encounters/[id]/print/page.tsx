@@ -32,7 +32,7 @@ export default async function EncounterPrintPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ view?: string }>;
 }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER", "FRONT_DESK", "CDS"]);
+  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER", "FRONT_DESK", "CDS", "CODER"]);
   const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
   await requireEncounterAccess(user, id);
