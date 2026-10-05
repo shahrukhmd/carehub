@@ -1,3 +1,4 @@
+import { PatientThread } from "@/components/PatientThread";
 import { requireChartAccess } from "@/lib/privacy";
 import { claimNeighbours } from "@/lib/claims-dashboard";
 import Link from "next/link";
@@ -57,11 +58,11 @@ export default async function ClaimPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; ok?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; threadOk?: string; threadError?: string }>;
 }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const { id } = await params;
-  const { error, ok } = await searchParams;
+  const { error, ok, threadOk, threadError } = await searchParams;
   const claim = await prisma.claim.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -798,6 +799,18 @@ export default async function ClaimPage({
           </tbody>
         </table>
       </section>
+
+      {/* Team communication, kept on the patient: billing asks coding or the front teams from the claim. */}
+      <PatientThread
+        user={user}
+        patientId={claim.patientId}
+        back={`/billing/claims/${claim.id}`}
+        only="messages"
+        limit={6}
+        suggestTo="CODER"
+        notice={{ ok: threadOk, error: threadError }}
+        fullThreadHref={`/patients/${claim.patientId}/thread`}
+      />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { TeamWaiting } from "@/components/TeamWaiting";
 import { visitTypeLabel } from "@/lib/format";
 import Link from "next/link";
 import { visitTypeNames } from "@/lib/scheduler-setup";
@@ -142,6 +143,8 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
           </Link>
         )}
       </div>
+
+      <TeamWaiting user={user} />
 
       <nav className="view-tabs" style={{ marginBottom: "0.8rem", width: "fit-content", flexWrap: "wrap" }}>
         {QUEUES.map((t) => {

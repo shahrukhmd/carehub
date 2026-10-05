@@ -63,6 +63,22 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     roles: ["ADMIN", "BILLER", "CDS", "CODER"],
   },
   {
+    key: "patient-forms",
+    group: "patients",
+    href: "/connect",
+    label: "Consent & intake form packets",
+    description: "The consent packet DSS sends from the Gateway case for e-signature, the forms in it, and the kiosk",
+    roles: ["ADMIN"],
+  },
+  {
+    key: "tasks",
+    group: "compliance",
+    href: "/tasks",
+    label: "Task list",
+    description: "Tasks the system raised and tasks not tied to a patient; patient messages between teams are on each patient's thread",
+    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CDS", "CODER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER"],
+  },
+  {
     key: "scheduling",
     group: "practice",
     href: "/settings/scheduling",

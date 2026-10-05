@@ -1,3 +1,4 @@
+import { TeamWaiting } from "@/components/TeamWaiting";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { BillingTabs } from "./tabs";
@@ -81,6 +82,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         </div>
       </section>
 
+      <TeamWaiting user={user} />
       <BillingTabs active={tab} />
 
       {tab === "visits" && <VisitsTab practiceId={user.practiceId} sp={sp} />}

@@ -1,3 +1,4 @@
+import { PatientThread } from "@/components/PatientThread";
 import { CodeLookup } from "@/components/CodeLookup";
 import { copyForward, setTransferOfCare, toggleReconciled } from "./reconcile-actions";
 import { requireEncounterAccess } from "@/lib/privacy";
@@ -116,13 +117,13 @@ export default async function EncounterPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; step?: string; wound?: string }>;
+  searchParams: Promise<{ error?: string; step?: string; wound?: string; threadOk?: string; threadError?: string }>;
 }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
   await requireEncounterAccess(user, id);
-  const { error, step: stepParam, wound: woundParam } = await searchParams;
+  const { error, step: stepParam, wound: woundParam, threadOk, threadError } = await searchParams;
   const encounter = await prisma.encounter.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -1628,6 +1629,19 @@ export default async function EncounterPage({
             )}
           </fieldset>
         </form>
+
+        {/* ---------------- Team communication, kept on the patient ---------------- */}
+        <PatientThread
+          user={user}
+          patientId={encounter.patientId}
+          back={`/encounters/${encounter.id}`}
+          only="messages"
+          limit={6}
+          // Who the chart usually goes to next from this team.
+          suggestTo={user.role === "CLINICIAN" ? "CDS" : user.role === "CDS" ? "CODER" : user.role === "CODER" ? "CDS" : user.role === "BILLER" ? "CODER" : undefined}
+          notice={{ ok: threadOk, error: threadError }}
+          fullThreadHref={`/patients/${encounter.patientId}/thread`}
+        />
 
         {/* ---------------- Hand-off for whoever owns the current stage ---------------- */}
         {status === "CDS_QUERY" && encounter.cdsQueryNote && (

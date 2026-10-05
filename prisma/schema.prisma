@@ -17,6 +17,7 @@ model Organization {
 }
 
 model Practice {
+  patientMessages PatientMessage[]
   id           String        @id @default(cuid())
   name         String
   slug         String        @unique
@@ -252,6 +253,7 @@ model Session {
 }
 
 model Patient {
+  teamMessages PatientMessage[]
   id              String        @id @default(cuid())
   practiceId      String
   practice        Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -2988,4 +2990,30 @@ model MasterCode {
 
   @@unique([codeSet, code])
   @@index([codeSet, billable])
+}
+
+// A message from one team to another about a patient. Kept on the patient, shown wherever that patient is worked
+// (chart, gateway case, visit, claim). A message that needs a reply stays open until the addressed team answers.
+model PatientMessage {
+  id           String    @id @default(cuid())
+  practiceId   String
+  practice     Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  authorId     String?
+  // The author's team when the message was written.
+  authorRole   String?
+  // The team it is for (a role); empty for a note to everyone on the patient.
+  toTeam       String?
+  body         String
+  needsReply   Boolean   @default(false)
+  answeredAt   DateTime?
+  answeredById String?
+  replyToId    String?
+  // Where it was written from, so the reader can open that screen.
+  link         String?
+  createdAt    DateTime  @default(now())
+
+  @@index([practiceId, patientId, createdAt])
+  @@index([practiceId, toTeam, needsReply, answeredAt])
 }

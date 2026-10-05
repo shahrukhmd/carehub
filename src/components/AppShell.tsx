@@ -18,10 +18,6 @@ type Entry = { label: string; icon: string; tabs: Tab[] };
 // top bar while the user is in that section, so related screens are one click apart without crowding the menu.
 const MENU: { group: string; entries: Entry[] }[] = [
   {
-    group: "My work",
-    entries: [{ label: "Tasks & messages", icon: "tasks", tabs: [{ href: "/tasks", label: "Tasks & messages", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"] }] }],
-  },
-  {
     group: "Front office",
     entries: [
       { label: "Patient Gateway", icon: "gateway", tabs: [{ href: "/", label: "Patient Gateway", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] }] },
@@ -34,14 +30,8 @@ const MENU: { group: string; entries: Entry[] }[] = [
           { href: "/recalls", label: "Recalls", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN", "INTAKE"] },
         ],
       },
-      {
-        label: "Patient outreach",
-        icon: "connect",
-        tabs: [
-          { href: "/connect", label: "Patient Connect", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] },
-          { href: "/faxing", label: "Faxing", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "SCHEDULER", "CLINICIAN"] },
-        ],
-      },
+      // Faxes go to referral sources, PCP offices and vendors. Messages between teams live on the patient.
+      { label: "Faxing", icon: "connect", tabs: [{ href: "/faxing", label: "Faxing", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "SCHEDULER", "CLINICIAN"] }] },
     ],
   },
   {
@@ -104,6 +94,7 @@ export function AppShell({
   user,
   credentialingAlertCount = 0,
   taskCount = 0,
+  waitingHome = "/",
   navCollapsed = true,
   theme = "light",
   ai = null,
@@ -112,7 +103,9 @@ export function AppShell({
   children: ReactNode;
   user: User & { practice: Practice; memberships: (Membership & { practice: Practice })[] };
   credentialingAlertCount?: number;
+  // Patients with something waiting for the user's team, and the menu item (waitingHome) it is counted on.
   taskCount?: number;
+  waitingHome?: string;
   navCollapsed?: boolean;
   theme?: "light" | "dark";
   // Which AI provider is switched on for this practice (null: AI assistance is off).
@@ -131,7 +124,8 @@ export function AppShell({
       icon: e.icon,
       group: i === 0 ? g.group : undefined,
       match: e.tabs.map((t) => t.href),
-      badge: e.tabs[0].href === "/credentialing" ? credentialingAlertCount : e.tabs[0].href === "/tasks" ? taskCount : 0,
+      // Patients with a message waiting for this user's team, shown on the item where that team works them.
+      badge: e.tabs[0].href === "/credentialing" ? credentialingAlertCount : e.tabs.some((t) => t.href === waitingHome) ? taskCount : 0,
     }))
   );
   const sections = menu.flatMap((g) => g.entries.map((e) => e.tabs.map(({ href, label }) => ({ href, label }))));

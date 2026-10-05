@@ -1,3 +1,4 @@
+import { TeamWaiting } from "@/components/TeamWaiting";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -80,6 +81,8 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
           </Link>
         ))}
       </section>
+
+      <TeamWaiting user={user} />
 
       <nav className="view-tabs" style={{ margin: "0.9rem 0", width: "fit-content", flexWrap: "wrap" }}>
         {tabs.map((t) => (

@@ -1,3 +1,4 @@
+import { PatientThread } from "@/components/PatientThread";
 import { planApproval } from "@/lib/payer-plans";
 import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
@@ -79,11 +80,11 @@ export default async function IntakeCasePage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; docApplied?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; docApplied?: string; threadOk?: string; threadError?: string }>;
 }) {
   const user = await requireUser(GATEWAY_ROLES);
   const { id } = await params;
-  const { error, ok, docApplied } = await searchParams;
+  const { error, ok, docApplied, threadOk, threadError } = await searchParams;
   const c = await prisma.intakeCase.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -339,6 +340,19 @@ export default async function IntakeCasePage({
         )}
 
         {docApplied && <p className="notice-ok">Document details were applied to the patient and this case.</p>}
+
+        {/* ---------------- Team communication, kept on the patient ---------------- */}
+        <PatientThread
+          user={user}
+          patientId={patient.id}
+          back={`/gateway/${c.id}`}
+          only="messages"
+          limit={8}
+          // The team most often asked from this point in the case.
+          suggestTo={c.stage === "DATA_ENTRY" ? "VERIFICATION" : ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"].includes(c.stage) ? "INTAKE" : "VERIFICATION"}
+          notice={{ ok: threadOk, error: threadError }}
+          fullThreadHref={`/patients/${patient.id}/thread`}
+        />
 
         {/* ---------------- Patient documents ---------------- */}
         <section className="panel" id="documents">

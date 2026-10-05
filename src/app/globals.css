@@ -7463,3 +7463,32 @@ td.num {
 .df-care-item:has(> .df-option input:checked) .df-care-detail { display: grid; }
 .df-care-detail label { display: grid; gap: 0.2rem; font-size: 0.8rem; }
 @media (max-width: 800px) { .df-care-detail { grid-template-columns: 1fr; margin-left: 0.4rem; } }
+
+/* ---- Patient thread (team communication on the patient) ---- */
+.pt-compose { display: grid; gap: 0.5rem; margin-bottom: 0.9rem; }
+.pt-compose textarea { width: 100%; }
+.pt-compose-row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem 1rem; }
+.pt-compose-row label { display: grid; gap: 0.2rem; font-size: 0.8rem; }
+.pt-compose-row .checkbox-inline { display: flex; align-items: center; gap: 0.35rem; padding-bottom: 0.35rem; }
+.pt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.pt-item { padding: 0.5rem 0.6rem; border-left: 3px solid var(--line); }
+.pt-item + .pt-item { border-top: 1px solid var(--line); }
+.pt-message { border-left-color: var(--accent); background: var(--surface-2, rgba(20, 20, 60, 0.03)); }
+.pt-mine { border-left-color: var(--danger, #b42318); }
+.pt-meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; font-size: 0.8rem; }
+.pt-text { margin: 0.25rem 0 0; white-space: pre-wrap; font-size: 0.9rem; }
+.pt-case .pt-text, .pt-visit .pt-text, .pt-claim .pt-text, .pt-task .pt-text { color: var(--muted); font-size: 0.85rem; }
+.pt-quote { margin: 0.25rem 0 0; padding-left: 0.6rem; border-left: 2px solid var(--line); font-size: 0.8rem; color: var(--muted); }
+.pt-reply { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+.pt-reply form { display: flex; gap: 0.35rem; }
+.pt-reply form:first-child { flex: 1 1 18rem; }
+.pt-reply input[name="body"] { flex: 1; min-width: 12rem; }
+
+/* ---- "Waiting for your team" on a worklist ---- */
+.tw-panel { margin-bottom: 0.9rem; border-left: 3px solid var(--danger, #b42318); }
+.tw-panel summary { cursor: pointer; }
+.tw-table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+.tw-table td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--line); vertical-align: top; font-size: 0.88rem; }
+.tw-who { width: 14rem; }
+.tw-age { width: 5.5rem; white-space: nowrap; }
+.tw-act { width: 1%; white-space: nowrap; }
