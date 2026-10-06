@@ -17,6 +17,9 @@ model Organization {
 }
 
 model Practice {
+  woundProducts WoundProduct[]
+  treatmentSteps TreatmentStep[]
+  woundTreatments WoundTreatment[]
   patientMessages PatientMessage[]
   id           String        @id @default(cuid())
   name         String
@@ -151,6 +154,7 @@ model Location {
 }
 
 model User {
+  woundTreatments WoundTreatment[]
   id          String        @id @default(cuid())
   practiceId  String
   practice    Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -783,6 +787,7 @@ model Appointment {
 }
 
 model Encounter {
+  woundTreatments WoundTreatment[]
   id            String        @id @default(cuid())
   practiceId    String
   practice      Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -866,6 +871,8 @@ model Vitals {
   id          String    @id @default(cuid())
   encounterId String    @unique
   encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  // Head circumference, for the growth chart (under 3).
+  headCircumferenceCm Float?
   heightCm    Float?
   weightKg    Float?
   tempC       Float?
@@ -1071,6 +1078,7 @@ model PaymentApplication {
 }
 
 model Wound {
+  treatments WoundTreatment[]
   id          String            @id @default(cuid())
   practiceId  String
   practice    Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -3032,4 +3040,78 @@ model PatientMessage {
 
   @@index([practiceId, patientId, createdAt])
   @@index([practiceId, toTeam, needsReply, answeredAt])
+}
+
+// ---- Treatment-note product engine (wound pack): the practice's dressing/product catalog and the steps of a
+// treatment, so a treatment note is built from configured products instead of typed free text. ----
+
+model WoundProduct {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  brand       String?
+  // CLEANSER | PRIMARY | SECONDARY | ANTIMICROBIAL | ENZYMATIC | COLLAGEN | CTP | NPWT | COMPRESSION | OFFLOADING | SKIN_PROTECTANT | OTHER
+  productType String   @default("PRIMARY")
+  // HCPCS supply code billed per unit (A6xxx, Q4xxx...), when the practice bills the product.
+  hcpcsCode   String?
+  unit        String   @default("each")
+  size        String?
+  instructions String?
+  active      Boolean  @default(true)
+  standard    Boolean  @default(false)
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  lines       WoundTreatmentLine[]
+
+  @@index([practiceId, productType])
+}
+
+model TreatmentStep {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name       String
+  // Product types that fit this step (comma list); empty = any.
+  productTypes String @default("")
+  active     Boolean  @default(true)
+  standard   Boolean  @default(false)
+  sortOrder  Int      @default(100)
+  lines      WoundTreatmentLine[]
+}
+
+model WoundTreatment {
+  id            String    @id @default(cuid())
+  practiceId    String
+  practice      Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  encounterId   String
+  encounter     Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  woundId       String
+  wound         Wound     @relation(fields: [woundId], references: [id], onDelete: Cascade)
+  performedById String?
+  performedBy   User?     @relation(fields: [performedById], references: [id], onDelete: SetNull)
+  notes         String?
+  // Set when the billable products were pushed to the superbill.
+  billedAt      DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lines         WoundTreatmentLine[]
+
+  @@unique([encounterId, woundId])
+}
+
+model WoundTreatmentLine {
+  id           String         @id @default(cuid())
+  treatmentId  String
+  treatment    WoundTreatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  stepId       String?
+  step         TreatmentStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+  stepName     String
+  productId    String?
+  product      WoundProduct?  @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName  String
+  quantity     Float          @default(1)
+  unit         String         @default("each")
+  instructions String?
+  sortOrder    Int            @default(0)
 }

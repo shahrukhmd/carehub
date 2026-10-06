@@ -385,6 +385,10 @@ export default async function EncounterPage({
                   Weight (kg)
                   <input name="weightKg" type="number" step="0.1" defaultValue={encounter.vitals?.weightKg ?? ""} />
                 </label>
+                <label title="Under 3 years — plotted on the growth chart">
+                  Head circumference (cm)
+                  <input name="headCircumferenceCm" type="number" step="0.1" defaultValue={encounter.vitals?.headCircumferenceCm ?? ""} />
+                </label>
                 <label>
                   Temp (°C)
                   <input name="tempC" type="number" step="0.1" defaultValue={encounter.vitals?.tempC ?? ""} />

@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { ENCOUNTER_VIEW_ROLES, canEditClinical, visitStatusLabel } from "@/lib/visit-workflow";
-import { saveWoundAssessment, updateWoundStatus } from "@/app/(app)/wounds/actions";
+import { billTreatmentSupplies, copyLastTreatment, saveTreatment, saveWoundAssessment, updateWoundStatus } from "@/app/(app)/wounds/actions";
+import { PRODUCT_TYPES, loadTreatmentSetup } from "@/lib/wound-products";
 import { analyzeWoundPhoto } from "@/app/(app)/wounds/analyze";
 import { WoundTrendChart } from "@/components/WoundTrendChart";
 import { WoundPhotoAnalyzer } from "@/components/WoundPhotoAnalyzer";
@@ -24,11 +25,14 @@ import {
 
 export default async function WoundPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; woundId: string }>;
+  searchParams: Promise<{ ok?: string; error?: string }>;
 }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const { id: encounterId, woundId } = await params;
+  const sp = await searchParams;
   await requireEncounterAccess(user, encounterId);
 
   const encounter = await prisma.encounter.findFirst({
@@ -51,6 +55,17 @@ export default async function WoundPage({
     },
   });
   if (!wound) notFound();
+
+  // Treatment note for this visit, the catalog it is built from, and whether an earlier note exists to copy.
+  const [setup, treatment, lastTreatment, charges] = await Promise.all([
+    loadTreatmentSetup(user.practiceId),
+    prisma.woundTreatment.findUnique({ where: { encounterId_woundId: { encounterId, woundId } }, include: { lines: { orderBy: { sortOrder: "asc" }, include: { product: true } }, performedBy: { select: { name: true } } } }),
+    prisma.woundTreatment.findFirst({ where: { woundId, encounterId: { not: encounterId } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
+    prisma.charge.findMany({ where: { encounterId }, select: { cptCode: true } }),
+  ]);
+  const billedCodes = new Set(charges.map((c) => c.cptCode));
+  const TREATMENT_ROWS = 8;
+  const rows = Array.from({ length: TREATMENT_ROWS }, (_, i) => treatment?.lines[i] ?? null);
 
   const chartPoints = [...wound.assessments]
     .reverse()
@@ -109,6 +124,105 @@ export default async function WoundPage({
           )}
         </fieldset>
       </div>
+
+      {sp.ok && <p className="notice-ok">{sp.ok}</p>}
+      {sp.error && (
+        <p className="gw-error" role="alert">
+          {sp.error}
+        </p>
+      )}
+
+      {/* ---------------- Treatment note: a product per step, from the practice catalog ---------------- */}
+      <section className="panel" id="treatment">
+        <div className="gw-section-head">
+          <h2>Treatment note</h2>
+          <span className="muted">
+            {treatment ? `Saved ${formatDate(treatment.updatedAt)}${treatment.performedBy ? ` by ${treatment.performedBy.name}` : ""}${treatment.billedAt ? " · supplies on the superbill" : ""}` : "Not documented at this visit"}
+          </span>
+        </div>
+        <fieldset className="gw-fieldset" disabled={!editable}>
+          <form action={saveTreatment.bind(null, wound.id, encounterId)} className="stack">
+            <table className="cn-table tn-table">
+              <thead>
+                <tr>
+                  <th>Step</th>
+                  <th>Product</th>
+                  <th>Qty</th>
+                  <th>Instructions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((l, i) => {
+                  const stepId = l?.stepId ?? setup.steps[i]?.id ?? "";
+                  return (
+                    <tr key={i}>
+                      <td>
+                        <select name={`step_${i}`} defaultValue={stepId} aria-label={`Step ${i + 1}`}>
+                          <option value="">—</option>
+                          {setup.steps.map((st) => (
+                            <option key={st.id} value={st.id}>
+                              {st.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <select name={`product_${i}`} defaultValue={l?.productId ?? ""} aria-label={`Product ${i + 1}`}>
+                          <option value="">{l && !l.productId ? l.productName : "—"}</option>
+                          {Object.entries(PRODUCT_TYPES).map(([type, label]) => {
+                            const list = setup.products.filter((pr) => pr.productType === type);
+                            return list.length ? (
+                              <optgroup key={type} label={label}>
+                                {list.map((pr) => (
+                                  <option key={pr.id} value={pr.id}>
+                                    {pr.brand ? `${pr.brand} — ` : ""}
+                                    {pr.name}
+                                    {pr.hcpcsCode ? ` (${pr.hcpcsCode})` : ""}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ) : null;
+                          })}
+                        </select>
+                        {l && !l.productId && <input type="hidden" name={`other_${i}`} value={l.productName} />}
+                      </td>
+                      <td>
+                        <input name={`qty_${i}`} type="number" step="0.5" min="0.5" defaultValue={l?.quantity ?? 1} className="st-num" aria-label="Quantity" />
+                      </td>
+                      <td>
+                        <input name={`instr_${i}`} defaultValue={l?.instructions ?? ""} placeholder="From the product unless typed here" aria-label="Instructions" />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <label>
+              Treatment notes (tolerance, patient / caregiver teaching, next change)
+              <textarea name="treatmentNotes" rows={2} defaultValue={treatment?.notes ?? ""} />
+            </label>
+            <div className="gw-actions">
+              <button className="btn" type="submit">
+                Save treatment note
+              </button>
+              {lastTreatment && (
+                <button className="btn secondary" type="submit" formAction={copyLastTreatment.bind(null, wound.id, encounterId)} title={`Copy the treatment from ${formatDate(lastTreatment.createdAt)} into this visit`}>
+                  Copy last treatment
+                </button>
+              )}
+              {treatment && treatment.lines.some((l) => l.product?.hcpcsCode) && (
+                <button className="btn secondary" type="submit" formAction={billTreatmentSupplies.bind(null, wound.id, encounterId)} title="Adds one charge per HCPCS product (units from the quantity) to the superbill">
+                  {treatment.billedAt ? "Re-add supplies to superbill" : "Add supplies to superbill"}
+                </button>
+              )}
+              <span className="muted">
+                {treatment?.lines.filter((l) => l.product?.hcpcsCode).map((l) => `${l.product!.hcpcsCode}${billedCodes.has(l.product!.hcpcsCode!) ? " ✓" : ""}`).join(" · ")}
+              </span>
+            </div>
+          </form>
+        </fieldset>
+        <p className="muted">Products and steps are managed under Settings → Wound products &amp; treatment steps.</p>
+      </section>
 
       <div className="two-col">
         <div className="stack">

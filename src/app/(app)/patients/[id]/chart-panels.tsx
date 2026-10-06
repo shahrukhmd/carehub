@@ -3,6 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 import { RX_FAVORITES, RX_WRITE_ROLES, allergyConflicts } from "@/lib/prescriptions";
 import { IMMUNIZATION_ROLES, MANUFACTURERS, ROUTES, SITES, VACCINES } from "@/lib/immunizations";
+import { FORECAST_STATUS, immunizationForecast } from "@/lib/immunization-forecast";
+import { loadGrowth } from "./growth/page";
+import { percentileText } from "@/lib/growth-charts";
 import { RECALL_REASONS, RECALL_ROLES } from "@/lib/recalls";
 import { LETTER_ROLES } from "@/lib/letters";
 import { cancelPrescription, createPrescription, deleteImmunization, faxPrescription, printPrescription, recordImmunization, signPrescription } from "../clinical-actions";
@@ -206,8 +209,14 @@ export async function PrescriptionsPanel({ patientId, role, back, encounterId }:
 }
 
 export async function ImmunizationsPanel({ patientId, role, back }: { patientId: string; role: string; back: string }) {
-  const imms = await prisma.immunization.findMany({ where: { patientId }, orderBy: { administeredAt: "desc" } });
+  const [imms, patient] = await Promise.all([
+    prisma.immunization.findMany({ where: { patientId }, orderBy: { administeredAt: "desc" } }),
+    prisma.patient.findUniqueOrThrow({ where: { id: patientId }, select: { dob: true, sex: true } }),
+  ]);
   const can = IMMUNIZATION_ROLES.includes(role);
+  // What the routine schedule says is due, from the record above.
+  const forecast = immunizationForecast(patient.dob, patient.sex, imms);
+  const dueNow = forecast.filter((f) => f.status === "DUE" || f.status === "OVERDUE");
   // Lots in the practice's stock, offered when typing the lot number.
   const lots = can
     ? await prisma.vaccineLot.findMany({ where: { practice: { patients: { some: { id: patientId } } }, active: true, dosesOnHand: { gt: 0 } }, orderBy: { expirationDate: "asc" } })
@@ -215,6 +224,32 @@ export async function ImmunizationsPanel({ patientId, role, back }: { patientId:
   return (
     <section className="panel" id="imm">
       <h2>Immunizations</h2>
+      <details className="imm-forecast" open={dueNow.length > 0}>
+        <summary>
+          <strong>Forecast</strong>{" "}
+          {dueNow.length ? <span className="gw-tag gw-tag-warn">{dueNow.length} due</span> : <span className="gw-tag gw-tag-ok">Up to date</span>}
+          <span className="muted"> — routine CDC/ACIP schedule from the record below; the clinician decides.</span>
+        </summary>
+        <table className="cn-table">
+          <tbody>
+            {forecast.map((f) => (
+              <tr key={f.key}>
+                <td>
+                  {f.name}
+                  <div className="muted cn-small">
+                    {f.dosesTotal ? `Dose ${Math.min(f.dosesGiven + 1, f.dosesTotal)} of ${f.dosesTotal}` : f.note ?? ""}
+                    {f.lastGiven ? ` · last ${formatDate(f.lastGiven)}` : ""}
+                  </div>
+                </td>
+                <td>
+                  <span className={`gw-tag gw-tag-${FORECAST_STATUS[f.status][1]}`}>{FORECAST_STATUS[f.status][0]}</span>
+                  {f.dueAt && (f.status === "DUE" || f.status === "OVERDUE" || f.status === "NOT_YET" || f.status === "UP_TO_DATE") && <div className="muted cn-small">{f.status === "UP_TO_DATE" ? "next" : "due"} {formatDate(f.dueAt)}</div>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
       {imms.length === 0 ? (
         <p className="muted">None recorded.</p>
       ) : (
@@ -589,6 +624,60 @@ export async function ReferralsPanel({ patientId, role }: { patientId: string; r
             );
           })}
         </ul>
+      )}
+    </section>
+  );
+}
+
+
+// Latest growth percentiles for children, with the link to the charts.
+export async function GrowthPanel({ patientId }: { patientId: string }) {
+  const g = await loadGrowth(patientId);
+  return (
+    <section className="panel" id="growth">
+      <div className="gw-section-head">
+        <h2>Growth chart</h2>
+        {g.pediatric && (
+          <Link className="muted" href={`/patients/${patientId}/growth`}>
+            Charts
+          </Link>
+        )}
+      </div>
+      {!g.pediatric ? (
+        <p className="muted">Growth charts cover birth to 20 years.</p>
+      ) : !g.latest ? (
+        <p className="muted">No height or weight recorded yet.</p>
+      ) : (
+        <>
+          <p className="muted cn-small">Latest {formatDate(g.latest.at)}</p>
+          <div className="gw-facts">
+            {g.latest.weight !== null && (
+              <div>
+                <span>Weight</span>
+                {g.latest.weight} kg · {percentileText(g.latest.pct.weight)}
+              </div>
+            )}
+            {g.latest.height !== null && (
+              <div>
+                <span>Height</span>
+                {g.latest.height} cm · {percentileText(g.latest.pct.height)}
+              </div>
+            )}
+            {g.latest.head !== null && (
+              <div>
+                <span>Head circ.</span>
+                {g.latest.head} cm · {percentileText(g.latest.pct.head)}
+              </div>
+            )}
+            {g.latest.bmi !== null && (
+              <div>
+                <span>BMI</span>
+                {g.latest.bmi} · {percentileText(g.latest.pct.bmi)}
+              </div>
+            )}
+          </div>
+          {g.flags.length > 0 && <p className="gw-missing">{g.flags.join(" · ")}</p>}
+        </>
       )}
     </section>
   );

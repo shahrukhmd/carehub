@@ -103,6 +103,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     roles: ["ADMIN"],
   },
   {
+    key: "wound-products",
+    group: "clinical",
+    href: "/settings/wound-products",
+    label: "Wound products & treatment steps",
+    description: "The dressing / product catalog (brand, type, HCPCS) and the steps a treatment note is built from",
+    roles: ["ADMIN"],
+  },
+  {
     key: "vaccines",
     group: "clinical",
     href: "/settings/vaccines",

@@ -723,6 +723,7 @@ export async function saveVitals(encounterId: string, formData: FormData) {
   const data = {
     heightCm: optionalNumber(formData, "heightCm"),
     weightKg: optionalNumber(formData, "weightKg"),
+    headCircumferenceCm: optionalNumber(formData, "headCircumferenceCm"),
     tempC: optionalNumber(formData, "tempC"),
     heartRate: optionalNumber(formData, "heartRate"),
     respRate: optionalNumber(formData, "respRate"),

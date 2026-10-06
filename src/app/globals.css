@@ -7506,3 +7506,66 @@ td.num {
   border-radius: 6px;
   white-space: pre;
 }
+
+/* Growth charts */
+.gc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1rem;
+}
+.gc-chart svg {
+  width: 100%;
+  height: auto;
+  background: var(--surface, #fff);
+}
+.gc-chart figcaption {
+  margin-bottom: 0.4rem;
+}
+.gc-chart line.gc-grid {
+  stroke: var(--border, #e3e6ea);
+  stroke-width: 1;
+}
+.gc-tick,
+.gc-pct {
+  font-size: 10px;
+  fill: var(--muted, #667);
+}
+.gc-line {
+  fill: none;
+  stroke: #9fb3c8;
+  stroke-width: 1;
+}
+.gc-line.gc-major {
+  stroke: #4c6a8a;
+  stroke-width: 1.5;
+}
+.gc-patient {
+  fill: none;
+  stroke: #c0392b;
+  stroke-width: 2;
+}
+.gc-dot {
+  fill: #c0392b;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+.gc-legend {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+}
+
+/* Treatment note and immunization forecast */
+.tn-table select,
+.tn-table input {
+  width: 100%;
+  min-width: 6rem;
+}
+.tn-table td:nth-child(3) {
+  width: 5rem;
+}
+.imm-forecast {
+  margin-bottom: 0.6rem;
+}
+.imm-forecast summary {
+  cursor: pointer;
+}

@@ -20,6 +20,27 @@ export const VACCINES: { cvx: string; name: string; mfr?: string; route?: string
   { cvx: "213", name: "COVID-19, unspecified", route: "IM" },
   { cvx: "43", name: "Hepatitis B, adult", route: "IM", dose: 1 },
   { cvx: "45", name: "Hepatitis B, unspecified" },
+  { cvx: "303", name: "RSV, adult (Arexvy / Abrysvo)", route: "IM", dose: 0.5 },
+  // Childhood / adolescent schedule
+  { cvx: "08", name: "Hepatitis B, pediatric/adolescent", route: "IM", dose: 0.5 },
+  { cvx: "116", name: "Rotavirus, pentavalent (RotaTeq)", route: "PO" },
+  { cvx: "119", name: "Rotavirus, monovalent (Rotarix)", route: "PO" },
+  { cvx: "20", name: "DTaP", route: "IM", dose: 0.5 },
+  { cvx: "120", name: "DTaP-IPV-Hib (Pentacel)", route: "IM", dose: 0.5 },
+  { cvx: "110", name: "DTaP-HepB-IPV (Pediarix)", route: "IM", dose: 0.5 },
+  { cvx: "146", name: "DTaP-IPV-Hib-HepB (Vaxelis)", route: "IM", dose: 0.5 },
+  { cvx: "130", name: "DTaP-IPV (Kinrix / Quadracel)", route: "IM", dose: 0.5 },
+  { cvx: "48", name: "Hib (PRP-T)", route: "IM", dose: 0.5 },
+  { cvx: "133", name: "Pneumococcal conjugate PCV13", route: "IM", dose: 0.5 },
+  { cvx: "10", name: "IPV (polio)", route: "IM", dose: 0.5 },
+  { cvx: "03", name: "MMR", route: "SC", dose: 0.5 },
+  { cvx: "94", name: "MMRV (ProQuad)", route: "SC", dose: 0.5 },
+  { cvx: "21", name: "Varicella", route: "SC", dose: 0.5 },
+  { cvx: "83", name: "Hepatitis A, pediatric/adolescent", route: "IM", dose: 0.5 },
+  { cvx: "165", name: "HPV 9-valent (Gardasil 9)", route: "IM", dose: 0.5 },
+  { cvx: "147", name: "Meningococcal ACWY (MenACWY)", route: "IM", dose: 0.5 },
+  { cvx: "163", name: "Meningococcal B (MenB)", route: "IM", dose: 0.5 },
+  { cvx: "307", name: "RSV monoclonal, infant (nirsevimab)", route: "IM" },
 ];
 
 export const MANUFACTURERS: Record<string, string> = {

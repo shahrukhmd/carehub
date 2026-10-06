@@ -8,7 +8,7 @@ import { etiologyLabel } from "@/lib/wound";
 import { setGuarantorAccount } from "@/app/actions";
 import { PatientFormsPanel } from "@/app/(app)/connect/patient-forms-panel";
 import { CareGapsPanel } from "@/app/(app)/care-gaps/care-gaps-panel";
-import { BalancePanel, ImmunizationsPanel, OrdersPanel, PatientTasksPanel, PrescriptionsPanel, RecallsPanel, RecordsPanel, ReferralsPanel } from "./chart-panels";
+import { BalancePanel, GrowthPanel, ImmunizationsPanel, OrdersPanel, PatientTasksPanel, PrescriptionsPanel, RecallsPanel, RecordsPanel, ReferralsPanel } from "./chart-panels";
 import { startIntake } from "@/app/(app)/gateway/actions";
 import { PATIENT_VIEW_ROLES, authStatusLabel, canWorkTeam, careStatusLabel, eligibilityStatusLabel, intakeStageLabel } from "@/lib/gateway";
 import { payerRankLabel } from "@/lib/claim-format";
@@ -526,6 +526,11 @@ export default async function PatientDashboardPage({ params, searchParams }: { p
     immunizations: () => (
       <Slot k="immunizations">
         <ImmunizationsPanel patientId={id} role={user.role} back={back} />
+      </Slot>
+    ),
+    growth: () => (
+      <Slot k="growth">
+        <GrowthPanel patientId={id} />
       </Slot>
     ),
     referrals: () => (
