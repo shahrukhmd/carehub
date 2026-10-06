@@ -22,7 +22,16 @@ type Entry = { label: string; icon: string; tabs: Tab[] };
 const MENU: { group: string; entries: Entry[] }[] = [
   {
     group: "Overview",
-    entries: [{ label: "Dashboard", icon: "reports", tabs: [{ href: "/dashboard", label: "Dashboard", permission: "tasks.work" }] }],
+    entries: [
+      {
+        label: "Overview",
+        icon: "reports",
+        tabs: [
+          { href: "/dashboard", label: "Dashboard", permission: "tasks.work" },
+          { href: "/workflow", label: "Team workflow", permission: "tasks.work" },
+        ],
+      },
+    ],
   },
   {
     group: "Front office",

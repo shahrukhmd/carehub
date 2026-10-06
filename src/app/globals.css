@@ -7835,3 +7835,117 @@ td.num {
   margin: 0.2rem 0 0;
   padding-left: 1.1rem;
 }
+
+/* Team workflow map */
+.wf-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.wf-step {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr;
+  gap: 0.8rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border, #e3e6ea);
+  border-radius: 8px;
+  background: var(--surface, #fff);
+  position: relative;
+}
+.wf-step.wf-phase-start {
+  margin-top: 0.6rem;
+}
+.wf-step.wf-mine,
+.wf-sidecard.wf-mine {
+  border-color: var(--accent, #2f5fa8);
+  box-shadow: inset 4px 0 0 var(--accent, #2f5fa8);
+}
+.wf-num {
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 50%;
+  background: var(--accent, #2f5fa8);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+.wf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.9rem;
+}
+.wf-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.wf-phase {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted, #667);
+  flex-basis: 100%;
+}
+.wf-roles {
+  font-size: 0.85rem;
+  color: var(--muted, #667);
+}
+.wf-count {
+  margin-left: auto;
+  font-size: 0.85rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #fff4dc;
+  color: #7a4f00;
+  text-decoration: none;
+}
+.wf-count strong {
+  font-size: 1rem;
+}
+.wf-count.wf-zero {
+  background: var(--surface-2, #f1f3f6);
+  color: var(--muted, #667);
+}
+.wf-cols {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 1fr;
+  gap: 0.9rem;
+  margin-top: 0.45rem;
+  font-size: 0.88rem;
+}
+.wf-cols p,
+.wf-cols ul {
+  margin: 0.15rem 0 0;
+}
+.wf-cols ul {
+  padding-left: 1.1rem;
+}
+.wf-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #667);
+}
+.wf-rule {
+  color: #7a4f00;
+  font-size: 0.82rem;
+}
+.wf-side {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0.8rem;
+}
+.wf-sidecard ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.88rem;
+}
+@media (max-width: 800px) {
+  .wf-cols {
+    grid-template-columns: 1fr;
+  }
+}
