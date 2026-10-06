@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { measureYears, qualityMeasures } from "@/lib/quality";
+import { rolesFor } from "@/lib/permissions";
 
 const LIST_LIMIT = 300;
 type Search = { year?: string; m?: string };
 
 // Quality measures for the practice, with the list of patients behind each gap.
 export default async function QualityMeasuresPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(rolesFor("reports.clinical"));
   const sp = await searchParams;
   const years = measureYears();
   const year = years.includes(Number(sp.year)) ? Number(sp.year) : years[0];

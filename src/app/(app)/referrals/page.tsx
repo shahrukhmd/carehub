@@ -13,7 +13,7 @@ const VIEWS: [string, string][] = [
   ["closed", "Closed"],
 ];
 
-export default async function ReferralsPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+export default async function ReferralsPage({ searchParams }: { searchParams: Promise<{ view?: string; q?: string }> }) {
   const user = await requireUser(REFERRAL_ROLES);
   const sp = await searchParams;
   const view = VIEWS.some(([k]) => k === sp.view) ? sp.view! : "open";
@@ -26,7 +26,9 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
           ? { status: "DRAFT" }
           : { status: { in: ["CLOSED", "CANCELLED"] } };
   const now = Date.now();
-  let refs = await prisma.outgoingReferral.findMany({ where: { practiceId: user.practiceId, ...where }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 300 });
+  const q = sp.q?.trim();
+  const patientWhere: Prisma.OutgoingReferralWhereInput = q ? { OR: [{ patient: { lastName: { contains: q } } }, { patient: { firstName: { contains: q } } }, { patient: { mrn: { contains: q } } }, { toName: { contains: q } }] } : {};
+  let refs = await prisma.outgoingReferral.findMany({ where: { practiceId: user.practiceId, ...where, ...patientWhere }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 300 });
   const overdue = (r: (typeof refs)[number]) => Boolean(r.sentAt && ["SENT", "SCHEDULED"].includes(r.status) && now - r.sentAt.getTime() > r.followUpDays * 86_400_000);
   if (view === "overdue") refs = refs.filter(overdue);
 
@@ -48,6 +50,18 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
           </Link>
         ))}
       </nav>
+      <form method="get" className="cn-inline" style={{ margin: "0.4rem 0" }}>
+        <input type="hidden" name="view" value={view} />
+        <input name="q" defaultValue={q ?? ""} placeholder="Patient, MRN or specialist" aria-label="Search" />
+        <button className="btn secondary gw-mini" type="submit">
+          Search
+        </button>
+        {q && (
+          <Link className="btn ghost gw-mini" href={`/referrals?view=${view}`}>
+            Clear
+          </Link>
+        )}
+      </form>
       <section className="panel">
         {refs.length === 0 ? (
           <p className="muted">No referrals here.</p>

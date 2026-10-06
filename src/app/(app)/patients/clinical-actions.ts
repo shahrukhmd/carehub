@@ -9,6 +9,7 @@ import { RX_WRITE_ROLES, allergyConflicts, prescriptionPdf } from "@/lib/prescri
 import { getFaxAdapter } from "@/lib/fax";
 import { faxNumberOrNull } from "@/lib/fax";
 import { IMMUNIZATION_ROLES, VACCINES } from "@/lib/immunizations";
+import { rolesFor } from "@/lib/permissions";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const back = (fd: FormData, patientId: string, anchor: string) => {
@@ -99,7 +100,7 @@ export async function signPrescription(rxId: string, fd: FormData) {
 }
 
 export async function printPrescription(rxId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("rx.print"));
   const rx = await prisma.prescription.findFirst({ where: { id: rxId, practiceId: user.practiceId } });
   if (!rx) throw new Error("Prescription not found");
   if (rx.status === "SIGNED") await prisma.prescription.update({ where: { id: rx.id }, data: { status: "PRINTED", sentVia: "PRINT", sentAt: new Date() } });
@@ -109,7 +110,7 @@ export async function printPrescription(rxId: string) {
 }
 
 export async function faxPrescription(rxId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("rx.print"));
   const rx = await prisma.prescription.findFirst({ where: { id: rxId, practiceId: user.practiceId } });
   if (!rx) throw new Error("Prescription not found");
   const to = back(fd, rx.patientId, "rx");
@@ -205,7 +206,8 @@ export async function recordImmunization(patientId: string, fd: FormData) {
 }
 
 export async function deleteImmunization(id: string, fd: FormData) {
-  const user = await requireUser(IMMUNIZATION_ROLES);
+  // Recording is shared with the front office; removing a record is clinical.
+  const user = await requireUser(rolesFor("immunizations.delete"));
   const imm = await prisma.immunization.findFirst({ where: { id, practiceId: user.practiceId } });
   if (!imm) throw new Error("Not found");
   await prisma.immunization.delete({ where: { id } });

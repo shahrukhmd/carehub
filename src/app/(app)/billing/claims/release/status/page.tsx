@@ -60,7 +60,7 @@ export default async function BulkReleaseStatusPage({ searchParams }: { searchPa
           <p className="muted">
             <Link href="/billing">Revenue cycle</Link>
           </p>
-          <h1>Bulk release status</h1>
+          <h1>Billing batch status</h1>
         </div>
         <Link className="btn" href="/billing/claims/release">
           Bulk release claims

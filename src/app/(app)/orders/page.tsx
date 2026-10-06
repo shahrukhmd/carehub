@@ -6,7 +6,7 @@ import { formatDate, patientName } from "@/lib/format";
 import { ORDER_ROLES, ORDER_STATUS, ensureOrderCatalog } from "@/lib/orders";
 import { importResultsFile } from "./actions";
 
-type Search = { view?: string; kind?: string; error?: string; ok?: string };
+type Search = { view?: string; kind?: string; error?: string; ok?: string; q?: string };
 
 const VIEWS: [string, string][] = [
   ["review", "Results to review"],
@@ -22,13 +22,15 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const view = VIEWS.some(([k]) => k === sp.view) ? sp.view! : "review";
   await ensureOrderCatalog(user.practiceId);
   const kind = sp.kind === "LAB" || sp.kind === "IMAGING" ? sp.kind : undefined;
+  const q = sp.q?.trim();
+  const patientWhere: Prisma.ClinicalOrderWhereInput = q ? { patient: { OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }, { mrn: { contains: q } }] } } : {};
   const statusWhere: Prisma.ClinicalOrderWhereInput =
     view === "review" ? { status: { in: ["RESULTED", "PARTIAL"] }, results: { some: { reviewedAt: null } } } : view === "pending" ? { status: { in: ["SENT", "PARTIAL"] } } : view === "unsent" ? { status: { in: ["DRAFT", "SIGNED"] } } : {};
   const [orders, counts] = await Promise.all([
     view === "import"
       ? Promise.resolve([])
       : prisma.clinicalOrder.findMany({
-          where: { practiceId: user.practiceId, ...(kind ? { kind } : {}), ...statusWhere },
+          where: { practiceId: user.practiceId, ...(kind ? { kind } : {}), ...statusWhere, ...patientWhere },
           include: { patient: true, items: true, provider: true, results: true },
           orderBy: { createdAt: "desc" },
           take: 300,
@@ -77,6 +79,19 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
           </Link>
         ))}
       </nav>
+      <form method="get" className="cn-inline" style={{ margin: "0.4rem 0" }}>
+        <input type="hidden" name="view" value={view} />
+        {kind && <input type="hidden" name="kind" value={kind} />}
+        <input name="q" defaultValue={q ?? ""} placeholder="Patient name or MRN" aria-label="Patient" />
+        <button className="btn secondary gw-mini" type="submit">
+          Search
+        </button>
+        {q && (
+          <Link className="btn ghost gw-mini" href={`/orders?view=${view}${kind ? `&kind=${kind}` : ""}`}>
+            Clear
+          </Link>
+        )}
+      </form>
       {view === "import" ? (
         <section className="panel">
           <h2>Import results from a lab</h2>

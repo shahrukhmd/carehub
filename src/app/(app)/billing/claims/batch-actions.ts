@@ -153,7 +153,8 @@ export async function createManualClaim(patientId: string, fd: FormData) {
     select: { id: true, userId: true },
   });
   if (!provider?.userId) stop("Pick the rendering provider.");
-  const coverage = await prisma.insurance.findFirst({ where: { patientId, active: true, rank }, select: { payerId: true } });
+  const coverage = await prisma.insurance.findFirst({ where: { patientId, active: true, rank }, select: { payerId: true, payer: { select: { name: true, requiresVisitReview: true } } } });
+  if (coverage?.payer.requiresVisitReview) stop(`${coverage.payer.name} requires CDS review of every visit — chart the visit so it goes through review instead of a billing-only claim.`);
   const site = await prisma.patient.findFirst({ where: { id: patientId }, select: { siteOfServiceId: true } });
   const schedule = await scheduleFor(user.practiceId, { date: dos!, locationId: site?.siteOfServiceId, providerId: provider!.id, payerId: coverage?.payerId });
 

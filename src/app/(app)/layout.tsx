@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const taskCount = await waitingPatientCount(user);
   // Icon-only menu unless the user expanded it (remembered in a cookie).
   const jar = await cookies();
-  const navCollapsed = jar.get("ch_nav")?.value !== "expanded";
+  const navCollapsed = jar.get("ch_nav")?.value === "collapsed";
   const theme = jar.get("ch_theme")?.value === "dark" ? "dark" : "light";
   const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { documentAiEnabled: true } });
   const provider = settings?.documentAiEnabled ? documentAiProvider() : null;

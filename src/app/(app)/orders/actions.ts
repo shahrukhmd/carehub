@@ -128,8 +128,11 @@ export async function recordCollection(id: string, fd: FormData) {
   go(`/orders/${id}`, { ok: "Specimen collection recorded." });
 }
 
+// Results are clinical data: entered by the clinical team only (the front office can order and print).
+const RESULT_ROLES = ["ADMIN", "CLINICIAN"];
+
 export async function enterResults(id: string, fd: FormData) {
-  const user = await requireUser(ORDER_ROLES);
+  const user = await requireUser(RESULT_ROLES);
   const o = await ownOrder(user.practiceId, id);
   let n = 0;
   for (const it of o.items) {
@@ -189,7 +192,7 @@ export async function cancelOrder(id: string, fd: FormData) {
 }
 
 export async function importResultsFile(fd: FormData) {
-  const user = await requireUser(ORDER_ROLES);
+  const user = await requireUser(RESULT_ROLES);
   const file = fd.get("file");
   if (!(file instanceof File) || file.size === 0) go("/orders?view=import", { error: "Choose an HL7 results file." });
   if ((file as File).size > 5_000_000) go("/orders?view=import", { error: "The file is larger than 5 MB." });

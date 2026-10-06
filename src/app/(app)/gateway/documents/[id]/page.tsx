@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
+import { requireChartAccess } from "@/lib/privacy";
 import { prisma } from "@/lib/prisma";
 import { GATEWAY_ROLES, canWorkTeam } from "@/lib/gateway";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -66,6 +67,7 @@ export default async function DocumentReviewPage({
       reviewedBy: true,
     },
   });
+  if (doc?.patientId) await requireChartAccess(user, doc.patientId, `/gateway/documents/${id}`);
   if (!doc) notFound();
   const canEdit = canWorkTeam(user.role, "DATA_ENTRY");
   const extraction = parseExtraction(doc.extraction);

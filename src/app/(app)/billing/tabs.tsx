@@ -2,12 +2,12 @@ import Link from "next/link";
 
 export const BILLING_TABS = [
   { key: "visits", label: "Visits to bill", href: "/billing?tab=visits" },
-  { key: "claims", label: "Claims", href: "/billing/claims" },
   { key: "release", label: "Pre-release queue", href: "/billing/claims/release" },
-  { key: "deposits", label: "Deposits", href: "/billing?tab=deposits" },
+  { key: "claims", label: "Claims", href: "/billing/claims" },
+  { key: "denials", label: "Denials & appeals", href: "/billing/denials" },
   { key: "era", label: "ERA / 835 posting", href: "/billing?tab=era" },
-  { key: "ar", label: "AR & denials", href: "/billing?tab=ar" },
-  { key: "denials", label: "Denial worklist", href: "/billing/denials" },
+  { key: "deposits", label: "Deposits & payments", href: "/billing?tab=deposits" },
+  { key: "ar", label: "AR & write-offs", href: "/billing?tab=ar" },
   { key: "reports", label: "Financial reports", href: "/billing/reports" },
 ];
 
@@ -28,7 +28,6 @@ export const CLAIM_TOOLS = [
   { key: "dashboard", label: "Dashboard", href: "/billing/claims", hint: "Every claim by status" },
   { key: "new", label: "Create new claim", href: "/billing/claims/new", hint: "From a signed visit, or keyed by billing" },
   { key: "paper", label: "Create paper claims", href: "/billing/claims/paper", hint: "Print CMS-1500 forms for payers that don't take electronic claims" },
-  { key: "release", label: "Pre-release queue", href: "/billing/claims/release", hint: "Generated claims waiting for billing to review and bill to insurance" },
   { key: "status", label: "Billing batch status", href: "/billing/claims/release/status", hint: "What happened to each claim in a billing batch" },
 ];
 

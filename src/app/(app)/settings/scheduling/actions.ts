@@ -258,9 +258,9 @@ export async function addResource(fd: FormData) {
 }
 
 export async function updateResource(id: string, fd: FormData) {
-  const r = await prisma.schedulerResource.findUnique({ where: { id } });
-  return guarded(`/settings/scheduling?tab=resources&location=${r?.locationId ?? ""}`, async (user) => {
-    if (!r || r.practiceId !== user.practiceId) fail("Resource not found.");
+  return guarded(`/settings/scheduling?tab=resources`, async (user) => {
+    const r = await prisma.schedulerResource.findFirst({ where: { id, practiceId: user.practiceId } });
+    if (!r) fail("Resource not found.");
     const units = Number(str(fd, "maxUnits"));
     if (!(Number.isInteger(units) && units >= 1 && units <= 99)) fail("Maximum units must be 1–99.");
     await prisma.schedulerResource.update({ where: { id }, data: { maxUnits: units, active: on(fd, "active"), name: str(fd, "name").slice(0, 80) || r.name } });

@@ -2,10 +2,11 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { runEligibilityCheck } from "@/lib/clearinghouse/service";
+import { rolesFor } from "@/lib/permissions";
 
 // Batch insurance eligibility (270/271) for upcoming appointments.
 
-export const ELIGIBILITY_ROLES = ["ADMIN", "FRONT_DESK", "SCHEDULER", "VERIFICATION", "BILLER", "INTAKE"];
+export const ELIGIBILITY_ROLES = rolesFor("eligibility.run");
 
 export function nextBusinessDay(from = new Date()) {
   const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1);

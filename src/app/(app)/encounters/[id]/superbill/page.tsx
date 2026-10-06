@@ -1,7 +1,10 @@
 import { searchMasterCodes, type CodeHit } from "@/lib/master-codes";
 import { scheduleForEncounter } from "@/lib/charge-schedules";
+import { codingSuggestions } from "@/lib/coding-assist";
 import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
+import { HandoffHeader } from "@/components/HandoffHeader";
+
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -79,6 +82,7 @@ export default async function SuperbillPage({
   }
   // A charge schedule covering this visit (site, provider, insurance, date) sets the fee for the codes it prices.
   const schedule = await scheduleForEncounter(user.practiceId, encounter.id);
+  const assist = editable ? await codingSuggestions(encounter.id, user.practiceId) : null;
   if (schedule) {
     for (const [code, item] of schedule.fees) fees.set(code, { fee: item.feeCents, modifiers: fees.get(code)?.modifiers ?? null, description: fees.get(code)?.description ?? item.description });
   }
@@ -119,6 +123,7 @@ export default async function SuperbillPage({
 
   return (
     <div className="stack">
+      <HandoffHeader practiceId={user.practiceId} patientId={encounter.patientId} encounterId={encounter.id} audience="coding" />
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">
@@ -203,6 +208,70 @@ export default async function SuperbillPage({
             </tbody>
           </table>
         </section>
+
+        {/* ---------------- Coding assist ---------------- */}
+        {assist && (assist.dx.length > 0 || assist.cpt.length > 0) && (
+          <section className="panel ca-panel">
+            <div className="gw-section-head">
+              <h2>Coding assist</h2>
+              <span className="muted">What the chart supports — tick what applies; nothing is added until you do.</span>
+            </div>
+            <div className="ca-grid">
+              <form action={addDiagnosesBulk.bind(null, encounter.id)} className="ca-col">
+                <h3>Diagnoses</h3>
+                {assist.dx.map((d) => (
+                  <label key={d.icd10} className={`checkbox-inline ca-row${d.onSuperbill ? " muted" : ""}`}>
+                    <input type="checkbox" name="dx" value={`${d.icd10}|${d.description}`} disabled={d.onSuperbill} />
+                    <span>
+                      <strong>{d.icd10}</strong> {d.description}
+                      <em className="cn-small"> — {d.why}{d.onSuperbill ? " · on superbill" : ""}</em>
+                    </span>
+                  </label>
+                ))}
+                {assist.dx.some((d) => !d.onSuperbill) && (
+                  <button className="btn secondary gw-mini" type="submit">
+                    Add ticked diagnoses
+                  </button>
+                )}
+              </form>
+              <form action={addChargesBulk.bind(null, encounter.id)} className="ca-col">
+                <h3>Procedures &amp; E/M</h3>
+                <label className={`checkbox-inline ca-row${assist.em.onSuperbill ? " muted" : ""}`}>
+                  <input type="checkbox" name="cpt" value={assist.em.code} disabled={assist.em.onSuperbill} />
+                  <span>
+                    <strong>{assist.em.code}</strong> {assist.em.label}
+                    <em className="cn-small"> — {assist.em.rationale.join("; ")}{assist.em.onSuperbill ? " · E/M already on superbill" : ""}</em>
+                  </span>
+                </label>
+                <input type="hidden" name={`desc_${assist.em.code}`} value={assist.em.label} />
+                <input type="hidden" name={`units_${assist.em.code}`} value="1" />
+                <input type="hidden" name={`fee_${assist.em.code}`} value={(assist.em.feeCents / 100).toFixed(2)} />
+                <input type="hidden" name={`ptr_${assist.em.code}`} value="A" />
+                {assist.procedure && !assist.em.onSuperbill && <input type="hidden" name={`mod_${assist.em.code}`} value="25" />}
+                {assist.cpt.map((c) => (
+                  <label key={c.cpt} className={`checkbox-inline ca-row${c.onSuperbill ? " muted" : ""}`}>
+                    <input type="checkbox" name="cpt" value={c.cpt} disabled={c.onSuperbill} />
+                    <span>
+                      <strong>{c.cpt}</strong> {c.description}
+                      {c.units > 1 ? ` × ${c.units}` : ""}
+                      <em className="cn-small"> — {c.why}{c.onSuperbill ? " · on superbill" : ""}{c.feeCents ? ` · ${formatMoney(c.feeCents)}` : " · no fee on file"}</em>
+                    </span>
+                    <input type="hidden" name={`desc_${c.cpt}`} value={c.description} />
+                    <input type="hidden" name={`units_${c.cpt}`} value={c.units} />
+                    <input type="hidden" name={`fee_${c.cpt}`} value={(c.feeCents / 100).toFixed(2)} />
+                    <input type="hidden" name={`ptr_${c.cpt}`} value={c.pointer} />
+                  </label>
+                ))}
+                {(!assist.em.onSuperbill || assist.cpt.some((c) => !c.onSuperbill)) && (
+                  <button className="btn secondary gw-mini" type="submit">
+                    Add ticked codes
+                  </button>
+                )}
+                <p className="muted cn-small">E/M level is a reading of problems, drug management and data on the chart — confirm it against the note. Diagnosis pointers default to A; adjust on the line.</p>
+              </form>
+            </div>
+          </section>
+        )}
 
         {/* ---------------- Diagnosis picker ---------------- */}
         <section className="panel">

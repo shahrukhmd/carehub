@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { HandoffHeader } from "@/components/HandoffHeader";
+
 import type { Prisma } from "@prisma/client";
 import { cancelAppointment, createAppointment, startEncounter, updateAppointmentStatus } from "@/app/actions";
 import { checkEligibility, createReservedTime, deleteReservedTime } from "@/app/(app)/schedule/actions";
@@ -38,6 +40,7 @@ type SearchParams = {
   bookSup?: string;
   bookAuth?: string;
   bookPos?: string;
+  blocked?: string;
   bookRoom?: string;
   bookNotes?: string;
   bookRecur?: string;
@@ -700,6 +703,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           <div className="stack">
             <form className="panel stack" action={createAppointment} id="book">
               <h2>Schedule encounter</h2>
+              {sp.patientId && <HandoffHeader practiceId={user.practiceId} patientId={sp.patientId} providerId={sp.bookWith ?? null} audience="booking" />}
               {sp.conflicts && (
                 <div className="gw-error" role="alert">
                   <strong>This visit conflicts with the following:</strong>
@@ -708,9 +712,9 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                       <li key={c}>{c}</li>
                     ))}
                   </ul>
-                  <label className="checkbox-inline">
+                  {!sp.blocked && (<label className="checkbox-inline">
                     <input type="checkbox" name="acceptConflicts" /> Accept conflicts and book anyway
-                  </label>
+                  </label>)}
                 </div>
               )}
               {sp.returnTo && <input type="hidden" name="returnTo" value={sp.returnTo} />}

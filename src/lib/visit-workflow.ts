@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 // Visit workflow after scheduling: the provider and clinical team document the visit, CDS reviews the
 // documentation, the coding team builds the superbill (asking CDS when something needs correcting), the provider
 // (and supervising physician) sign, then billing.
@@ -42,12 +43,12 @@ export function visitStatusTone(status: string): VisitTone {
 }
 
 // Who works each stage.
-export const VISIT_VIEW_ROLES = ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER", "FRONT_DESK", "SCHEDULER"];
-export const ENCOUNTER_VIEW_ROLES = ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER"];
+export const VISIT_VIEW_ROLES = rolesFor("chart.worklist");
+export const ENCOUNTER_VIEW_ROLES = rolesFor("chart.view");
 const CLINICAL_ROLES = ["ADMIN", "CLINICIAN"];
 // CDS reviews the documentation; the coding team owns the superbill. They are separate teams.
-export const CDS_ROLES = ["ADMIN", "CDS"];
-export const CODING_ROLES = ["ADMIN", "CODER"];
+export const CDS_ROLES = rolesFor("chart.cds");
+export const CODING_ROLES = rolesFor("chart.code");
 const HOLD_ROLES = ["ADMIN", "CDS", "CODER", "BILLER"];
 // The stages with CDS: a first review, and a coding query to answer.
 export const CDS_STAGES = ["READY_FOR_CDS", "CODING_QUERY"];

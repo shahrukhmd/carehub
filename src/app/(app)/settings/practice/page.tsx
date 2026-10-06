@@ -72,7 +72,7 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">Settings · Facility setup</p>
-          <h1>General settings</h1>
+          <h1>Practice setup</h1>
         </div>
       </div>
       <SettingsNav current="practice" />
@@ -190,6 +190,36 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
               <input type="checkbox" name="holdClaimsForCredentialing" defaultChecked={s.holdClaimsForCredentialing} /> Hold claims for provider
               credentialing
             </label>
+          </div>
+        </section>
+
+        <section className="panel" id="workflow">
+          <h2>Workflow rules</h2>
+          <p className="muted">
+            Make each team&apos;s step depend on the one before it. Off, the step is advisory (the hand-off header still shows the state); on, it blocks
+            with a message saying what has to happen first.
+          </p>
+          <div className="st-checks">
+            <label className="checkbox-inline">
+              <input type="checkbox" name="bookingRequiresGateway" defaultChecked={s.bookingRequiresGateway} /> Booking needs the Gateway case at scheduling
+              <span className="muted"> — no visit while the case is with data entry, VOB, authorization or PCC referral, or after a VOB denial</span>
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="bookingChecksCredentialing" defaultChecked={s.bookingChecksCredentialing} /> Booking needs an in-network provider
+              <span className="muted"> — the provider must be credentialed with the patient&apos;s primary payer</span>
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="chartRequiresCheckIn" defaultChecked={s.chartRequiresCheckIn} /> Chart opens after check-in
+              <span className="muted"> — the front desk checks the patient in on the flow board before a chart can be started</span>
+            </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="enforceVobScope" defaultChecked={s.enforceVobScope} /> Enforce a limited VOB on the claim
+              <span className="muted"> — when the VOB approved E&amp;M and debridement only, other services are a claim error</span>
+            </label>
+            <p className="muted">
+              Payers that require CDS review before billing are set per insurance plan (Directories → insurance → &ldquo;Requires visit review&rdquo;); that rule is
+              always on and also stops billing-only claims to those payers.
+            </p>
           </div>
         </section>
 

@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { chartAccess } from "@/lib/privacy";
 import { CREDENTIALING_ROLES, credentialingPracticeIds } from "@/lib/scope";
 import { prisma } from "@/lib/prisma";
 import { readUpload } from "@/lib/storage";
@@ -20,16 +21,21 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
   if (!allowed) return new Response("Forbidden", { status: 403 });
 
   let file: { path: string; name: string; mimeType: string } | null = null;
+  // Restricted charts: a file of a patient the user may not open is not served either.
+  let patientId: string | null = null;
 
   if (kind === "patientdoc") {
     const d = await prisma.patientDocument.findFirst({ where: { id, practiceId: user.practiceId } });
     if (d) file = { path: d.filePath, name: d.name, mimeType: d.mimeType };
+    patientId = d?.patientId ?? null;
   } else if (kind === "patientphoto") {
     const p = await prisma.patient.findFirst({ where: { id, practiceId: user.practiceId }, select: { photoPath: true } });
     if (p?.photoPath) file = { path: p.photoPath, name: "patient-photo", mimeType: mimeFromStoredPath(p.photoPath) };
+    patientId = id;
   } else if (kind === "attachment") {
-    const a = await prisma.encounterAttachment.findFirst({ where: { id, encounter: { practiceId: user.practiceId } } });
+    const a = await prisma.encounterAttachment.findFirst({ where: { id, encounter: { practiceId: user.practiceId } }, include: { encounter: { select: { patientId: true } } } });
     if (a) file = { path: a.filePath, name: a.fileName, mimeType: a.mimeType };
+    patientId = a?.encounter.patientId ?? null;
   } else if (kind === "document") {
     const doc = await prisma.providerDocument.findFirst({
       where: { id, renderingProvider: { practiceId: { in: credentialingPracticeIds(user) } } },
@@ -49,6 +55,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ kin
   }
 
   if (!file) return new Response("Not found", { status: 404 });
+  if (patientId && (await chartAccess(user, patientId)) === "BLOCKED") return new Response("This chart is restricted", { status: 403 });
 
   let bytes: Buffer;
   try {

@@ -8,6 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { ensureEnrollmentsForProvider, lookupNppes } from "@/lib/credentialing";
 import { OPEN_ENROLLMENT_STATUSES } from "@/lib/format";
+import { rolesFor } from "@/lib/permissions";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -288,7 +289,7 @@ export async function toggleBillingProviderActive(providerId: string) {
 }
 
 export async function createSuperbillTemplate(formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.templates"));
   const name = required(formData, "name");
 
   const template = await prisma.superbillTemplate.create({
@@ -301,7 +302,7 @@ export async function createSuperbillTemplate(formData: FormData) {
 }
 
 export async function toggleSuperbillTemplateActive(templateId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.templates"));
   const template = await prisma.superbillTemplate.findFirstOrThrow({
     where: { id: templateId, practiceId: user.practiceId },
   });
@@ -311,7 +312,7 @@ export async function toggleSuperbillTemplateActive(templateId: string) {
 }
 
 export async function addSuperbillTemplateItem(templateId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.templates"));
   const template = await prisma.superbillTemplate.findFirstOrThrow({
     where: { id: templateId, practiceId: user.practiceId },
   });
@@ -339,7 +340,7 @@ export async function addSuperbillTemplateItem(templateId: string, formData: For
 }
 
 export async function removeSuperbillTemplateItem(itemId: string, templateId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.templates"));
   await prisma.superbillTemplate.findFirstOrThrow({ where: { id: templateId, practiceId: user.practiceId } });
   await prisma.superbillTemplateItem.deleteMany({ where: { id: itemId, templateId } });
   revalidatePath("/settings/directories");

@@ -1,4 +1,5 @@
 import { getCurrentUser } from "@/lib/auth";
+import { chartAccess } from "@/lib/privacy";
 import { logAudit } from "@/lib/audit";
 import { renderCms1500 } from "@/lib/cms1500-pdf";
 import { cms1500ForClaims } from "@/lib/cms1500-data";
@@ -14,6 +15,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const [form] = await cms1500ForClaims(user.practiceId, [id]);
   if (!form) return new Response("Not found", { status: 404 });
   const { claim, data } = form;
+  if ((await chartAccess(user, claim.patientId)) === "BLOCKED") return new Response("This chart is restricted", { status: 403 });
 
   const bytes = await renderCms1500(data, formImage);
   await logAudit(user.practiceId, user.id, "PRINT_CMS1500", "Claim", claim.id, formImage ? "form image" : "data only");

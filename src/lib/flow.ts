@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { rolesFor } from "@/lib/permissions";
 
-export const FLOW_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER", "INTAKE"];
+export const FLOW_ROLES = rolesFor("flow.work");
 
 // Patient flow board: time-stamps each appointment status change (arrived, roomed, checked out...).
 export async function recordFlow(appointmentIds: string | string[], status: string, userId: string | null, room?: string | null) {

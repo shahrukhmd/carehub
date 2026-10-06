@@ -7,10 +7,11 @@ import { formatDate, formatMoney, patientName } from "@/lib/format";
 import { Flow, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
 import { practiceLetterhead } from "@/lib/prescriptions";
 import { completeSourceTasks, createTask } from "@/lib/tasks";
+import { rolesFor } from "@/lib/permissions";
 
 // Payer denials: one ClaimDenial per denial (kept as history), a worklist, appeals with deadlines and letters.
 
-export const DENIAL_ROLES = ["ADMIN", "BILLER"];
+export const DENIAL_ROLES = rolesFor("billing.work");
 // Used when the payer has no appeal limit set in its insurance record.
 export const DEFAULT_APPEAL_DAYS = 120;
 export const APPEAL_ALERT_DAYS = 14;

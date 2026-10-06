@@ -7,11 +7,12 @@ import { Flow, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
 import { practiceLetterhead } from "@/lib/prescriptions";
 import { drawCode39 } from "@/lib/letters";
 import { createTask } from "@/lib/tasks";
+import { rolesFor } from "@/lib/permissions";
 
 // Lab & imaging orders: catalog, requisitions, sending, results (manual or HL7 ORU) and provider review.
 
-export const ORDER_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE"];
-export const ORDER_WRITE_ROLES = ["ADMIN", "CLINICIAN"];
+export const ORDER_ROLES = rolesFor("orders.manage");
+export const ORDER_WRITE_ROLES = rolesFor("orders.write");
 
 export const ORDER_STATUS: Record<string, [string, string]> = {
   DRAFT: ["Draft", "warn"],

@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/audit";
 import { AiUnavailable, aiDraft } from "@/lib/ai";
 import { DENIAL_CATEGORIES, DENIAL_ROLES } from "@/lib/denials";
 import { ageFromDob, formatDate, formatMoney } from "@/lib/format";
+import { rolesFor } from "@/lib/permissions";
 
 export type AiResult = { text: string; provider: string } | { error: string };
 
@@ -24,7 +25,7 @@ const list = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).joi
 // A plan of care for the clinician to review, built from what is charted on this visit. The patient's name, MRN and
 // date of birth are not sent; age and sex are.
 export async function suggestPlanOfCare(encounterId: string): Promise<AiResult> {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS", "CODER"]);
+  const user = await requireUser(rolesFor("chart.ai"));
   const e = await prisma.encounter.findFirst({
     where: { id: encounterId, practiceId: user.practiceId },
     include: {

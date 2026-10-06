@@ -21,8 +21,8 @@ function back(patientId: string, msg?: { error?: string; ok?: string }): never {
   redirect(`/patients/${patientId}/scans${q}`);
 }
 
-async function scanUser(patientId: string) {
-  const user = await requireUser(SCAN_ROLES);
+async function scanUser(patientId: string, roles: string[] = SCAN_ROLES) {
+  const user = await requireUser(roles);
   const patient = await prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId }, select: { id: true } });
   if (!patient) redirect("/patients");
   return user;
@@ -61,7 +61,8 @@ export async function updateScan(patientId: string, scanId: string, fd: FormData
 }
 
 export async function deleteScan(patientId: string, scanId: string) {
-  const user = await scanUser(patientId);
+  // Everyone who can see scans can add one; removing a document from the record is for the teams that own it.
+  const user = await scanUser(patientId, ["ADMIN", "FRONT_DESK", "INTAKE", "CLINICIAN"]);
   const doc = await prisma.patientDocument.findFirst({ where: { id: scanId, patientId, practiceId: user.practiceId } });
   if (!doc) back(patientId, { error: "Scan not found." });
   if (user.role !== "ADMIN" && doc.uploadedById !== user.id) back(patientId, { error: "Only an administrator or the person who added a scan can delete it." });

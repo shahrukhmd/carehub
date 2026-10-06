@@ -4,10 +4,11 @@ import { formatDate } from "@/lib/format";
 import { Flow, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
 import { practiceLetterhead } from "@/lib/prescriptions";
 import { createTask } from "@/lib/tasks";
+import { rolesFor } from "@/lib/permissions";
 
 // Outgoing referrals to specialists (vascular surgery, podiatry, infectious disease, plastics, endocrinology…).
 
-export const REFERRAL_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "SCHEDULER"];
+export const REFERRAL_ROLES = rolesFor("referrals.work");
 export const REFERRAL_STATUS: Record<string, [string, string]> = {
   DRAFT: ["Draft", "warn"],
   SENT: ["Sent — waiting for appointment", "info"],

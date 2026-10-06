@@ -1680,6 +1680,15 @@ model PracticeSettings {
   enableClaimRules      Boolean @default(true)
   suppressSecondaryEraAdjustments Boolean @default(false)
   holdClaimsForCredentialing Boolean @default(false)
+  // Workflow rules (Practice setup → Workflow rules): each team step depends on the one before it.
+  // Booking needs the Gateway case to have reached scheduling (or no case at all).
+  bookingRequiresGateway     Boolean @default(false)
+  // Booking needs the provider to be credentialed with the patient's primary payer.
+  bookingChecksCredentialing Boolean @default(false)
+  // A chart can be started only after the front desk has checked the patient in.
+  chartRequiresCheckIn       Boolean @default(false)
+  // A VOB decision limited to E&M and debridement blocks other services on the claim.
+  enforceVobScope            Boolean @default(false)
   clearinghouse    String   @default("MOCK")
   // Accounting period close: no deposit may be posted dated on or before this day.
   closedThrough    DateTime?

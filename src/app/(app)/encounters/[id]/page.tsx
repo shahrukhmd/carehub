@@ -1,4 +1,6 @@
 import { PatientThread } from "@/components/PatientThread";
+import { HandoffHeader } from "@/components/HandoffHeader";
+
 import { CodeLookup } from "@/components/CodeLookup";
 import { copyForward, setTransferOfCare, toggleReconciled } from "./reconcile-actions";
 import { requireEncounterAccess } from "@/lib/privacy";
@@ -1500,6 +1502,7 @@ export default async function EncounterPage({
       </aside>
 
       <div className="stack">
+        <HandoffHeader practiceId={user.practiceId} patientId={encounter.patientId} encounterId={encounter.id} audience={status === "READY_FOR_CODING" || status === "CODING_QUERY" ? "coding" : "chart"} />
         <div className="page-head vw-head" style={{ marginBottom: 0 }}>
           <div>
             <p className="muted">
@@ -1587,68 +1590,6 @@ export default async function EncounterPage({
           ))}
         </ol>
 
-        {/* ---------------- Care team ---------------- */}
-        <form className="panel vw-careteam" action={updateCareTeam.bind(null, encounter.id)}>
-          <fieldset disabled={!clinicalEditable} className="gw-fieldset vw-careteam-grid">
-            <label>
-              Physician / extender
-              <input value={encounter.provider.name} disabled readOnly />
-            </label>
-            <label>
-              Clinician (clinical staff)
-              <select name="clinicalStaffId" defaultValue={encounter.clinicalStaffId ?? ""}>
-                <option value="">—</option>
-                {staffMembers.map((m) => (
-                  <option key={m.userId} value={m.userId}>
-                    {m.user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Supervising physician
-              <select name="supervisingProviderId" defaultValue={encounter.supervisingProviderId ?? ""}>
-                <option value="">— Not supervised —</option>
-                {supervisors.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                    {p.credential ? `, ${p.credential}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Site of service
-              <select name="placeOfService" defaultValue={encounter.placeOfService ?? ""}>
-                <option value="">—</option>
-                {Object.entries(placeOfServiceLabel).map(([v, l]) => (
-                  <option key={v} value={v}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {clinicalEditable && (
-              <button className="btn secondary" type="submit">
-                Save care team
-              </button>
-            )}
-          </fieldset>
-        </form>
-
-        {/* ---------------- Team communication, kept on the patient ---------------- */}
-        <PatientThread
-          user={user}
-          patientId={encounter.patientId}
-          back={`/encounters/${encounter.id}`}
-          only="messages"
-          limit={6}
-          // Who the chart usually goes to next from this team.
-          suggestTo={user.role === "CLINICIAN" ? "CDS" : user.role === "CDS" ? "CODER" : user.role === "CODER" ? "CDS" : user.role === "BILLER" ? "CODER" : undefined}
-          notice={{ ok: threadOk, error: threadError }}
-          fullThreadHref={`/patients/${encounter.patientId}/thread`}
-        />
-
         {/* ---------------- Hand-off for whoever owns the current stage ---------------- */}
         {status === "CDS_QUERY" && encounter.cdsQueryNote && (
           <section className="panel vw-query">
@@ -1705,15 +1646,15 @@ export default async function EncounterPage({
                 {status === "CODING_QUERY" ? "Back to coding →" : "Send to coding →"}
               </button>
             </form>
-            <details className="gw-inline-form">
-              <summary>Query provider (incomplete documentation)</summary>
+            <div className="gw-inline-form vw-open">
+              <strong className="vw-open-label">Query provider (incomplete documentation)</strong>
               <form action={queryProvider.bind(null, encounter.id)}>
                 <input name="note" required placeholder="What's missing or needs clarification?" />
                 <button className="btn secondary" type="submit">
                   Send query
                 </button>
               </form>
-            </details>
+            </div>
           </section>
         )}
 
@@ -1734,15 +1675,15 @@ export default async function EncounterPage({
                 Send for signature →
               </button>
             </form>
-            <details className="gw-inline-form">
-              <summary>Query CDS (documentation needs checking or correcting)</summary>
+            <div className="gw-inline-form vw-open">
+              <strong className="vw-open-label">Query CDS (documentation needs checking or correcting)</strong>
               <form action={queryCds.bind(null, encounter.id)}>
                 <input name="note" required placeholder="What needs checking or correcting?" />
                 <button className="btn secondary" type="submit">
                   Send to CDS
                 </button>
               </form>
-            </details>
+            </div>
           </section>
         )}
         {status === "READY_FOR_CODING" && !isCoderRole(user.role) && <p className="muted">With the coding team — they build the superbill, then send the chart for signature.</p>}
@@ -1788,15 +1729,15 @@ export default async function EncounterPage({
               <p className="muted">{isSigner ? "You've signed; waiting on the other signature." : "Waiting on the provider's signature."}</p>
             )}
             {isSigner && (
-              <details className="gw-inline-form">
-                <summary>Return to CDS</summary>
+              <div className="gw-inline-form vw-open">
+                <strong className="vw-open-label">Return to CDS</strong>
                 <form action={returnToCds.bind(null, encounter.id)}>
                   <input name="note" required placeholder="What should change on the superbill?" />
                   <button className="btn secondary" type="submit">
                     Return
                   </button>
                 </form>
-              </details>
+              </div>
             )}
           </section>
         )}
@@ -1830,8 +1771,8 @@ export default async function EncounterPage({
         )}
 
         {!onHold && status !== "BILLED" && canHold(user.role) && (
-          <details className="gw-inline-form">
-            <summary>Place a hold (billing hold, audit, do not bill)</summary>
+          <div className="gw-inline-form vw-open">
+            <strong className="vw-open-label">Place a hold (billing hold, audit, do not bill)</strong>
             <form action={placeHold.bind(null, encounter.id)}>
               <select name="kind" defaultValue="BILLING_HOLD">
                 {HOLD_STATUSES.map((h) => (
@@ -1845,7 +1786,7 @@ export default async function EncounterPage({
                 Place hold
               </button>
             </form>
-          </details>
+          </div>
         )}
 
         {/* ---------------- One document at a time ---------------- */}
@@ -1914,6 +1855,68 @@ export default async function EncounterPage({
             </nav>
           )}
         </section>
+        {/* ---------------- Care team ---------------- */}
+        <form className="panel vw-careteam" action={updateCareTeam.bind(null, encounter.id)}>
+          <fieldset disabled={!clinicalEditable} className="gw-fieldset vw-careteam-grid">
+            <label>
+              Physician / extender
+              <input value={encounter.provider.name} disabled readOnly />
+            </label>
+            <label>
+              Clinician (clinical staff)
+              <select name="clinicalStaffId" defaultValue={encounter.clinicalStaffId ?? ""}>
+                <option value="">—</option>
+                {staffMembers.map((m) => (
+                  <option key={m.userId} value={m.userId}>
+                    {m.user.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Supervising physician
+              <select name="supervisingProviderId" defaultValue={encounter.supervisingProviderId ?? ""}>
+                <option value="">— Not supervised —</option>
+                {supervisors.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.credential ? `, ${p.credential}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Site of service
+              <select name="placeOfService" defaultValue={encounter.placeOfService ?? ""}>
+                <option value="">—</option>
+                {Object.entries(placeOfServiceLabel).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {clinicalEditable && (
+              <button className="btn secondary" type="submit">
+                Save care team
+              </button>
+            )}
+          </fieldset>
+        </form>
+
+        {/* ---------------- Team communication, kept on the patient ---------------- */}
+        <PatientThread
+          user={user}
+          patientId={encounter.patientId}
+          back={`/encounters/${encounter.id}`}
+          only="messages"
+          limit={6}
+          // Who the chart usually goes to next from this team.
+          suggestTo={user.role === "CLINICIAN" ? "CDS" : user.role === "CDS" ? "CODER" : user.role === "CODER" ? "CDS" : user.role === "BILLER" ? "CODER" : undefined}
+          notice={{ ok: threadOk, error: threadError }}
+          fullThreadHref={`/patients/${encounter.patientId}/thread`}
+        />
+
       </div>
     </div>
   );

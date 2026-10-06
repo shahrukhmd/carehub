@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { requireChartAccess } from "@/lib/privacy";
 import { PrintButton } from "@/components/PrintButton";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 import { placeOfServiceLabel } from "@/lib/superbill";
@@ -47,6 +48,7 @@ export default async function ClaimPrintPage({ params }: { params: Promise<{ id:
       serviceLocation: true,
     },
   });
+  if (claim) await requireChartAccess(user, claim.patientId, `/billing/claim/${id}/print`);
   if (!claim) notFound();
 
   const { patient, insurance: ins, billingProvider: bp } = claim;

@@ -7569,3 +7569,105 @@ td.num {
 .imm-forecast summary {
   cursor: pointer;
 }
+
+/* Permission matrix */
+.pm-table th {
+  font-size: 0.72rem;
+  text-align: center;
+  white-space: normal;
+  max-width: 5.5rem;
+}
+.pm-table .pm-cell {
+  text-align: center;
+  color: var(--accent, #2f5fa8);
+}
+.pm-table .pm-group td {
+  background: var(--surface-2, #f6f7f9);
+  font-weight: 600;
+}
+
+/* Hand-off header: what the earlier teams decided, on the next team's screen */
+.hh {
+  padding: 0.6rem 0.9rem;
+  border-left: 4px solid var(--accent, #2f5fa8);
+}
+.hh-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.6rem;
+}
+.hh-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 10rem;
+}
+.hh-item > span {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #667);
+}
+.hh-item > em {
+  font-style: normal;
+  font-size: 0.8rem;
+}
+.hh-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.9rem;
+}
+
+/* Patient chart tabs */
+.pt-tabs {
+  margin: 0 0 0.8rem;
+  width: fit-content;
+  flex-wrap: wrap;
+}
+
+/* Workflow forms that used to hide behind a toggle */
+.vw-open {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.vw-open .vw-open-label {
+  flex: 1 1 100%;
+  font-size: 0.85rem;
+  color: var(--muted, #667);
+}
+.vw-open form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  width: 100%;
+}
+.vw-open form input[type="text"],
+.vw-open form input:not([type]) {
+  flex: 1 1 16rem;
+}
+
+/* Coding assist */
+.ca-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+.ca-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.ca-col h3 {
+  margin: 0 0 0.2rem;
+}
+.ca-row {
+  align-items: flex-start;
+  line-height: 1.3;
+}
+.ca-row em {
+  font-style: normal;
+  color: var(--muted, #667);
+}

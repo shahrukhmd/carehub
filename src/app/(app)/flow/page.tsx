@@ -7,7 +7,7 @@ import { visitTypeNames } from "@/lib/scheduler-setup";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { flowStep } from "./actions";
 
-type Search = { date?: string; locationId?: string; providerId?: string; privacy?: string };
+type Search = { date?: string; locationId?: string; providerId?: string; privacy?: string; error?: string };
 
 const mins = (n: number | null) => (n === null ? "—" : n < 60 ? `${n} min` : `${Math.floor(n / 60)} h ${n % 60} min`);
 const avg = (xs: (number | null)[]) => {
@@ -60,6 +60,11 @@ export default async function FlowBoardPage({ searchParams }: { searchParams: Pr
   return (
     <div className="stack">
       {isToday && <AutoRefresh seconds={30} />}
+      {sp.error && (
+        <p className="gw-error" role="alert">
+          {sp.error}
+        </p>
+      )}
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">Front desk</p>

@@ -5,6 +5,7 @@ import { sdohDomainLabel } from "@/lib/care-plan";
 import { formatDate, patientAccountStatusLabel } from "@/lib/format";
 import { REGISTRY_KEYS, REGISTRY_LIMIT, ageOf, hasCriteria, runRegistry, type RegistryCriteria } from "@/lib/registry";
 import { etiologyLabel } from "@/lib/wound";
+import { rolesFor } from "@/lib/permissions";
 
 const SHOWN = 500;
 const EXPORT_ROLES = ["ADMIN", "CLINICIAN", "CDS"];
@@ -12,7 +13,7 @@ type Search = RegistryCriteria & { run?: string };
 
 // Build a list of patients from clinical and demographic criteria, then export it.
 export default async function PatientRegistryPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("reports.clinical"));
   const sp = await searchParams;
   const ran = sp.run === "1" || hasCriteria(sp);
 

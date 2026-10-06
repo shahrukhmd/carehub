@@ -16,6 +16,8 @@ import { PATIENT_EDIT_ROLES, canWorkTeam } from "@/lib/gateway";
 import { fillCaseFromDocuments, openIntakeCase } from "@/lib/intake";
 import { RegistrationError, readCustomValues, readPatientForm, readPatientPhoto, saveInsuranceBlocks } from "@/lib/patient-registration";
 import { ScanError, fileScan, saveScanFiles, uploadedFiles } from "@/lib/scans";
+import { rolesFor } from "@/lib/permissions";
+import { bookingBlockedByCredentialing, bookingBlockedByGateway, workflowRules } from "@/lib/workflow-rules";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -224,6 +226,14 @@ export async function createAppointment(formData: FormData) {
   if (!patient || !provider || !location || !staff || !supervisor || !intakeCase) throw new Error("Not found");
   if (placeOfService && !(placeOfService in placeOfServiceLabel)) throw new Error("Invalid site of service");
 
+  // Workflow rules: the Gateway must have cleared the patient, and the provider must be credentialed with the payer.
+  const rules = await workflowRules(user.practiceId);
+  const blocked = (rules.bookingRequiresGateway ? await bookingBlockedByGateway(user.practiceId, patientId) : null) ?? (rules.bookingChecksCredentialing ? await bookingBlockedByCredentialing(user.practiceId, patientId, providerId) : null);
+  if (blocked) {
+    const back = new URLSearchParams({ conflicts: `Not booked — ${blocked}`, patientId, bookWith: providerId, bookLocation: locationId, bookStart: startsAtRaw, bookType: visitType, bookLen: String(minutes), blocked: "1" });
+    redirect(`/schedule?${back}#book`);
+  }
+
   const occurrences = buildOccurrences(startsAt, minutes, recurrence, weekdays, endDate);
   const conflicts = await findConflicts({
     practiceId: user.practiceId,
@@ -340,7 +350,7 @@ export async function updateAppointmentStatus(id: string, status: string) {
 }
 
 export async function startEncounter(appointmentId: string) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.start"));
   const appt = await prisma.appointment.findFirstOrThrow({
     where: { id: appointmentId, practiceId: user.practiceId },
     include: { encounter: true, location: { select: { placeOfService: true } } },
@@ -348,6 +358,10 @@ export async function startEncounter(appointmentId: string) {
 
   if (appt.encounter) {
     redirect(`/encounters/${appt.encounter.id}`);
+  }
+  // Workflow rule: the front desk checks the patient in before the chart opens.
+  if ((await workflowRules(user.practiceId)).chartRequiresCheckIn && !["CHECKED_IN", "IN_ROOM"].includes(appt.status)) {
+    redirect(`/flow?date=${appt.startsAt.toISOString().slice(0, 10)}&error=${encodeURIComponent("Check the patient in on the flow board before starting the chart (Practice setup → Workflow rules).")}`);
   }
 
   // Care team carries over from the booking; a provider who requires supervision defaults to their supervisor.

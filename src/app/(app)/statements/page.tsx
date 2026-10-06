@@ -4,11 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 
-export default async function StatementsPage() {
+export default async function StatementsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
+  const sp = await searchParams;
+  const q = sp.q?.trim();
 
   const statements = await prisma.statement.findMany({
-    where: { practiceId: user.practiceId },
+    where: { practiceId: user.practiceId, ...(q ? { patient: { OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }, { mrn: { contains: q } }] } } : {}) },
     include: {
       patient: true,
       lines: { include: { claim: true } },
@@ -44,6 +46,17 @@ export default async function StatementsPage() {
       </section>
 
       <section className="panel">
+        <form method="get" className="cn-inline" style={{ margin: "0 0 0.6rem" }}>
+          <input name="q" defaultValue={q ?? ""} placeholder="Patient name or MRN" aria-label="Patient" />
+          <button className="btn secondary gw-mini" type="submit">
+            Search
+          </button>
+          {q && (
+            <Link className="btn ghost gw-mini" href="/statements">
+              Clear
+            </Link>
+          )}
+        </form>
         <table>
           <thead>
             <tr>

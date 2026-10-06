@@ -163,6 +163,8 @@ export async function removeMembership(membershipId: string) {
   }
 
   await prisma.membership.delete({ where: { id: membership.id } });
+  // Any session the user has open in this practice ends now, not when it expires.
+  await prisma.session.deleteMany({ where: { userId: membership.userId, activePracticeId: membership.practiceId } });
 
   await logAudit(actor.practiceId, actor.id, "REVOKE_PRACTICE_ACCESS", "User", membership.userId, membership.user.email);
 

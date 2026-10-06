@@ -31,7 +31,9 @@ export default async function CareGapReportPage({ searchParams }: { searchParams
     <div className="stack">
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
-          <p className="muted">Clinical decision support</p>
+          <p className="muted">
+            <Link href="/encounters">Visits</Link> · Clinical decision support
+          </p>
           <h1>Care gaps</h1>
           <p className="muted" style={{ margin: 0 }}>
             Active patients who are due for a screening, lab or assessment under the practice&apos;s care rules.

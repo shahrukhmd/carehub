@@ -65,6 +65,9 @@ export async function getCurrentUser() {
   ]);
 
   if (!practice) return null;
+  // Access to a practice other than the user's home practice comes only from a membership. When the membership was
+  // revoked, the session no longer counts for that practice (the user is sent to sign in again).
+  if (!membership && activePracticeId !== session.user.practiceId) return null;
 
   return {
     ...session.user,

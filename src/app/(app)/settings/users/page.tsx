@@ -1,4 +1,6 @@
+import { Fragment } from "react";
 import Link from "next/link";
+import { PERMISSIONS, PERMISSION_GROUPS, ROLES as ALL_ROLES, can } from "@/lib/permissions";
 import { SettingsNav } from "../settings-nav";
 import { prisma } from "@/lib/prisma";
 import { roleLabel } from "@/lib/format";
@@ -30,7 +32,7 @@ export default async function StaffPage() {
           <p className="muted">
             <Link href="/settings">Settings</Link>
           </p>
-          <h1>User Access Manager</h1>
+          <h1>Users &amp; roles</h1>
         </div>
       </div>
       <SettingsNav current="users" />
@@ -182,6 +184,51 @@ export default async function StaffPage() {
           </form>
         </div>
       </div>
+
+      <section className="panel" id="permissions">
+        <h2>What each role can do</h2>
+        <p className="muted">
+          The permission map every screen and the side menu check. Roles are fixed for now; per-practice changes to this table are the next step.
+        </p>
+        <div className="table-scroll">
+          <table className="cn-table pm-table">
+            <thead>
+              <tr>
+                <th>Permission</th>
+                {ALL_ROLES.map((r) => (
+                  <th key={r} title={roleLabel[r] ?? r}>
+                    {(roleLabel[r] ?? r).replace("Gateway · ", "").replace("CDS · Documentation review", "CDS")}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {PERMISSION_GROUPS.map((g) => (
+                <Fragment key={g}>
+                  <tr className="pm-group">
+                    <td colSpan={ALL_ROLES.length + 1}>{g}</td>
+                  </tr>
+                  {Object.entries(PERMISSIONS)
+                    .filter(([, p]) => p.group === g)
+                    .map(([k, p]) => (
+                      <tr key={k}>
+                        <td>
+                          {p.label}
+                          {"about" in p && p.about && <div className="muted cn-small">{p.about}</div>}
+                        </td>
+                        {ALL_ROLES.map((r) => (
+                          <td key={r} className="pm-cell">
+                            {can(r, k as keyof typeof PERMISSIONS) ? "●" : ""}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </>
   );
 }

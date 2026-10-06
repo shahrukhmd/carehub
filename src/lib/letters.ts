@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatTime, formatMoney } from "@/lib/format";
 import { Flow, MUTED, letterhead, newPdf, pdfSafe } from "@/lib/pdf-kit";
 import { practiceLetterhead } from "@/lib/prescriptions";
+import { rolesFor } from "@/lib/permissions";
 
-export const LETTER_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "INTAKE", "SCHEDULER"];
+export const LETTER_ROLES = rolesFor("patients.letters");
 
 export const MERGE_FIELDS: [string, string][] = [
   ["patient.firstName", "Patient first name"],

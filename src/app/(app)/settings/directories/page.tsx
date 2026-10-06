@@ -86,7 +86,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
           <p className="muted">
             <Link href="/settings">Settings</Link>
           </p>
-          <h1>Directories</h1>
+          <h1>Providers, insurance &amp; codes</h1>
         </div>
         {section === "providers" && canEditProviders && (
           <Link className="btn" href="/settings/directories/providers/new">

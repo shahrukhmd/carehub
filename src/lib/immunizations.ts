@@ -1,7 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { rolesFor } from "@/lib/permissions";
 
-export const IMMUNIZATION_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE"];
+export const IMMUNIZATION_ROLES = rolesFor("immunizations.record");
 
 // Adult vaccines most relevant to a wound-care practice (CDC CVX codes, MVX manufacturer codes).
 export const VACCINES: { cvx: string; name: string; mfr?: string; route?: string; dose?: number }[] = [

@@ -1,5 +1,6 @@
 // Patient Gateway: the pre-scheduling console shared by the data entry, VOB (verification of benefits) and scheduling teams.
 import type { IntakeCase } from "@prisma/client";
+import { rolesFor } from "@/lib/permissions";
 
 export const intakeStageLabel: Record<string, string> = {
   DATA_ENTRY: "Data entry",
@@ -36,9 +37,10 @@ export function teamForStage(stage: string): GatewayTeam | null {
 }
 
 // Who can see the gateway, and who can work each team's section.
-export const GATEWAY_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"];
-export const PATIENT_VIEW_ROLES = GATEWAY_ROLES;
-export const PATIENT_EDIT_ROLES = ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION"];
+export const GATEWAY_ROLES = rolesFor("gateway.work");
+// Every team that works a patient can open the chart and search; the gateway itself stays with the front teams.
+export const PATIENT_VIEW_ROLES = rolesFor("patients.view");
+export const PATIENT_EDIT_ROLES = rolesFor("patients.edit");
 
 const TEAM_ROLES: Record<GatewayTeam, string[]> = {
   DATA_ENTRY: ["ADMIN", "FRONT_DESK", "INTAKE"],

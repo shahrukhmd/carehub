@@ -187,7 +187,7 @@ export async function handleFhir(client: { id: string; practiceId: string; name:
 
   if (type === "Patient") {
     if (id && op === "$everything") {
-      const p = await prisma.patient.findFirst({ where: { id, practiceId } });
+      const p = await prisma.patient.findFirst({ where: { id, practiceId, restricted: false } });
       if (!p) return { status: 404, body: operationOutcome("not-found", "Patient not found") };
       const all: Record<string, unknown>[] = [patientResource(p)];
       for (const t of FHIR_RESOURCES.filter((x) => x !== "Patient")) all.push(...(await resourcesFor(practiceId, t, [p.id])));
@@ -195,7 +195,7 @@ export async function handleFhir(client: { id: string; practiceId: string; name:
       return { status: 200, body: bundle(`${base}/Patient/${id}/$everything`, "searchset", all) };
     }
     if (id) {
-      const p = await prisma.patient.findFirst({ where: { id, practiceId } });
+      const p = await prisma.patient.findFirst({ where: { id, practiceId, restricted: false } });
       if (!p) return { status: 404, body: operationOutcome("not-found", "Patient not found") };
       await log("read");
       return { status: 200, body: patientResource(p) };
@@ -209,6 +209,8 @@ export async function handleFhir(client: { id: string; practiceId: string; name:
     const patients = await prisma.patient.findMany({
       where: {
         practiceId,
+        // Restricted charts stay out of the API: a client token has no break-the-glass.
+        restricted: false,
         ...(family ? { lastName: { startsWith: family } } : {}),
         ...(given ? { firstName: { startsWith: given } } : {}),
         ...(nameQ ? { OR: [{ lastName: { startsWith: nameQ } }, { firstName: { startsWith: nameQ } }] } : {}),
@@ -223,14 +225,14 @@ export async function handleFhir(client: { id: string; practiceId: string; name:
   // Clinical resources require a patient (read by id is supported via the patient's data).
   const patientParam = (params.get("patient") ?? params.get("subject") ?? params.get("beneficiary") ?? "").replace(/^Patient\//, "");
   if (id) {
-    const owners = await prisma.patient.findMany({ where: { practiceId }, select: { id: true } });
+    const owners = await prisma.patient.findMany({ where: { practiceId, restricted: false }, select: { id: true } });
     const found = (await resourcesFor(practiceId, type, owners.map((o) => o.id))).find((r) => r.id === id);
     if (!found) return { status: 404, body: operationOutcome("not-found", `${type}/${id} not found`) };
     await log("read");
     return { status: 200, body: found };
   }
   if (!patientParam) return { status: 400, body: operationOutcome("required", `Search ${type} with ?patient=<id>`) };
-  const p = await prisma.patient.findFirst({ where: { id: patientParam, practiceId } });
+  const p = await prisma.patient.findFirst({ where: { id: patientParam, practiceId, restricted: false } });
   if (!p) return { status: 404, body: operationOutcome("not-found", "Patient not found") };
   const list = await resourcesFor(practiceId, type, [p.id]);
   const category = params.get("category");

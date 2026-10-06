@@ -5,6 +5,7 @@ import { SIGNED_STATUSES } from "@/lib/visit-workflow";
 import { parsePointerIds } from "@/lib/superbill";
 import { DX_LETTERS, EDITABLE_CLAIM_STATUSES, MAX_CLAIM_DIAGNOSES } from "@/lib/claim-format";
 import { networkStatusForPayer } from "@/lib/credentialing";
+import { vobScopeAllows } from "@/lib/workflow-rules";
 import { visitNumber } from "@/lib/practice-settings";
 
 export class ClaimError extends Error {}
@@ -204,13 +205,32 @@ export type ClaimRuleOptions = {
   rulesEnabled?: boolean;
   allowZeroCharge?: boolean;
   credentialingProblem?: string | null;
+  // The VOB approved E&M and debridement only, and the practice enforces it on the claim.
+  vobLimited?: boolean;
+  // The payer requires CDS review and this visit never went through it.
+  visitReviewProblem?: string | null;
 };
 
 export async function claimRuleOptions(
   practiceId: string,
-  claim: { payerId: string | null; renderingProviderId: string | null; renderingProvider?: { name: string } | null; payerName?: string }
+  claim: { payerId: string | null; renderingProviderId: string | null; renderingProvider?: { name: string } | null; payerName?: string; patientId?: string; encounterId?: string }
 ): Promise<ClaimRuleOptions> {
   const s = await prisma.practiceSettings.findUnique({ where: { practiceId } });
+  let vobLimited = false;
+  if (s?.enforceVobScope && claim.patientId) {
+    const c = await prisma.intakeCase.findFirst({ where: { practiceId, patientId: claim.patientId }, orderBy: { createdAt: "desc" }, select: { vobDecision: true } });
+    vobLimited = c?.vobDecision === "APPROVED_LIMITED";
+  }
+  let visitReviewProblem: string | null = null;
+  if (claim.payerId && claim.encounterId) {
+    const [payer, enc] = await Promise.all([
+      prisma.payer.findFirst({ where: { id: claim.payerId }, select: { requiresVisitReview: true, name: true } }),
+      prisma.encounter.findFirst({ where: { id: claim.encounterId }, select: { submittedToCdsAt: true, type: true } }),
+    ]);
+    if (payer?.requiresVisitReview && enc && !enc.submittedToCdsAt) {
+      visitReviewProblem = `${payer.name} requires CDS review of the visit before billing${enc.type === "BILLING_ONLY" ? " — a billing-only claim can't be sent to this payer" : ""}.`;
+    }
+  }
   let credentialingProblem: string | null = null;
   if (s?.holdClaimsForCredentialing && claim.payerId && claim.renderingProviderId) {
     const network = await networkStatusForPayer(practiceId, claim.payerId);
@@ -225,11 +245,13 @@ export async function claimRuleOptions(
     rulesEnabled: s?.enableClaimRules ?? true,
     allowZeroCharge: s?.allowZeroChargeClaims ?? false,
     credentialingProblem,
+    vobLimited,
+    visitReviewProblem,
   };
 }
 
 // Claim rules can be turned off in Facility setup; these structural problems still block submission.
-const ALWAYS_BLOCKING = new Set(["insurance", "lines", "diagnoses", "credentialing"]);
+const ALWAYS_BLOCKING = new Set(["insurance", "lines", "diagnoses", "credentialing", "vob", "review"]);
 
 const NPI = /^\d{10}$/;
 
@@ -273,7 +295,9 @@ export function claimEdits(c: ClaimWithParts, opts: ClaimRuleOptions = {}): Clai
     if (mods.some((m) => !/^[A-Z0-9]{2}$/.test(m))) err(`line-${l.lineNumber}`, `${tag}: modifiers must be 2 characters.`);
     if (l.dosFrom > today) err(`line-${l.lineNumber}`, `${tag}: date of service is in the future.`);
     if (l.dosTo < l.dosFrom) err(`line-${l.lineNumber}`, `${tag}: "to" date is before the "from" date.`);
+    if (opts.vobLimited && !vobScopeAllows(l.cptCode)) err("vob", `${tag}: ${l.cptCode} is outside the VOB approval (E&M and debridement only) — remove it or have the VOB team widen the decision.`);
   }
+  if (opts.visitReviewProblem) err("review", opts.visitReviewProblem);
   if (["7", "8"].includes(c.frequencyCode) && !c.originalReference) {
     err("frequency", "Corrected or void claims need the payer's original claim number (box 22).");
   }

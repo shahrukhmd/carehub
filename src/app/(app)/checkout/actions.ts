@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { CHECKOUT_ROLES, PAY_METHODS, RECEIPT_KINDS, applyPatientCredit, collectPayment, voidReceipt } from "@/lib/checkout";
+import { rolesFor } from "@/lib/permissions";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
@@ -49,7 +50,7 @@ export async function applyCredit(patientId: string, fd: FormData) {
 }
 
 export async function voidPayment(receiptId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("checkout.work"));
   const back = str(fd, "back").startsWith("/checkout") ? str(fd, "back") : "/checkout";
   try {
     await voidReceipt(receiptId, user.practiceId, user.id, str(fd, "reason") || "Voided at the desk");

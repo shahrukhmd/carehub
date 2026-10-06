@@ -5,8 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { normalizePhone } from "@/lib/patient-docs";
 import { formatDate, formatTime } from "@/lib/format";
 import { DEFAULT_PACKETS, DEFAULT_RULES, PATIENT_TEMPLATES, RETIRED_TEMPLATES } from "@/lib/connect/patient-forms";
+import { rolesFor } from "@/lib/permissions";
 
-export const CONNECT_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"];
+export const CONNECT_ROLES = rolesFor("connect.work");
 
 export const newToken = () => randomBytes(24).toString("base64url");
 export const hashToken = (v: string) => createHash("sha256").update(v).digest("hex");

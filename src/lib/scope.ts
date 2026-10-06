@@ -1,9 +1,10 @@
 import "server-only";
 import type { getCurrentUser } from "@/lib/auth";
+import { rolesFor } from "@/lib/permissions";
 
 type CurrentUser = NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
 
-export const CREDENTIALING_ROLES = ["ADMIN", "CREDENTIALING"];
+export const CREDENTIALING_ROLES = rolesFor("credentialing.work");
 
 // Practices whose credentialing data this user may read and edit. A regular user is
 // confined to the practice they signed into; a master login spans every practice

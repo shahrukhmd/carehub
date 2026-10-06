@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { roleLabel } from "@/lib/format";
 import { intakeStageLabel } from "@/lib/gateway";
 import { visitStatusLabel } from "@/lib/visit-workflow";
+import { rolesFor } from "@/lib/permissions";
 
 // The patient thread: one running record per patient of what the teams said to each other and what happened to
 // the patient's case, visits and claims. Team messages are stored (PatientMessage); everything else is read from
@@ -23,7 +24,7 @@ export const THREAD_TEAMS: Record<string, string> = {
 };
 
 // Everyone who works with patient records; credentialing has no patient access.
-export const THREAD_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "CDS", "CODER", "BILLER", "INTAKE", "VERIFICATION", "SCHEDULER"];
+export const THREAD_ROLES = rolesFor("patients.thread");
 
 export type ThreadItem = {
   key: string;

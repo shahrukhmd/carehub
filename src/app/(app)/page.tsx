@@ -48,7 +48,7 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
     ...TEAM_TABS.map((t) => ({ key: t.key, label: `${teamLabel[t.team]} (${teamCount(t.team)})` })),
     { key: "board", label: "Pipeline board" },
     { key: "vob-learning", label: "VOB learning" },
-    { key: "registry", label: "Patient registry" },
+    { key: "registry", label: "All patients" },
     { key: "today", label: "Today" },
   ];
 

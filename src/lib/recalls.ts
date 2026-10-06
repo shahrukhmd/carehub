@@ -2,8 +2,9 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
 import { sendMessage } from "@/lib/connect/core";
+import { rolesFor } from "@/lib/permissions";
 
-export const RECALL_ROLES = ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN", "INTAKE"];
+export const RECALL_ROLES = rolesFor("recalls.work");
 
 export const RECALL_REASONS = [
   "Wound re-check",

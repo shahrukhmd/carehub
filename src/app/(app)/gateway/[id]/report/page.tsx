@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { requireChartAccess } from "@/lib/privacy";
 import { PrintButton } from "@/components/PrintButton";
 import { formatDate, formatMoney, patientName, planSegmentLabel } from "@/lib/format";
 import {
@@ -38,6 +39,7 @@ export default async function AuthorizationReportPage({ params }: { params: Prom
     include: { patient: { include: { referringPhysician: true } }, payer: true, assignedProvider: true, practice: true },
   });
   if (!c) notFound();
+  await requireChartAccess(user, c.patientId, `/gateway/${c.id}/report`);
   await logAudit(user.practiceId, user.id, "intake.report_viewed", "IntakeCase", c.id);
 
   return (

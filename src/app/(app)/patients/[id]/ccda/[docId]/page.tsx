@@ -6,9 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { patientName } from "@/lib/format";
 import type { CcdImport } from "@/lib/ccda";
 import { applyCcda } from "../actions";
+import { rolesFor } from "@/lib/permissions";
 
 export default async function CcdaReviewPage({ params }: { params: Promise<{ id: string; docId: string }> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS"]);
+  const user = await requireUser(rolesFor("records.exchange"));
   const { id, docId } = await params;
   await requireChartAccess(user, id, `/patients/${id}`);
   const [patient, doc] = await Promise.all([

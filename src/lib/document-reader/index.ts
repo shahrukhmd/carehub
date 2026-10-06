@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { autoRouteDocument } from "@/lib/document-routing";
 import { readUpload } from "@/lib/storage";
 import { extractFromText } from "@/lib/document-reader/parse";
 import {
@@ -256,6 +257,8 @@ export async function processDocument(documentId: string) {
         error: null,
       },
     });
+    // Match to a patient and task the right team (never throws into the reader).
+    await autoRouteDocument(doc.id).catch(() => undefined);
   } catch (err) {
     await prisma.patientDocument.update({
       where: { id: doc.id },

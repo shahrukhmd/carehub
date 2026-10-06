@@ -422,7 +422,7 @@ function ArTab({
                 {count("DENIED")} · {count("APPEAL")}
               </strong>
             </Link>
-            <Link className="stat" href="/billing?tab=claims&status=EDI_REJECTED">
+            <Link className="stat" href="/billing/claims?bucket=EDI_REJECTED">
               <span>Clearinghouse rejections</span>
               <strong>{count("EDI_REJECTED")}</strong>
             </Link>

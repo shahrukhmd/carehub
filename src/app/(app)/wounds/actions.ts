@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { assertChartEditable } from "@/lib/visit-guard";
+import { canEditClinical, canEditCoding } from "@/lib/visit-workflow";
 import { logAudit } from "@/lib/audit";
 import {
   type BwatItems,
@@ -271,8 +272,12 @@ export async function copyLastTreatment(woundId: string, encounterId: string) {
 // Pushes the billable products (those with an HCPCS code) of this visit's treatment to the superbill as charges.
 export async function billTreatmentSupplies(woundId: string, encounterId: string) {
   const user = await requireUser(["ADMIN", "CLINICIAN", "CODER"]);
-  const t = await prisma.woundTreatment.findUnique({ where: { encounterId_woundId: { encounterId, woundId } }, include: { lines: { include: { product: true } }, encounter: { select: { placeOfService: true, practiceId: true } } } });
+  const t = await prisma.woundTreatment.findUnique({ where: { encounterId_woundId: { encounterId, woundId } }, include: { lines: { include: { product: true } }, encounter: { select: { placeOfService: true, practiceId: true, status: true } } } });
   if (!t || t.encounter.practiceId !== user.practiceId) redirect(`/encounters/${encounterId}/wounds/${woundId}#treatment`);
+  // Charges follow the chart lock: the clinical team while the chart is theirs, the coder while it is in coding.
+  if (!(canEditClinical(t.encounter.status, user.role) || canEditCoding(t.encounter.status, user.role))) {
+    redirect(`/encounters/${encounterId}/wounds/${woundId}?error=${encodeURIComponent("The chart is locked at this stage — supplies can't be added to the superbill by your role now.")}#treatment`);
+  }
   const billable = t.lines.filter((l) => l.product?.hcpcsCode);
   if (billable.length === 0) redirect(`/encounters/${encounterId}/wounds/${woundId}?error=${encodeURIComponent("None of the products on this note has an HCPCS code.")}#treatment`);
   const { scheduleForEncounter } = await import("@/lib/charge-schedules");
@@ -283,9 +288,9 @@ export async function billTreatmentSupplies(woundId: string, encounterId: string
     const code = l.product!.hcpcsCode!;
     const units = Math.max(1, Math.round(l.quantity));
     const fee = schedule?.fees.get(code)?.feeCents ?? codes.find((c) => c.code === code)?.feeCents ?? 0;
-    // One charge per code: units add up when the same product is used at two steps.
+    // One charge per code, with the units from this note (re-adding replaces, so supplies are never double-counted).
     const have = await prisma.charge.findFirst({ where: { encounterId, cptCode: code } });
-    if (have) await prisma.charge.update({ where: { id: have.id }, data: { units: have.units + units } });
+    if (have) await prisma.charge.update({ where: { id: have.id }, data: { units } });
     else await prisma.charge.create({ data: { practiceId: user.practiceId, encounterId, cptCode: code, description: `${l.product!.name}${l.product!.size ? ` (${l.product!.size})` : ""}`, units, amountCents: fee, placeOfService: t.encounter.placeOfService ?? "11" } });
     added++;
   }

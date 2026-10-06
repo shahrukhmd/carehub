@@ -1,4 +1,6 @@
 import { PatientThread } from "@/components/PatientThread";
+import { HandoffHeader } from "@/components/HandoffHeader";
+
 import { requireChartAccess } from "@/lib/privacy";
 import { claimNeighbours } from "@/lib/claims-dashboard";
 import Link from "next/link";
@@ -59,11 +61,11 @@ export default async function ClaimPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; ok?: string; threadOk?: string; threadError?: string }>;
+  searchParams: Promise<{ error?: string; ok?: string; threadOk?: string; threadError?: string; view?: string }>;
 }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const { id } = await params;
-  const { error, ok, threadOk, threadError } = await searchParams;
+  const { error, ok, threadOk, threadError, view: viewParam } = await searchParams;
   const claim = await prisma.claim.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -107,6 +109,15 @@ export default async function ClaimPage({
   const warnings = edits.filter((e) => e.severity === "warning");
   const balance = claim.billedCents - claim.paidCents - claim.adjustedCents;
   const lineRows = Math.min(claim.lines.length + (editable ? BLANK_LINES : 0), MAX_CLAIM_LINES);
+  // The page in three views: the claim itself, what happened after it went out, and the history. A claim still
+  // being worked opens on the form; a billed one opens on payments.
+  const VIEWS: [string, string][] = [
+    ["claim", `Claim form${errors.length ? ` · ${errors.length} to fix` : ""}`],
+    ["payments", claim.status === "VOID" ? "Outcome" : "Payments & outcome"],
+    ["log", `Log & messages (${log.length})`],
+  ];
+  const view = VIEWS.some(([k]) => k === viewParam) ? viewParam! : editable ? "claim" : "payments";
+  const viewHref = (k: string) => `/billing/claims/${claim.id}?view=${k}`;
   const renderers = providers.filter((p) => p.isRendering);
   const referrers = providers.filter((p) => p.isReferring);
   const supervisors = providers.filter((p) => p.isSupervising);
@@ -176,6 +187,8 @@ export default async function ClaimPage({
         </div>
       </div>
 
+      <HandoffHeader practiceId={user.practiceId} patientId={claim.patientId} encounterId={claim.encounterId} audience="claim" />
+
       <section className="panel cd-strip">
         <div>
           <span>Status</span>
@@ -239,6 +252,16 @@ export default async function ClaimPage({
         </p>
       )}
 
+      <nav className="view-tabs" style={{ width: "fit-content" }}>
+        {VIEWS.map(([k, l]) => (
+          <Link key={k} href={viewHref(k)} className={`view-tab${view === k ? " active" : ""}`}>
+            {l}
+          </Link>
+        ))}
+      </nav>
+
+      {view === "claim" && (
+        <>
       {/* ---------------- Claim edits ---------------- */}
       {editable && (
         <section className={`panel ${errors.length ? "vw-query" : "gw-handoff"}`}>
@@ -266,7 +289,6 @@ export default async function ClaimPage({
         </section>
       )}
 
-      <DenialPanel {...denialData} payerFax={claim.payer?.fax ?? null} />
 
       {/* ---------------- The claim form ---------------- */}
       <form action={saveClaim.bind(null, claim.id)} className="stack">
@@ -634,6 +656,12 @@ export default async function ClaimPage({
         </details>
       )}
 
+        </>
+      )}
+
+      {view === "payments" && (
+        <>
+      <DenialPanel {...denialData} payerFax={claim.payer?.fax ?? null} />
       {/* ---------------- After submission ---------------- */}
       {!editable && claim.status !== "VOID" && (
         <div className="two-col">
@@ -781,6 +809,11 @@ export default async function ClaimPage({
         </div>
       )}
 
+        </>
+      )}
+
+      {view === "log" && (
+        <>
       {/* ---------------- Change log ---------------- */}
       <section className="panel">
         <h2>Claim log</h2>
@@ -824,13 +857,15 @@ export default async function ClaimPage({
       <PatientThread
         user={user}
         patientId={claim.patientId}
-        back={`/billing/claims/${claim.id}`}
+        back={`/billing/claims/${claim.id}?view=log`}
         only="messages"
         limit={6}
         suggestTo="CODER"
         notice={{ ok: threadOk, error: threadError }}
         fullThreadHref={`/patients/${claim.patientId}/thread`}
       />
+        </>
+      )}
     </div>
   );
 }

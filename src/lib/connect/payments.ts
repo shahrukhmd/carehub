@@ -5,11 +5,12 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { claimNumber } from "@/lib/claim-format";
 import { logClaimEvent, refreshVisitBillingStatus } from "@/lib/claims";
 import { newToken, publicBase, sendMessage } from "@/lib/connect/core";
+import { rolesFor } from "@/lib/permissions";
 
 // Online bill pay. Card details are only ever entered on the payment provider's hosted checkout page
 // (Stripe Checkout); CareHub never sees or stores card numbers. TEST simulates the provider.
 
-export const PAYMENT_ROLES = ["ADMIN", "BILLER", "FRONT_DESK"];
+export const PAYMENT_ROLES = rolesFor("payments.take");
 export const PAYMENT_PROVIDERS: Record<string, string> = { TEST: "Test mode (no card is charged)", STRIPE: "Stripe Checkout" };
 export const MIN_PAYMENT_CENTS = 100;
 

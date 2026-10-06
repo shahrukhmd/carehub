@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { normalizePhone } from "@/lib/patient-docs";
+import { rolesFor } from "@/lib/permissions";
 
 // Fax service connector. MOCK stands in until a real fax API (SRFax, Phaxio, eFax Corporate, Documo...)
 // is connected in Facility setup: it accepts any valid 10-digit US number and fails the rest.
@@ -36,7 +37,7 @@ export function getFaxAdapter(provider: string | null | undefined): FaxAdapter {
   return mock;
 }
 
-export const FAX_ROLES = ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "SCHEDULER", "CLINICIAN"];
+export const FAX_ROLES = rolesFor("fax.work");
 
 export const FAX_RECIPIENTS: Record<string, string> = {
   REFERRING: "Referring physician",

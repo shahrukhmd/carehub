@@ -6,10 +6,11 @@ import { logClaimEvent, refreshVisitBillingStatus } from "@/lib/claims";
 import { Flow, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
 import { practiceLetterhead } from "@/lib/prescriptions";
 import { patientBalance } from "@/lib/connect/payments";
+import { rolesFor } from "@/lib/permissions";
 
 // Front-desk checkout: copays, balances and prepayments taken at the desk, with receipts.
 
-export const CHECKOUT_ROLES = ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"];
+export const CHECKOUT_ROLES = rolesFor("checkout.work");
 export const RECEIPT_KINDS: Record<string, string> = { COPAY: "Copay", BALANCE: "Payment on balance", PREPAY: "Prepayment / deposit", OTHER: "Other" };
 export const PAY_METHODS: Record<string, string> = { CASH: "Cash", CHECK: "Check", CARD: "Card (on the card terminal)", OTHER: "Other" };
 

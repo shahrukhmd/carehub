@@ -2,9 +2,11 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { settingsAddress } from "@/lib/practice-settings";
 import { Flow, INK, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
+import { rolesFor } from "@/lib/permissions";
 
-export const RX_WRITE_ROLES = ["ADMIN", "CLINICIAN"];
-export const RX_VIEW_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "CDS", "CODER", "INTAKE"];
+export const RX_WRITE_ROLES = rolesFor("rx.write");
+export const RX_VIEW_ROLES = rolesFor("rx.view");
+export const RX_PRINT_ROLES = rolesFor("rx.print");
 
 // Common wound-care prescriptions (drug, strength, form, sig, qty) to speed up writing.
 export const RX_FAVORITES: { drug: string; strength: string; form: string; route: string; sig: string; quantity: string; unit: string; days: number }[] = [

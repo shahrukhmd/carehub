@@ -10,40 +10,45 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { SystemBanner } from "@/components/SystemBanner";
 import { PatientSearchPanel } from "@/components/PatientSearchPanel";
 import { PATIENT_VIEW_ROLES, canWorkTeam } from "@/lib/gateway";
+import { can, type PermissionKey } from "@/lib/permissions";
 
-type Tab = { href: string; label: string; roles: string[] };
+type Tab = { href: string; label: string; permission: PermissionKey };
 type Entry = { label: string; icon: string; tabs: Tab[] };
 
 // The side menu is grouped by the kind of work. An entry with several tabs is one menu item; its tabs sit in the
-// top bar while the user is in that section, so related screens are one click apart without crowding the menu.
+// top bar. What a role sees comes from the permission map, the same place the pages check.
 const MENU: { group: string; entries: Entry[] }[] = [
   {
     group: "Front office",
     entries: [
-      { label: "Patient Gateway", icon: "gateway", tabs: [{ href: "/", label: "Patient Gateway", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION", "SCHEDULER"] }] },
+      { label: "Patient Gateway", icon: "gateway", tabs: [{ href: "/", label: "Patient Gateway", permission: "gateway.work" }] },
       {
         label: "Scheduler",
         icon: "schedule",
         tabs: [
-          { href: "/schedule", label: "Calendar", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
-          { href: "/flow", label: "Flow board", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER", "INTAKE"] },
-          { href: "/recalls", label: "Recalls", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN", "INTAKE"] },
+          { href: "/schedule", label: "Scheduler", permission: "schedule.view" },
+          { href: "/flow", label: "Flow board", permission: "flow.work" },
+          { href: "/checkout", label: "Checkout", permission: "checkout.work" },
+          { href: "/schedule/eligibility", label: "Eligibility checks", permission: "eligibility.run" },
+          { href: "/recalls", label: "Recalls", permission: "recalls.work" },
         ],
       },
-      // Faxes go to referral sources, PCP offices and vendors. Messages between teams live on the patient.
-      { label: "Faxing", icon: "connect", tabs: [{ href: "/faxing", label: "Faxing", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "SCHEDULER", "CLINICIAN"] }] },
+      { label: "Patient Connect", icon: "connect", tabs: [{ href: "/connect", label: "Patient Connect", permission: "connect.work" }] },
+      { label: "Faxing", icon: "connect", tabs: [{ href: "/faxing", label: "Faxing", permission: "fax.work" }] },
+      { label: "Tasks & messages", icon: "tasks", tabs: [{ href: "/tasks", label: "Tasks & messages", permission: "tasks.work" }] },
     ],
   },
   {
     group: "Clinical",
     entries: [
       {
-        label: "Clinical",
+        label: "Visits",
         icon: "visits",
         tabs: [
-          { href: "/encounters", label: "Visit worklist", roles: ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER", "FRONT_DESK", "SCHEDULER"] },
-          { href: "/orders", label: "Lab & imaging orders", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE"] },
-          { href: "/referrals", label: "Referrals", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "SCHEDULER"] },
+          { href: "/encounters", label: "Visit worklist", permission: "chart.worklist" },
+          { href: "/orders", label: "Lab & imaging orders", permission: "orders.manage" },
+          { href: "/referrals", label: "Referrals", permission: "referrals.work" },
+          { href: "/care-gaps", label: "Care gaps", permission: "caregaps.view" },
         ],
       },
     ],
@@ -55,11 +60,13 @@ const MENU: { group: string; entries: Entry[] }[] = [
         label: "Revenue cycle",
         icon: "revenue",
         tabs: [
-          { href: "/billing", label: "Revenue cycle", roles: ["ADMIN", "BILLER"] },
-          { href: "/statements", label: "Statements", roles: ["ADMIN", "BILLER"] },
+          { href: "/billing", label: "Visits to bill", permission: "billing.work" },
+          { href: "/billing/claims/release", label: "Pre-release queue", permission: "billing.work" },
+          { href: "/billing/claims", label: "Claims", permission: "billing.work" },
+          { href: "/statements", label: "Statements", permission: "billing.work" },
         ],
       },
-      { label: "Credentialing", icon: "credentialing", tabs: [{ href: "/credentialing", label: "Credentialing", roles: ["ADMIN", "CREDENTIALING"] }] },
+      { label: "Credentialing", icon: "credentialing", tabs: [{ href: "/credentialing", label: "Credentialing", permission: "credentialing.work" }] },
     ],
   },
   {
@@ -69,13 +76,12 @@ const MENU: { group: string; entries: Entry[] }[] = [
         label: "Reports",
         icon: "reports",
         tabs: [
-          { href: "/reports", label: "Reports", roles: ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"] },
-          { href: "/reports/registry", label: "Patient registry", roles: ["ADMIN", "CLINICIAN", "CDS", "CODER", "FRONT_DESK"] },
-          { href: "/reports/quality", label: "Quality measures", roles: ["ADMIN", "CLINICIAN", "CDS", "CODER"] },
+          { href: "/reports", label: "Reports", permission: "reports.ops" },
+          { href: "/reports/registry", label: "Patient registry", permission: "reports.clinical" },
+          { href: "/reports/quality", label: "Quality measures", permission: "reports.clinical" },
         ],
       },
-      // Directories live under Settings; everyone who uses them sees Settings.
-      { label: "Settings", icon: "settings", tabs: [{ href: "/settings", label: "Settings", roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"] }] },
+      { label: "Settings", icon: "settings", tabs: [{ href: "/settings", label: "Settings", permission: "tasks.work" }] },
     ],
   },
 ];
@@ -115,7 +121,7 @@ export function AppShell({
   // Only what this role may open; a menu entry links to the first of its tabs the user can use.
   const menu = MENU.map((g) => ({
     group: g.group,
-    entries: g.entries.map((e) => ({ ...e, tabs: e.tabs.filter((t) => t.roles.includes(user.role)) })).filter((e) => e.tabs.length > 0),
+    entries: g.entries.map((e) => ({ ...e, tabs: e.tabs.filter((t) => can(user.role, t.permission)) })).filter((e) => e.tabs.length > 0),
   })).filter((g) => g.entries.length > 0);
   const items = menu.flatMap((g) =>
     g.entries.map((e, i) => ({

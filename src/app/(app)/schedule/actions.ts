@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { runEligibilityCheck } from "@/lib/clearinghouse/service";
+import { rolesFor } from "@/lib/permissions";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -13,7 +14,7 @@ function required(formData: FormData, key: string) {
 }
 
 export async function createReservedTime(formData: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("schedule.reserve"));
   const providerId = required(formData, "providerId");
   const locationId = String(formData.get("locationId") ?? "").trim() || null;
   const title = required(formData, "title");
@@ -31,13 +32,13 @@ export async function createReservedTime(formData: FormData) {
 }
 
 export async function deleteReservedTime(id: string) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("schedule.reserve"));
   await prisma.reservedTime.deleteMany({ where: { id, practiceId: user.practiceId } });
   revalidatePath("/schedule");
 }
 
 export async function checkEligibility(appointmentId: string) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "SCHEDULER", "VERIFICATION"]);
+  const user = await requireUser(rolesFor("eligibility.run"));
   const appt = await prisma.appointment.findFirstOrThrow({
     where: { id: appointmentId, practiceId: user.practiceId },
   });

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
+import { chartAccess } from "@/lib/privacy";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { LETTER_ROLES, labelSheetPdf, type LabelKind } from "@/lib/letters";
@@ -9,6 +10,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ pati
   const { patientId } = await params;
   const p = await prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId } });
   if (!p) return new NextResponse("Not found", { status: 404 });
+  if ((await chartAccess(user, p.id)) === "BLOCKED") return new NextResponse("This chart is restricted", { status: 403 });
   const q = req.nextUrl.searchParams;
   const kind = (["chart", "address", "barcode"].includes(q.get("kind") ?? "") ? q.get("kind") : "chart") as LabelKind;
   const count = Number(q.get("count") ?? "30") || 30;

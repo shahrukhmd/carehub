@@ -7,6 +7,8 @@ import { ageFromDob, formatDate, patientAccountStatusLabel, patientName } from "
 import { PATIENT_EDIT_ROLES } from "@/lib/gateway";
 import { addressLine, parseAddress, phoneTypeLabel } from "@/lib/patient-fields";
 import { QuickActions } from "@/components/QuickActions";
+import { PatientTabs } from "@/components/PatientTabs";
+import { can } from "@/lib/permissions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { setPatientStatus, startEncounter } from "@/app/actions";
 
@@ -246,7 +248,21 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
           </button>
         </form>
       </aside>
-      <div className="pd-main">{children}</div>
+      <div className="pd-main">
+        <PatientTabs
+          patientId={p.id}
+          tabs={[
+            { href: `/patients/${p.id}`, label: "Dashboard" },
+            ...(can(role, "patients.scans") ? [{ href: `/patients/${p.id}/insurance`, label: "Insurance & eligibility" }, { href: `/patients/${p.id}/scans`, label: "Documents" }] : []),
+            ...(can(role, "careplan.edit") || role === "CLINICIAN" ? [{ href: `/patients/${p.id}/care-plan`, label: "Care plan" }] : []),
+            ...(ageFromDob(p.dob) < 20 && can(role, "chart.view") ? [{ href: `/patients/${p.id}/growth`, label: "Growth" }] : []),
+            ...(["ADMIN", "BILLER", "FRONT_DESK"].includes(role) ? [{ href: `/patients/${p.id}/claims`, label: "Claims & balance" }] : []),
+            { href: `/patients/${p.id}/thread`, label: "Communication" },
+            { href: `/patients/${p.id}/privacy`, label: "Privacy" },
+          ]}
+        />
+        {children}
+      </div>
     </div>
   );
 }
