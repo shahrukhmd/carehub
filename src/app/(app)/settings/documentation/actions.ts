@@ -10,6 +10,9 @@ import { logAudit } from "@/lib/audit";
 import { DOCUMENT_SECTIONS, FIELD_TYPES, parseFields, slugId, type FieldDef, type FieldType } from "@/lib/chart-forms";
 import { VIEW_PARTS } from "@/lib/document-catalog";
 import { getVisitTypes } from "@/lib/scheduler-setup";
+import { SPECIALTIES } from "@/lib/specialties";
+
+const specialtyOf = (v: string | null) => (v && v in SPECIALTIES ? v : null);
 
 class SetupError extends Error {}
 
@@ -245,6 +248,7 @@ export async function saveDocumentOptions(fd: FormData) {
           active: on(fd, `active_${t.id}`),
           sortOrder: Number.isFinite(order) ? Math.round(order) : t.sortOrder,
           section: sec in DOCUMENT_SECTIONS ? sec : t.section,
+          specialty: specialtyOf(str(fd, `spec_${t.id}`)),
         },
       });
     }
@@ -332,7 +336,7 @@ export async function updateWorkflow(id: string, fd: FormData) {
     }
     await prisma.chartWorkflow.update({
       where: { id: wf.id },
-      data: { name: name.slice(0, 120), description: str(fd, "description") || null, visitTypes: visitTypes.join(","), isDefault, active },
+      data: { name: name.slice(0, 120), description: str(fd, "description") || null, visitTypes: visitTypes.join(","), isDefault, active, specialty: specialtyOf(str(fd, "specialty")) },
     });
     return `/settings/documentation/workflows/${id}?saved=1`;
   });

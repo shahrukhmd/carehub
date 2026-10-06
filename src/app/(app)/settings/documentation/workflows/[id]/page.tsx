@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { DOCUMENT_SECTIONS } from "@/lib/chart-forms";
 import { getVisitTypes } from "@/lib/scheduler-setup";
+import { SPECIALTIES } from "@/lib/specialties";
 import { SettingsNav } from "../../../settings-nav";
 import { addWorkflowStep, deleteWorkflow, moveWorkflowStep, removeWorkflowStep, saveWorkflowSteps, updateWorkflow } from "../../actions";
 
@@ -66,6 +67,17 @@ export default async function WorkflowEditorPage({
             <label>
               Description
               <input name="description" defaultValue={wf.description ?? ""} />
+            </label>
+            <label>
+              Specialty
+              <select name="specialty" defaultValue={wf.specialty ?? ""}>
+                <option value="">General</option>
+                {Object.entries(SPECIALTIES).map(([k, sp]) => (
+                  <option key={k} value={k}>
+                    {sp.label}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
           <fieldset className="gw-fieldset">

@@ -6,6 +6,7 @@ import { claimStatusLabel } from "@/lib/claim-format";
 import { claimEdits, claimRuleOptions, loadClaimForEdits, logClaimEvent, refreshVisitBillingStatus, type ClaimEdit, type ClaimWithParts } from "@/lib/claims";
 import { markBilledIfComplete } from "@/lib/visit-guard";
 import { SIGNED_STATUSES } from "@/lib/visit-workflow";
+import { EDI_FILE_EVENT, build837ForClaim } from "@/lib/x12-837p";
 
 type Actor = { id: string; practiceId: string };
 
@@ -68,6 +69,8 @@ export async function releaseClaimToClearinghouse(user: Actor, claimId: string, 
   const problem = await releaseProblem(user.practiceId, claim, opts);
   if (problem) return { outcome: "BLOCKED", message: problem, encounterId: claim.encounterId };
 
+  // The 837P as it leaves. It is kept on the claim log so what was billed can be read back and resent.
+  const edi = await build837ForClaim(claim.id, user.practiceId);
   const result = await getClearinghouseAdapter().submitClaim({
     claimId: claim.id,
     payerId: claim.payerId ?? "",
@@ -76,10 +79,12 @@ export async function releaseClaimToClearinghouse(user: Actor, claimId: string, 
     frequencyCode: claim.frequencyCode,
     diagnosisCodes: claim.diagnoses.map((d) => d.icd10),
     lines: claim.lines.map((l) => ({ cptCode: l.cptCode, chargeCents: l.chargeCents, units: l.units, pointers: l.pointers })),
+    edi837: edi?.text,
   });
 
   let out: ReleaseOutcome;
   if (result.status === "ACCEPTED") {
+    if (edi) await logClaimEvent(claim.id, user.id, EDI_FILE_EVENT, { field: edi.controlNumber, newValue: result.clearinghouseClaimId ?? null, note: edi.text });
     await prisma.claim.update({
       where: { id: claim.id },
       data: {

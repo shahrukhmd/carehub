@@ -4,16 +4,18 @@ import { prisma } from "@/lib/prisma";
 import { patientName } from "@/lib/format";
 import { ORDER_WRITE_ROLES, ensureOrderCatalog } from "@/lib/orders";
 import { createOrder } from "../actions";
+import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 
 export default async function NewOrderPage({ searchParams }: { searchParams: Promise<{ patientId?: string; kind?: string; encounterId?: string; error?: string }> }) {
   const user = await requireUser(ORDER_WRITE_ROLES);
   const sp = await searchParams;
   const kind = sp.kind === "IMAGING" ? "IMAGING" : "LAB";
   await ensureOrderCatalog(user.practiceId);
+  const packs = parseSpecialties((await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { specialties: true } }))?.specialties);
   const [patient, patients, catalog, providers] = await Promise.all([
     sp.patientId ? prisma.patient.findFirst({ where: { id: sp.patientId, practiceId: user.practiceId }, include: { problems: { where: { status: "ACTIVE" } }, encounters: { orderBy: { date: "desc" }, take: 1, include: { diagnoses: { orderBy: { priority: "asc" } } } } } }) : null,
     sp.patientId ? Promise.resolve([]) : prisma.patient.findMany({ where: { practiceId: user.practiceId, status: "ACTIVE" }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], take: 2000 }),
-    prisma.orderCatalogItem.findMany({ where: { practiceId: user.practiceId, kind, active: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    prisma.orderCatalogItem.findMany({ where: { practiceId: user.practiceId, kind, active: true, ...specialtyWhere(packs) }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.orderProvider.findMany({ where: { practiceId: user.practiceId, kind, active: true }, orderBy: { name: "asc" } }),
   ]);
   const dx = patient ? [...new Set([...(patient.encounters[0]?.diagnoses.map((d) => d.icd10) ?? []), ...patient.problems.map((p) => p.icd10)])].slice(0, 8).join(", ") : "";

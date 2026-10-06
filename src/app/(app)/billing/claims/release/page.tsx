@@ -10,11 +10,11 @@ import { BillingTabs, ClaimsMenu } from "../../tabs";
 import { bulkRelease } from "../batch-actions";
 
 const LIST_LIMIT = 200;
-type Search = { patient?: string; from?: string; to?: string; status?: string; location?: string; payer?: string; insType?: string; error?: string };
+type Search = { patient?: string; from?: string; to?: string; status?: string; location?: string; payer?: string; insType?: string; error?: string; ok?: string };
 
-// Bulk release: every claim that is waiting to go out, with what would stop it, so a biller can send a day's
-// claims in one step instead of opening each one.
-export default async function BulkReleasePage({ searchParams }: { searchParams: Promise<Search> }) {
+// The pre-release queue: every generated claim that has not been billed yet, with what would stop it. Billing
+// reviews a claim here (or opens it), ticks the clean ones and bills them to insurance in one step.
+export default async function PreReleaseQueuePage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
   const sp = await searchParams;
   const status = sp.status && RELEASABLE_STATUSES.includes(sp.status) ? sp.status : "";
@@ -49,10 +49,10 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
           <p className="muted">
             <Link href="/billing">Revenue cycle</Link>
           </p>
-          <h1>Bulk release claims</h1>
+          <h1>Pre-release queue</h1>
         </div>
         <Link className="btn secondary" href="/billing/claims/release/status">
-          Bulk release status
+          Billing batch status
         </Link>
       </div>
       {sp.error && (
@@ -60,7 +60,8 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
           {sp.error}
         </p>
       )}
-      <BillingTabs active="claims" />
+      {sp.ok && <p className="notice-ok">{sp.ok}</p>}
+      <BillingTabs active="release" />
       <ClaimsMenu active="release" />
 
       <details className="panel cd-filters" open={filtered}>
@@ -83,7 +84,7 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
           <label>
             Claim status
             <select name="status" defaultValue={status}>
-              <option value="">All waiting to be released</option>
+              <option value="">All in the queue</option>
               {RELEASABLE_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {claimStatusLabel[s]}
@@ -138,7 +139,7 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
       <form action={bulkRelease} className="panel cd-list cm-batch">
         <div className="cd-list-head">
           <strong>
-            {waiting.length} claim{waiting.length === 1 ? "" : "s"} waiting to be released · {ready} ready to go
+            {waiting.length} claim{waiting.length === 1 ? "" : "s"} in pre-release · {ready} ready to bill
           </strong>
           <SelectAll name="claim" max={LIST_LIMIT} />
         </div>
@@ -161,7 +162,7 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
               {rows.map((c) => (
                 <tr key={c.id} className={c.canRelease ? undefined : "cm-blocked"}>
                   <td>
-                    <input type="checkbox" name="claim" value={c.id} disabled={!c.canRelease} aria-label={`Release ${claimNumber(c)}`} />
+                    <input type="checkbox" name="claim" value={c.id} disabled={!c.canRelease} aria-label={`Bill ${claimNumber(c)}`} />
                   </td>
                   <td>
                     <Link href={`/billing/claims/${c.id}`}>{claimNumber(c)}</Link>
@@ -201,7 +202,7 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={9} className="muted">
-                    No claims are waiting to be released{filtered ? " with these filters" : ""}.
+                    The pre-release queue is empty{filtered ? " with these filters" : ""}. Generate claims from <Link href="/billing?tab=visits">Visits to bill</Link>.
                   </td>
                 </tr>
               )}
@@ -210,17 +211,17 @@ export default async function BulkReleasePage({ searchParams }: { searchParams: 
         </div>
         {waiting.length > LIST_LIMIT && (
           <p className="muted">
-            Showing the first {LIST_LIMIT} of {waiting.length}. Narrow the list with the filters, or release these and come back for the rest.
+            Showing the first {LIST_LIMIT} of {waiting.length}. Narrow the list with the filters, or bill these and come back for the rest.
           </p>
         )}
         <div className="cm-foot">
-          <label className="cm-check" title="When ticked, a claim with warnings is left unsent and listed on the status screen with its warnings">
+          <label className="cm-check" title="When ticked, a claim with warnings stays in the queue and is listed on the batch status screen with its warnings">
             <input type="checkbox" name="warningsBlock" defaultChecked />
-            Warnings prevent release
+            Warnings keep a claim in the queue
           </label>
           <span className="muted">Claims with errors can&apos;t be ticked — open the claim, fix it and save. Claims on hold are not listed.</span>
           <button className="btn" type="submit" disabled={ready === 0}>
-            Release selected
+            Bill selected to insurance
           </button>
         </div>
       </form>

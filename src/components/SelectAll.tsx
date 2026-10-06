@@ -9,7 +9,11 @@ export function SelectAll({ name, max, noun = "claim" }: { name: string; max?: n
   const [count, setCount] = useState(0);
   const [total, setTotal] = useState(0);
 
-  const boxes = () => [...(box.current?.form?.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][name="${name}"]:not(:disabled)`) ?? [])];
+  // form.elements also finds checkboxes tied to the form by a form="" attribute (rows in a table outside it).
+  const boxes = () =>
+    [...(box.current?.form?.elements ?? [])].filter(
+      (el): el is HTMLInputElement => el instanceof HTMLInputElement && el.type === "checkbox" && el.name === name && !el.disabled
+    );
 
   useEffect(() => {
     const form = box.current?.form;
@@ -20,8 +24,9 @@ export function SelectAll({ name, max, noun = "claim" }: { name: string; max?: n
       setCount(all.filter((b) => b.checked).length);
     };
     sync();
-    form.addEventListener("change", sync);
-    return () => form.removeEventListener("change", sync);
+    // Listened for on the document: a change in a checkbox outside the form element does not bubble to the form.
+    document.addEventListener("change", sync);
+    return () => document.removeEventListener("change", sync);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [name]);
 

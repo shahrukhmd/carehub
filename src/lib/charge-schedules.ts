@@ -34,7 +34,7 @@ export async function scheduleFor(practiceId: string, v: VisitScope) {
   const specific = (s: ChargeSchedule) => [s.locationIds, s.providerIds, s.payerIds].filter((x) => parseIds(x).length > 0).length;
   const match = schedules.filter((s) => scheduleCovers(s, v)).sort((a, b) => specific(b) - specific(a) || b.startDate.getTime() - a.startDate.getTime())[0];
   if (!match) return null;
-  return { id: match.id, name: match.name, fees: new Map(match.items.filter((i) => i.feeCents > 0).map((i) => [i.code.toUpperCase(), i])) };
+  return { id: match.id, name: match.name, fees: new Map(match.items.filter((i) => i.feeCents > 0 || i.allowedCents).map((i) => [i.code.toUpperCase(), i])) };
 }
 
 export type VisitSchedule = NonNullable<Awaited<ReturnType<typeof scheduleFor>>>;
@@ -67,8 +67,8 @@ const cell = (v: string | number) => {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
-export function scheduleCsv(items: { code: string; description: string; feeCents: number; revenueCode: string | null }[]) {
-  return [["Billing Code", "Description", "Fee", "Revenue Code"], ...items.map((i) => [i.code, i.description, (i.feeCents / 100).toFixed(2), i.revenueCode ?? ""])].map((r) => r.map(cell).join(",")).join("\r\n");
+export function scheduleCsv(items: { code: string; description: string; feeCents: number; revenueCode: string | null; allowedCents?: number | null }[]) {
+  return [["Billing Code", "Description", "Fee", "Revenue Code", "Allowed"], ...items.map((i) => [i.code, i.description, (i.feeCents / 100).toFixed(2), i.revenueCode ?? "", i.allowedCents != null ? (i.allowedCents / 100).toFixed(2) : ""])].map((r) => r.map(cell).join(",")).join("\r\n");
 }
 
 function csvRows(text: string) {
@@ -100,10 +100,10 @@ function csvRows(text: string) {
   return rows.filter((r) => r.some((c) => c.trim()));
 }
 
-export type ImportedFee = { code: string; description: string; feeCents: number; revenueCode: string | null };
+export type ImportedFee = { code: string; description: string; feeCents: number; revenueCode: string | null; allowedCents: number | null };
 
-// Reads a fee file: columns Billing Code, Description, Fee, Revenue Code (a header row is optional; description and
-// revenue code may be left out). Returns the rows it could use and the problems it found.
+// Reads a fee file: columns Billing Code, Description, Fee, Revenue Code, Allowed (a header row is optional;
+// description, revenue code and the allowed amount may be left out). Returns the rows it could use and the problems found.
 export function parseScheduleCsv(text: string): { rows: ImportedFee[]; problems: string[] } {
   const all = csvRows(text.replace(/^\uFEFF/, ""));
   const problems: string[] = [];
@@ -127,7 +127,13 @@ export function parseScheduleCsv(text: string): { rows: ImportedFee[]; problems:
       problems.push(`Row ${i + 1} (${code}): the revenue code is limited to 4 characters.`);
       return;
     }
-    rows.set(code, { code, description: (r.length === 2 ? "" : (r[1] ?? "")).trim().slice(0, 300), feeCents: Math.round(fee * 100), revenueCode: revenue || null });
+    const allowedText = (r[4] ?? "").replace(/[$,\s]/g, "");
+    const allowed = allowedText === "" ? null : Number(allowedText);
+    if (allowed !== null && (!Number.isFinite(allowed) || allowed < 0)) {
+      problems.push(`Row ${i + 1} (${code}): the allowed amount "${allowedText.slice(0, 20)}" is not a positive amount.`);
+      return;
+    }
+    rows.set(code, { code, description: (r.length === 2 ? "" : (r[1] ?? "")).trim().slice(0, 300), feeCents: Math.round(fee * 100), revenueCode: revenue || null, allowedCents: allowed === null ? null : Math.round(allowed * 100) });
   });
   return { rows: [...rows.values()], problems };
 }

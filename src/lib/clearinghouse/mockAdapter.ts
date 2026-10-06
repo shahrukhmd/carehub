@@ -162,7 +162,7 @@ export const mockClearinghouseAdapter: ClearinghouseAdapter = {
     return {
       status: "ACCEPTED",
       clearinghouseClaimId: `CH-${req.claimId.slice(-8).toUpperCase()}`,
-      raw: `837 accepted for payer ${req.payerCode}, ${req.lines.length} line(s) $${(req.billedCents / 100).toFixed(2)}`,
+      raw: `837P accepted for payer ${req.payerCode}, ${req.lines.length} line(s) $${(req.billedCents / 100).toFixed(2)}${req.edi837 ? ` · ${req.edi837.split("~").length - 1} segments` : ""}`,
     };
   },
 };

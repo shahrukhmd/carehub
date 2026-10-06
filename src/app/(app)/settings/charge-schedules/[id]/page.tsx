@@ -141,6 +141,7 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
                   <th>Billing code</th>
                   <th>Description</th>
                   <th>Fee $</th>
+                  <th title="Expected reimbursement under this schedule (the allowable). Used by the Aging by allowable report.">Allowed $</th>
                   <th>Revenue code</th>
                   <th />
                 </tr>
@@ -160,6 +161,9 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
                     </td>
                     <td>
                       <input name={`fee_${i.id}`} defaultValue={(i.feeCents / 100).toFixed(2)} inputMode="decimal" aria-label={`${i.code} fee`} />
+                    </td>
+                    <td>
+                      <input name={`allow_${i.id}`} defaultValue={i.allowedCents != null ? (i.allowedCents / 100).toFixed(2) : ""} inputMode="decimal" placeholder="—" aria-label={`${i.code} allowed`} />
                     </td>
                     <td>
                       <input name={`rev_${i.id}`} defaultValue={i.revenueCode ?? ""} maxLength={4} aria-label={`${i.code} revenue code`} />
@@ -213,6 +217,7 @@ export default async function ChargeScheduleDetailPage({ params, searchParams }:
             <input name="code" required maxLength={5} placeholder="Code" aria-label="Billing code" style={{ flex: "0 0 6rem" }} />
             <input name="description" maxLength={300} placeholder="Description (from the code list if blank)" aria-label="Description" />
             <input name="fee" inputMode="decimal" placeholder="Fee" aria-label="Fee" style={{ flex: "0 0 6rem" }} />
+            <input name="allowed" inputMode="decimal" placeholder="Allowed" aria-label="Allowed amount" style={{ flex: "0 0 6rem" }} />
             <input name="revenueCode" maxLength={4} placeholder="Rev." aria-label="Revenue code" style={{ flex: "0 0 5rem" }} />
             <button className="btn secondary" type="submit">
               Add

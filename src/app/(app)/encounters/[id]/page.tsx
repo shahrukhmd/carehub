@@ -70,7 +70,8 @@ import {
   stepStatus,
   type DocState,
 } from "@/lib/chart-forms";
-import { ensureChartSetup, resolveWorkflow, workflowSteps } from "@/lib/chart-setup";
+import { ensureChartSetup, getPracticeSettings, resolveWorkflow, workflowSteps } from "@/lib/chart-setup";
+import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 import { prisma } from "@/lib/prisma";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DocumentFields, DocumentSummary } from "@/components/DocumentForm";
@@ -161,6 +162,7 @@ export default async function EncounterPage({
   if (!encounter) notFound();
 
   await ensureChartSetup(user.practiceId);
+  const packs = parseSpecialties((await getPracticeSettings(user.practiceId)).specialties);
   const [staffMembers, supervisors, templates, workflows, views, otherVisits, me, workflow] = await Promise.all([
     prisma.membership.findMany({
       where: { practiceId: user.practiceId, role: { in: ["CLINICIAN", "FRONT_DESK", "ADMIN"] }, user: { active: true } },
@@ -171,8 +173,8 @@ export default async function EncounterPage({
       where: { practiceId: user.practiceId, isSupervising: true, status: "ACTIVE" },
       orderBy: { name: "asc" },
     }),
-    prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, active: true, audience: "STAFF" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-    prisma.chartWorkflow.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: [{ isDefault: "desc" }, { name: "asc" }] }),
+    prisma.documentTemplate.findMany({ where: { practiceId: user.practiceId, active: true, audience: "STAFF", ...specialtyWhere(packs) }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
+    prisma.chartWorkflow.findMany({ where: { practiceId: user.practiceId, active: true, ...specialtyWhere(packs) }, orderBy: [{ isDefault: "desc" }, { name: "asc" }] }),
     prisma.documentationView.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { sortOrder: "asc" } }),
     prisma.encounter.findMany({
       where: { practiceId: user.practiceId, patientId: encounter.patientId, id: { not: encounter.id } },

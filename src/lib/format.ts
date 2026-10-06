@@ -82,7 +82,7 @@ export const appointmentStatusLabel: Record<string, string> = {
 };
 
 export const claimStatusLabel: Record<string, string> = {
-  DRAFT: "Draft",
+  DRAFT: "Pre-release",
   SUBMITTED: "Submitted",
   ACCEPTED: "Accepted",
   DENIED: "Denied",

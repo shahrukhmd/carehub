@@ -8,6 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { CLEARINGHOUSES } from "@/lib/practice-settings";
 import { FAX_PROVIDERS } from "@/lib/fax";
 import { normalizePhone } from "@/lib/patient-docs";
+import { SPECIALTIES } from "@/lib/specialties";
 
 const ADDRESS_BLOCKS = ["payTo", "payee", "remit", "physical"] as const;
 const ADDRESS_PARTS = ["Name", "Address1", "Address2", "City", "State", "Zip"] as const;
@@ -39,6 +40,12 @@ export async function savePracticeSettings(fd: FormData) {
   const faxNumber = faxRaw ? normalizePhone(faxRaw) : null;
   if (faxRaw && !faxNumber) errors.push("Fax number must be 10 digits.");
   if (!(clearinghouse in CLEARINGHOUSES)) errors.push("Pick a clearinghouse.");
+  const specialties = fd.getAll("specialties").map(String).filter((k) => k in SPECIALTIES);
+  const closedText = str("closedThrough");
+  const closedThrough = closedText && /^\d{4}-\d{2}-\d{2}$/.test(closedText) ? new Date(`${closedText}T23:59:59`) : null;
+  if (closedText && !closedThrough) errors.push("Accounting closed-through must be a date.");
+  if (closedThrough && closedThrough > new Date()) errors.push("The accounting period can only be closed through a past day.");
+  if (specialties.length === 0) errors.push("Turn on at least one specialty.");
 
   if (errors.length) redirect(`/settings/practice?error=${encodeURIComponent(errors.join(" ").slice(0, 300))}`);
 
@@ -61,6 +68,8 @@ export async function savePracticeSettings(fd: FormData) {
     faxNumber: faxNumber,
     faxProvider: str("faxProvider") && str("faxProvider")! in FAX_PROVIDERS ? str("faxProvider")! : "MOCK",
     clearinghouse,
+    specialties: specialties.join(","),
+    closedThrough,
   });
   await prisma.practiceSettings.upsert({
     where: { practiceId: user.practiceId },
@@ -70,5 +79,7 @@ export async function savePracticeSettings(fd: FormData) {
   await logAudit(user.practiceId, user.id, "UPDATE_PRACTICE_SETTINGS", "PracticeSettings", user.practiceId, "general settings");
   revalidatePath("/settings/practice");
   revalidatePath("/billing", "layout");
+  revalidatePath("/schedule", "layout");
+  revalidatePath("/encounters", "layout");
   redirect("/settings/practice?saved=1");
 }

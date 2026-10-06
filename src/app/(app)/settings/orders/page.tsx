@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SEND_METHODS, ensureOrderCatalog } from "@/lib/orders";
+import { specialtyLabel } from "@/lib/specialties";
 import { SettingsNav } from "../settings-nav";
 import { addCatalogItem, saveOrderProvider, toggleCatalogItem } from "../../orders/actions";
 
@@ -97,6 +98,7 @@ export default async function OrderSettingsPage({ searchParams }: { searchParams
                 <td>
                   {c.name}
                   {c.fasting && <span className="cn-tag">fasting</span>}
+                  {c.specialty && <span className="cn-tag">{specialtyLabel(c.specialty)}</span>}
                 </td>
                 <td>{c.category}</td>
                 <td className="cn-small">{c.specimen}</td>

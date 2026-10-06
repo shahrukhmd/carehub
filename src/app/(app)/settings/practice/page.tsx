@@ -9,6 +9,7 @@ import { SettingsNav } from "../settings-nav";
 import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 import { FAX_PROVIDERS } from "@/lib/fax";
 import { savePracticeSettings } from "./actions";
+import { SPECIALTIES, parseSpecialties } from "@/lib/specialties";
 
 type S = Awaited<ReturnType<typeof getPracticeSettings>>;
 
@@ -82,6 +83,23 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
         </p>
       )}
       <form action={savePracticeSettings} className="stack">
+        <section className="panel" id="specialties">
+          <h2>Specialties</h2>
+          <p className="muted">
+            The specialty packs this practice uses. Each pack brings its own visit types, chart documents, workflows, orders and care-gap rules; a pack
+            that is off is hidden from the scheduler, the chart and the order pickers (its content stays in Settings, tagged with the pack). General
+            content is always on.
+          </p>
+          <div className="st-checks">
+            {Object.entries(SPECIALTIES).map(([k, sp]) => (
+              <label key={k} className="checkbox-inline" title={sp.description}>
+                <input type="checkbox" name="specialties" value={k} defaultChecked={parseSpecialties(s.specialties).includes(k)} /> {sp.label}
+                <span className="muted"> — {sp.description}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+
         <section className="panel">
           <h2>Addresses</h2>
           <div className="st-addresses">
@@ -94,6 +112,10 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
         <section className="panel">
           <h2>Accounting &amp; claims</h2>
           <div className="form-grid gw-grid-3">
+            <label title="Period close: deposits can no longer be posted with a date on or before this day, so closed months stay as reported.">
+              Accounting closed through
+              <input type="date" name="closedThrough" defaultValue={s.closedThrough ? s.closedThrough.toISOString().slice(0, 10) : ""} />
+            </label>
             <label>
               Practice year end month
               <select name="yearEndMonth" defaultValue={s.yearEndMonth}>

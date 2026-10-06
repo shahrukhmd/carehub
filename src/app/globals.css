@@ -7492,3 +7492,17 @@ td.num {
 .tw-who { width: 14rem; }
 .tw-age { width: 5.5rem; white-space: nowrap; }
 .tw-act { width: 1%; white-space: nowrap; }
+
+/* The 837P on the claim page */
+.cl-edi {
+  margin: 0.6rem 0 0;
+  padding: 0.6rem 0.8rem;
+  max-height: 24rem;
+  overflow: auto;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  background: var(--surface-2, #f6f7f9);
+  border: 1px solid var(--border, #e3e6ea);
+  border-radius: 6px;
+  white-space: pre;
+}

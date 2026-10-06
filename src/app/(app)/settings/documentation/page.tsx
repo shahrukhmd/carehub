@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureChartSetup } from "@/lib/chart-setup";
 import { DOCUMENT_SECTIONS, parseFields } from "@/lib/chart-forms";
 import { VIEW_PARTS } from "@/lib/document-catalog";
+import { SPECIALTIES, specialtyLabel } from "@/lib/specialties";
 
 import { SettingsNav } from "../settings-nav";
 import {
@@ -128,6 +129,7 @@ export default async function DocumentationSettingsPage({
                       <th>Document</th>
                       <th>Type</th>
                       <th>Section</th>
+                      <th title="Shown only while this specialty pack is on (Practice setup)">Specialty</th>
                       <th>Order</th>
                       <th>Used</th>
                       <th />
@@ -155,6 +157,16 @@ export default async function DocumentationSettingsPage({
                             {Object.entries(DOCUMENT_SECTIONS).map(([v, l]) => (
                               <option key={v} value={v}>
                                 {l}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          <select name={`spec_${t.id}`} defaultValue={t.specialty ?? ""} aria-label={`${t.name} specialty`}>
+                            <option value="">General</option>
+                            {Object.entries(SPECIALTIES).map(([k, sp]) => (
+                              <option key={k} value={k}>
+                                {sp.label}
                               </option>
                             ))}
                           </select>
@@ -193,6 +205,7 @@ export default async function DocumentationSettingsPage({
               <thead>
                 <tr>
                   <th>Workflow</th>
+                  <th>Specialty</th>
                   <th>Visit types</th>
                   <th>Documents</th>
                   <th>Required to finalize</th>
@@ -209,6 +222,7 @@ export default async function DocumentationSettingsPage({
                       {!w.active && <span className="gw-tag gw-tag-muted">Inactive</span>}
                       {w.description && <div className="muted">{w.description}</div>}
                     </td>
+                    <td>{specialtyLabel(w.specialty)}</td>
                     <td>
                       {(w.visitTypes ?? "")
                         .split(",")

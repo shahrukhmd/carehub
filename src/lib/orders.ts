@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { packOf } from "@/lib/specialties";
 import { logAudit } from "@/lib/audit";
 import { Flow, MUTED, letterhead, newPdf } from "@/lib/pdf-kit";
 import { practiceLetterhead } from "@/lib/prescriptions";
@@ -52,6 +53,25 @@ export const STANDARD_CATALOG: { kind: "LAB" | "IMAGING"; code: string; name: st
   { kind: "IMAGING", code: "93922", name: "ABI / limited arterial study, bilateral", category: "Vascular" },
   { kind: "IMAGING", code: "93925", name: "Arterial duplex, lower extremities, bilateral", category: "Vascular" },
   { kind: "IMAGING", code: "93970", name: "Venous duplex, extremities, bilateral", category: "Vascular" },
+  // ---- Primary care ----
+  { kind: "LAB", code: "2951-2", name: "Basic metabolic panel (BMP)", category: "Chemistry", specimen: "Blood (SST)", fasting: true },
+  { kind: "LAB", code: "2345-7", name: "Glucose, fasting", category: "Chemistry", specimen: "Blood (gray)", fasting: true },
+  { kind: "LAB", code: "3016-3", name: "TSH", category: "Endocrine", specimen: "Blood (SST)" },
+  { kind: "LAB", code: "2160-0", name: "Creatinine with eGFR", category: "Chemistry", specimen: "Blood (SST)" },
+  { kind: "LAB", code: "14959-1", name: "Urine microalbumin / creatinine ratio", category: "Urine", specimen: "Urine" },
+  { kind: "LAB", code: "24356-8", name: "Urinalysis with microscopy", category: "Urine", specimen: "Urine" },
+  { kind: "LAB", code: "2857-1", name: "PSA", category: "Screening", specimen: "Blood (SST)" },
+  { kind: "LAB", code: "19762-4", name: "Pap smear (cervical cytology)", category: "Screening", specimen: "Cervical (ThinPrep)" },
+  { kind: "LAB", code: "29771-3", name: "FIT (fecal immunochemical test)", category: "Screening", specimen: "Stool" },
+  { kind: "LAB", code: "75622-1", name: "HIV-1/2 antigen/antibody", category: "Screening", specimen: "Blood (SST)" },
+  { kind: "LAB", code: "13955-0", name: "Hepatitis C antibody", category: "Screening", specimen: "Blood (SST)" },
+  { kind: "LAB", code: "2132-9", name: "Vitamin B12", category: "Nutrition", specimen: "Blood (SST)" },
+  { kind: "IMAGING", code: "77067", name: "Mammogram, screening, bilateral", category: "Screening" },
+  { kind: "IMAGING", code: "77080", name: "DEXA bone density, axial", category: "Screening" },
+  { kind: "IMAGING", code: "71271", name: "Low-dose CT chest, lung cancer screening", category: "Screening" },
+  { kind: "IMAGING", code: "76706", name: "Ultrasound abdominal aorta (AAA screening)", category: "Screening" },
+  { kind: "IMAGING", code: "71046", name: "X-ray chest, 2 views", category: "X-ray" },
+  { kind: "IMAGING", code: "93000", name: "ECG, 12-lead with interpretation", category: "Cardiac" },
 ];
 
 const setups = new Map<string, Promise<void>>();
@@ -59,8 +79,11 @@ export function ensureOrderCatalog(practiceId: string) {
   let run = setups.get(practiceId);
   if (!run) {
     run = (async () => {
-      if ((await prisma.orderCatalogItem.count({ where: { practiceId } })) === 0)
-        await prisma.orderCatalogItem.createMany({ data: STANDARD_CATALOG.map((c) => ({ practiceId, kind: c.kind, code: c.code, name: c.name, category: c.category, specimen: c.specimen ?? null, fasting: Boolean(c.fasting) })) });
+      // Standard items the practice does not have yet (new packs add theirs); hidden items stay hidden.
+      const have = new Set((await prisma.orderCatalogItem.findMany({ where: { practiceId }, select: { code: true } })).map((c) => c.code));
+      const missing = STANDARD_CATALOG.filter((c) => !have.has(c.code));
+      if (missing.length)
+        await prisma.orderCatalogItem.createMany({ data: missing.map((c) => ({ practiceId, kind: c.kind, code: c.code, name: c.name, category: c.category, specimen: c.specimen ?? null, fasting: Boolean(c.fasting), specialty: packOf("order", c.code) })) });
     })().catch((err) => {
       setups.delete(practiceId);
       throw err;

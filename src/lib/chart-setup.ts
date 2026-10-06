@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { REVISED_TEMPLATES, STANDARD_TEMPLATES, STANDARD_VIEWS, STANDARD_WORKFLOWS } from "@/lib/document-catalog";
 import { PATIENT_TEMPLATES } from "@/lib/connect/patient-forms";
 import { finalizeGaps, parseFields, type DocState, type StepInput } from "@/lib/chart-forms";
+import { packOf, parseSpecialties, specialtyWhere } from "@/lib/specialties";
 
 // Standard templates are added once per practice (and when the catalog grows); practices then own them.
 // Workflows and documentation views are only created when a practice has none.
@@ -39,6 +40,7 @@ async function setup(practiceId: string) {
         perWound: Boolean(t.perWound),
         fields: JSON.stringify(t.fields ?? []),
         standard: true,
+        specialty: packOf("template", t.key),
         signatureRequired: Boolean(t.signatureRequired),
         critical: Boolean(t.critical),
         inProgressNote: t.inProgressNote ?? t.section !== "BILLING",
@@ -59,6 +61,7 @@ async function setup(practiceId: string) {
           description: wf.description,
           visitTypes: wf.visitTypes.join(","),
           isDefault: Boolean(wf.isDefault),
+          specialty: packOf("workflow", wf.name),
           steps: {
             create: wf.steps
               .filter(([key]) => byKey.has(key))
@@ -108,7 +111,7 @@ async function reviseWorkflows(practiceId: string) {
         const kept = (o.visitTypes ?? "").split(",").filter((v) => v && !wf.visitTypes.includes(v));
         if (kept.join(",") !== (o.visitTypes ?? "")) await prisma.chartWorkflow.update({ where: { id: o.id }, data: { visitTypes: kept.join(",") } });
       }
-      await prisma.chartWorkflow.create({ data: { practiceId, name: wf.name, description: wf.description, visitTypes: wf.visitTypes.join(","), steps: { create: stepsOf(wf) } } });
+      await prisma.chartWorkflow.create({ data: { practiceId, name: wf.name, description: wf.description, visitTypes: wf.visitTypes.join(","), specialty: packOf("workflow", wf.name), steps: { create: stepsOf(wf) } } });
       continue;
     }
     if (!wf.previousSteps?.length) continue;
@@ -185,8 +188,9 @@ export async function resolveWorkflow(practiceId: string, e: { workflowId: strin
     const own = await prisma.chartWorkflow.findFirst({ where: { id: e.workflowId, practiceId }, include: workflowInclude });
     if (own) return own;
   }
+  const packs = parseSpecialties((await getPracticeSettings(practiceId)).specialties);
   const all = await prisma.chartWorkflow.findMany({
-    where: { practiceId, active: true },
+    where: { practiceId, active: true, ...specialtyWhere(packs) },
     include: workflowInclude,
     orderBy: [{ isDefault: "desc" }, { name: "asc" }],
   });

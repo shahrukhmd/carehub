@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate, patientName } from "@/lib/format";
 import { careGapsFor, ensureCareRules } from "@/lib/care-rules";
+import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 
 type Search = { rule?: string };
 
@@ -10,6 +11,7 @@ export default async function CareGapReportPage({ searchParams }: { searchParams
   const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "SCHEDULER"]);
   const sp = await searchParams;
   await ensureCareRules(user.practiceId);
+  const packs = parseSpecialties((await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { specialties: true } }))?.specialties);
   const since = new Date(Date.now() - 2 * 365 * 86_400_000);
   const [patients, rules] = await Promise.all([
     prisma.patient.findMany({
@@ -17,7 +19,7 @@ export default async function CareGapReportPage({ searchParams }: { searchParams
       include: { appointments: { where: { startsAt: { gte: new Date() }, status: { notIn: ["CANCELLED", "NO_SHOW"] } }, orderBy: { startsAt: "asc" }, take: 1 } },
       take: 1500,
     }),
-    prisma.careRule.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
+    prisma.careRule.findMany({ where: { practiceId: user.practiceId, active: true, ...specialtyWhere(packs) }, orderBy: { name: "asc" } }),
   ]);
   const gaps = await careGapsFor(user.practiceId, patients.map((p) => p.id));
   const rows = patients.flatMap((p) => (gaps.get(p.id) ?? []).filter((g) => g.status === "DUE" && (!sp.rule || g.ruleId === sp.rule)).map((g) => ({ p, g })));

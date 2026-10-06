@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { SATISFIER_KINDS, ensureCareRules, parseCriteria } from "@/lib/care-rules";
 import { etiologyLabel } from "@/lib/wound";
+import { specialtyLabel } from "@/lib/specialties";
 import { SettingsNav } from "../settings-nav";
 import { deleteCareRule, saveCareRule, toggleCareRule } from "../../care-gaps/actions";
 
@@ -82,6 +83,7 @@ export default async function ClinicalRulesPage({ searchParams }: { searchParams
                   <td>
                     <strong>{r.name}</strong>
                     {r.severity === "INFO" && <span className="cn-tag">info</span>}
+                    {r.specialty && <span className="cn-tag">{specialtyLabel(r.specialty)}</span>}
                     {r.source && <div className="muted cn-small">{r.source}</div>}
                   </td>
                   <td className="cn-small">{d.who}</td>

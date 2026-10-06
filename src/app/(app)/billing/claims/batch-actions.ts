@@ -32,8 +32,8 @@ function text(fd: FormData, key: string) {
 export async function bulkRelease(fd: FormData) {
   const user = await requireUser(BILLING_ROLES);
   const ids = selectedClaims(fd);
-  if (ids.length === 0) back("/billing/claims/release", "error", "Tick at least one claim to release.");
-  if (ids.length > MAX_BULK_RELEASE) back("/billing/claims/release", "error", `Release up to ${MAX_BULK_RELEASE} claims at a time.`);
+  if (ids.length === 0) back("/billing/claims/release", "error", "Tick at least one claim to bill.");
+  if (ids.length > MAX_BULK_RELEASE) back("/billing/claims/release", "error", `Bill up to ${MAX_BULK_RELEASE} claims at a time.`);
   const warningsBlock = fd.get("warningsBlock") === "on";
 
   const batch = batchId("RB");
@@ -76,6 +76,39 @@ export async function createPaperClaims(fd: FormData) {
   if (fd.get("omitPayments") === "on") p.set("omitPayments", "on");
   if (fd.get("dataOnly") === "on") p.set("dataOnly", "on");
   redirect(`/billing/claims/paper?${p}`);
+}
+
+// ---- Generate claims: a primary claim for every ticked signed visit, into the pre-release queue ----
+
+const MAX_GENERATE = 200;
+
+export async function generateClaims(fd: FormData) {
+  const user = await requireUser(BILLING_ROLES);
+  const here = "/billing?tab=visits";
+  const ids = [...new Set(fd.getAll("visit").map(String).filter((id) => /^[a-z0-9]{10,40}$/.test(id)))];
+  if (ids.length === 0) back(here, "error", "Tick at least one visit to generate claims for.");
+  if (ids.length > MAX_GENERATE) back(here, "error", `Generate up to ${MAX_GENERATE} claims at a time.`);
+
+  let created = 0;
+  let clean = 0;
+  const skipped: string[] = [];
+  for (const id of ids) {
+    try {
+      const claim = await createClaimFromVisit(user, id, "PRIMARY");
+      await logAudit(user.practiceId, user.id, "CREATE_CLAIM", "Claim", claim.id, "PRIMARY · generated");
+      created++;
+      if (claim.status === "READY") clean++;
+      revalidatePath(`/encounters/${id}`);
+    } catch (err) {
+      if (!(err instanceof ClaimError)) throw err;
+      const visit = await prisma.encounter.findFirst({ where: { id, practiceId: user.practiceId }, select: { date: true, patient: { select: { lastName: true, firstName: true } } } });
+      skipped.push(`${visit ? `${visit.patient.lastName}, ${visit.patient.firstName} (${visit.date.toISOString().slice(0, 10)})` : id}: ${err.message}`);
+    }
+  }
+  revalidatePath("/billing");
+  if (created === 0) back(here, "error", `No claims were generated. ${skipped.slice(0, 3).join(" · ")}`);
+  const note = `${created} claim${created === 1 ? "" : "s"} generated into the pre-release queue — ${clean} ready to bill, ${created - clean} need${created - clean === 1 ? "s" : ""} fixing.${skipped.length ? ` ${skipped.length} visit${skipped.length === 1 ? "" : "s"} skipped: ${skipped.slice(0, 3).join(" · ")}${skipped.length > 3 ? " …" : ""}` : ""}`;
+  back("/billing/claims/release", "ok", note);
 }
 
 // ---- Create new claim ----

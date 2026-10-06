@@ -12,6 +12,7 @@ import {
   type ColorPair,
 } from "@/lib/scheduler";
 import { DAY_NAMES } from "@/lib/schedule";
+import { SPECIALTIES } from "@/lib/specialties";
 import { SettingsNav } from "../settings-nav";
 import {
   addCancellationReason,
@@ -91,6 +92,16 @@ export default async function SchedulingSettingsPage({
           <input name={`dur_${t.id}`} type="number" min={5} max={480} step={5} defaultValue={t.durationMin ?? ""} className="st-num" aria-label={`${t.name} minutes`} />
         </td>
         <td>
+          <select name={`spec_${t.id}`} defaultValue={t.specialty ?? ""} aria-label={`${t.name} specialty`}>
+            <option value="">General</option>
+            {Object.entries(SPECIALTIES).map(([k, sp]) => (
+              <option key={k} value={k}>
+                {sp.label}
+              </option>
+            ))}
+          </select>
+        </td>
+        <td>
           <input type="checkbox" name={`bill_${t.id}`} defaultChecked={t.billable} aria-label={`${t.name} billable`} />
         </td>
         <td>
@@ -157,6 +168,7 @@ export default async function SchedulingSettingsPage({
                     <tr>
                       <th>Encounter type</th>
                       <th>Duration (min)</th>
+                      <th title="Shown only while this specialty pack is on (Practice setup)">Specialty</th>
                       <th>Billable</th>
                       <th title="Offer the wound photo analyzer (AI measurements from the photo) at visits of this type">Wound photo measurements</th>
                       <th>Colour (text / background)</th>
@@ -183,6 +195,17 @@ export default async function SchedulingSettingsPage({
             <label>
               Duration (min)
               <input name="durationMin" type="number" min={5} max={480} step={5} />
+            </label>
+            <label>
+              Specialty
+              <select name="specialty" defaultValue="">
+                <option value="">General</option>
+                {Object.entries(SPECIALTIES).map(([k, sp]) => (
+                  <option key={k} value={k}>
+                    {sp.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className="checkbox-inline">
               <input type="checkbox" name="nonBillable" /> Non-billable interaction

@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { BillingTabs } from "./tabs";
 import type { Prisma } from "@prisma/client";
 import { createDeposit } from "@/app/actions";
-import { createClaim } from "./claims/actions";
+import { createClaim, writeOffSmallBalances } from "./claims/actions";
+import { generateClaims } from "./claims/batch-actions";
+import { SelectAll } from "@/components/SelectAll";
 import { createTestEra, uploadEra } from "./era/actions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -13,6 +15,7 @@ import { SIGNED_STATUSES, visitStatusLabel, visitStatusTone } from "@/lib/visit-
 import {
   EDITABLE_CLAIM_STATUSES,
   OPEN_AR_STATUSES,
+  PRE_RELEASE_STATUSES,
   claimStatusLabel,
   claimStatusTone,
   payerRankLabel,
@@ -23,7 +26,7 @@ const AGING_BUCKETS = ["0-30 days", "31-60 days", "61-90 days", "90+ days"] as c
 // Tabs rendered on this page; the others (claims dashboard, denial worklist, reports) are their own pages.
 const LOCAL_TABS = ["visits", "deposits", "era", "ar"];
 
-type Search = { tab?: string; imported?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string };
+type Search = { tab?: string; imported?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string; ok?: string };
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);
@@ -44,6 +47,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
     .reduce((s, c) => s + Math.max(c.billedCents - c.paidCents - c.adjustedCents, 0), 0);
   const collected = claims.reduce((s, c) => s + c.paidCents, 0);
   const unsent = claims.filter((c) => EDITABLE_CLAIM_STATUSES.includes(c.status)).length;
+  const preRelease = claims.filter((c) => PRE_RELEASE_STATUSES.includes(c.status)).length;
   const problems = claims.filter((c) => ["DENIED", "EDI_REJECTED"].includes(c.status)).length;
 
   return (
@@ -60,14 +64,19 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           {sp.error}
         </p>
       )}
+      {sp.ok && <p className="notice-ok">{sp.ok}</p>}
 
       <section className="grid-stats">
         <Link className="stat" href="/billing?tab=visits&billing=READY_FOR_CLAIM">
           <span>Visits ready for claim</span>
           <strong>{readyVisits}</strong>
         </Link>
-        <Link className="stat" href="/billing/claims?bucket=UNBILLED">
-          <span>Claims not yet sent</span>
+        <Link className="stat" href="/billing/claims/release" title="Generated claims waiting for billing to review and bill">
+          <span>In pre-release queue</span>
+          <strong>{preRelease}</strong>
+        </Link>
+        <Link className="stat" href="/billing/claims?bucket=UNBILLED" title="Pre-release, on hold or rejected by the clearinghouse">
+          <span>Claims not yet billed</span>
           <strong>{unsent}</strong>
         </Link>
         <Link className="stat" href="/billing/claims?bucket=DENIED">
@@ -115,6 +124,8 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
     take: 200,
   });
 
+  const canGenerate = visits.filter((v) => SIGNED_STATUSES.includes(v.status) && v.charges.length > 0 && !v.claims.some((c) => c.payerRank === "PRIMARY")).length;
+
   return (
     <>
       <form method="get" className="panel gw-filters">
@@ -136,10 +147,22 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
         </Link>
       </form>
 
-      <section className="panel gw-table">
+      {/* The checkboxes belong to this form (form="generate") so the per-row secondary buttons stay their own forms. */}
+      <form id="generate" action={generateClaims} className="panel cm-bar-plain gw-actions" style={{ alignItems: "center" }}>
+        <SelectAll name="visit" max={200} noun="visit" />
+        <button className="btn" type="submit" disabled={canGenerate === 0}>
+          Generate claims
+        </button>
+        <span className="muted">
+          Creates a primary claim for each ticked signed visit and puts it in the <Link href="/billing/claims/release">pre-release queue</Link> for billing to review and bill.
+        </span>
+      </form>
+
+      <section className="panel gw-table cm-batch">
         <table>
           <thead>
             <tr>
+              <th aria-label="Select" />
               <th>Visit</th>
               <th>Patient</th>
               <th>Provider</th>
@@ -161,6 +184,9 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
                 primary && ["PAID", "PARTIAL", "DENIED", "TRANSFERRED"].includes(primary.status) && secondaryIns && !has("SECONDARY");
               return (
                 <tr key={v.id}>
+                  <td>
+                    <input type="checkbox" name="visit" value={v.id} form="generate" disabled={!canPrimary} aria-label={`Generate claim for ${patientName(v.patient)} ${formatDate(v.date)}`} />
+                  </td>
                   <td>
                     <Link href={`/encounters/${v.id}`}>{formatDate(v.date)}</Link>
                   </td>
@@ -192,8 +218,8 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
                   <td className="gw-actions">
                     {canPrimary && (
                       <form action={createClaim.bind(null, v.id, "PRIMARY")}>
-                        <button className="btn gw-mini" type="submit">
-                          Create claim
+                        <button className="btn ghost gw-mini" type="submit" title="Generate this one claim and open it">
+                          Generate &amp; open
                         </button>
                       </form>
                     )}
@@ -211,7 +237,7 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
             })}
             {visits.length === 0 && (
               <tr>
-                <td colSpan={8} className="muted">
+                <td colSpan={9} className="muted">
                   No visits match.
                 </td>
               </tr>
@@ -272,6 +298,10 @@ async function DepositsTab({ practiceId }: { practiceId: string }) {
             <label>
               Note
               <input name="note" />
+            </label>
+            <label title="Leave blank for today. A closed accounting period cannot be posted into.">
+              Posted date
+              <input name="postedAt" type="date" />
             </label>
             <button className="btn" type="submit">
               Record deposit
@@ -366,7 +396,25 @@ function ArTab({
           </table>
         </div>
         <div className="panel-section">
-          <h3>Denials &amp; rejections</h3>
+          <h3>Small balance write-off</h3>
+          <p className="muted">
+            Clears claim balances at or under a threshold with a contractual adjustment (a zero-balance adjustment), so pennies and small remainders stop
+            showing in AR. Each claim gets a log entry.
+          </p>
+          <form action={writeOffSmallBalances} className="cn-inline">
+            <label className="checkbox-inline">
+              Balances up to $<input name="threshold" inputMode="decimal" defaultValue="5.00" style={{ width: "6rem" }} aria-label="Threshold" />
+            </label>
+            <select name="who" defaultValue="INSURANCE" aria-label="Whose balance">
+              <option value="INSURANCE">Insurance balances</option>
+              <option value="PATIENT">Patient balances</option>
+              <option value="ALL">Both</option>
+            </select>
+            <button className="btn secondary" type="submit">
+              Write off
+            </button>
+          </form>
+          <h3 style={{ marginTop: "1rem" }}>Denials &amp; rejections</h3>
           <div className="grid-stats" style={{ gridTemplateColumns: "1fr 1fr", marginBottom: "0.7rem" }}>
             <Link className="stat" href="/billing/denials">
               <span>Payer denials · under appeal</span>

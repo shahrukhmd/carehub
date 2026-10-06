@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { packOf, parseSpecialties, specialtyWhere } from "@/lib/specialties";
 
 // Clinical decision support: care-gap rules (who a rule applies to, what satisfies it, how often).
 
@@ -15,7 +16,7 @@ export type CareCriteria = {
 };
 
 export const SATISFIER_KINDS: Record<string, string> = {
-  LAB: "A lab result whose name contains…",
+  LAB: "A lab or imaging result whose name contains…",
   DOCUMENT: "A completed chart form",
   VITALS_BP: "Blood pressure recorded",
   VITALS_WEIGHT: "Weight recorded",
@@ -154,6 +155,31 @@ export const STANDARD_CARE_RULES: StandardRule[] = [
 ];
 
 const setups = new Map<string, Promise<void>>();
+// ---- Primary-care pack (USPSTF A/B recommendations, ACIP schedule, ADA / ACC-AHA follow-up) ----
+const DIABETES = ["E08", "E09", "E10", "E11", "E13"];
+STANDARD_CARE_RULES.push(
+  { key: "pc_awv", name: "Medicare Annual Wellness Visit", description: "Yearly wellness visit with health risk assessment for Medicare-age patients.", criteria: { ageMin: 65 }, satisfiedBy: "DOCUMENT:awv_hra", intervalDays: 365, message: "Annual Wellness Visit due.", source: "CMS AWV" },
+  { key: "pc_depression", name: "Depression screening (PHQ-9)", description: "Screen adults for depression yearly.", criteria: { ageMin: 12 }, satisfiedBy: "DOCUMENT:phq9", intervalDays: 365, message: "Depression screening (PHQ-9) due.", source: "USPSTF B" },
+  { key: "pc_alcohol", name: "Unhealthy alcohol use screening (AUDIT-C)", description: "Screen adults 18+ for unhealthy alcohol use yearly.", criteria: { ageMin: 18 }, satisfiedBy: "DOCUMENT:audit_c", intervalDays: 365, message: "Alcohol use screening (AUDIT-C) due.", source: "USPSTF B", severity: "INFO" },
+  { key: "pc_lipids", name: "Lipid panel (40–75)", description: "Cardiovascular risk assessment with a lipid panel every 5 years.", criteria: { ageMin: 40, ageMax: 75 }, satisfiedBy: "LAB:lipid|cholesterol", intervalDays: 1825, message: "Lipid panel due (every 5 years).", source: "USPSTF B" },
+  { key: "pc_dm_screen", name: "Diabetes screening (35–70)", description: "Screen for prediabetes and type 2 diabetes every 3 years in adults 35–70 (overweight or obese).", criteria: { ageMin: 35, ageMax: 70 }, satisfiedBy: "LAB:A1C|glucose", intervalDays: 1095, message: "Diabetes screening (A1c or fasting glucose) due.", source: "USPSTF B", severity: "INFO" },
+  { key: "pc_colorectal", name: "Colorectal cancer screening (45–75)", description: "FIT yearly, or colonoscopy every 10 years — record the result to satisfy.", criteria: { ageMin: 45, ageMax: 75 }, satisfiedBy: "LAB:FIT|fecal|colonoscopy|cologuard", intervalDays: 365, message: "Colorectal cancer screening due (FIT yearly or colonoscopy result).", source: "USPSTF A" },
+  { key: "pc_breast", name: "Breast cancer screening (women 40–74)", description: "Screening mammogram every 2 years.", criteria: { sex: "F", ageMin: 40, ageMax: 74 }, satisfiedBy: "LAB:mammogra", intervalDays: 730, message: "Screening mammogram due.", source: "USPSTF B" },
+  { key: "pc_cervical", name: "Cervical cancer screening (women 21–65)", description: "Pap every 3 years (or HPV co-test every 5).", criteria: { sex: "F", ageMin: 21, ageMax: 65 }, satisfiedBy: "LAB:pap|cervical|HPV", intervalDays: 1095, message: "Cervical cancer screening (Pap) due.", source: "USPSTF A" },
+  { key: "pc_osteoporosis", name: "Osteoporosis screening (women 65+)", description: "DEXA bone density for women 65 and over.", criteria: { sex: "F", ageMin: 65 }, satisfiedBy: "LAB:DEXA|bone density", intervalDays: 730, message: "DEXA bone density screening due.", source: "USPSTF B" },
+  { key: "pc_aaa", name: "AAA ultrasound (men 65–75)", description: "One-time abdominal aortic aneurysm screening for men 65–75 who have ever smoked.", criteria: { sex: "M", ageMin: 65, ageMax: 75 }, satisfiedBy: "LAB:aort|AAA", intervalDays: 36500, message: "One-time AAA ultrasound screening (if ever smoked).", source: "USPSTF B", severity: "INFO" },
+  { key: "pc_hiv", name: "HIV screening (15–65), once", description: "Screen adolescents and adults 15–65 at least once.", criteria: { ageMin: 15, ageMax: 65 }, satisfiedBy: "LAB:HIV", intervalDays: 36500, message: "HIV screening not on record.", source: "USPSTF A", severity: "INFO" },
+  { key: "pc_hepc", name: "Hepatitis C screening (18–79), once", description: "Screen adults 18–79 once.", criteria: { ageMin: 18, ageMax: 79 }, satisfiedBy: "LAB:hepatitis C|HCV", intervalDays: 36500, message: "Hepatitis C screening not on record.", source: "USPSTF B", severity: "INFO" },
+  { key: "pc_flu_all", name: "Influenza vaccine (yearly, 6 months+)", description: "Yearly influenza vaccine for everyone 6 months and older.", criteria: { ageMin: 1, ageMax: 64 }, satisfiedBy: "IMMUNIZATION:flu|influenza", intervalDays: 365, message: "Influenza vaccine due this season.", source: "ACIP", severity: "INFO" },
+  { key: "pc_pneumo", name: "Pneumococcal vaccine (65+)", description: "PCV20 (or PCV15 then PPSV23) at 65.", criteria: { ageMin: 65 }, satisfiedBy: "IMMUNIZATION:pneumo|PCV|PPSV", intervalDays: 36500, message: "Pneumococcal vaccine not on record.", source: "ACIP" },
+  { key: "pc_zoster", name: "Shingles vaccine (50+)", description: "Recombinant zoster vaccine (Shingrix), 2 doses, at 50.", criteria: { ageMin: 50 }, satisfiedBy: "IMMUNIZATION:zoster|shingrix|shingles", intervalDays: 36500, message: "Shingles (zoster) vaccine not on record.", source: "ACIP", severity: "INFO" },
+  { key: "pc_htn_bp", name: "Hypertension: blood pressure check", description: "Blood pressure recorded at least every 6 months for patients with hypertension.", criteria: { icd10: ["I10", "I11", "I12", "I13", "I15"] }, satisfiedBy: "VITALS_BP", intervalDays: 182, message: "Blood pressure follow-up due.", source: "ACC/AHA" },
+  { key: "pc_dm_a1c", name: "Diabetes: A1c every 6 months", description: "A1c at least twice a year for patients with diabetes.", criteria: { icd10: DIABETES }, satisfiedBy: "LAB:A1C", intervalDays: 182, message: "A1c due (every 6 months).", source: "ADA Standards of Care" },
+  { key: "pc_dm_kidney", name: "Diabetes: urine albumin (kidney screen)", description: "Yearly urine albumin-to-creatinine ratio for patients with diabetes.", criteria: { icd10: DIABETES }, satisfiedBy: "LAB:microalbumin|albumin/creatinine|UACR", intervalDays: 365, message: "Yearly urine microalbumin due.", source: "ADA / CMS quality measure 134" },
+  { key: "pc_dm_lipids", name: "Diabetes: yearly lipid panel", description: "Lipid panel yearly for patients with diabetes.", criteria: { icd10: DIABETES }, satisfiedBy: "LAB:lipid|cholesterol", intervalDays: 365, message: "Yearly lipid panel due.", source: "ADA Standards of Care" },
+  { key: "pc_ckd_egfr", name: "Chronic kidney disease: eGFR", description: "Creatinine / eGFR at least yearly for patients with CKD.", criteria: { icd10: ["N18"] }, satisfiedBy: "LAB:creatinine|eGFR", intervalDays: 365, message: "Kidney function (eGFR) due.", source: "KDIGO" }
+);
+
 export function ensureCareRules(practiceId: string) {
   let run = setups.get(practiceId);
   if (!run) {
@@ -162,7 +188,7 @@ export function ensureCareRules(practiceId: string) {
       const missing = STANDARD_CARE_RULES.filter((r) => !have.has(r.key));
       if (missing.length)
         await prisma.careRule.createMany({
-          data: missing.map((r) => ({ practiceId, key: r.key, name: r.name, description: r.description, criteria: JSON.stringify(r.criteria), satisfiedBy: r.satisfiedBy, intervalDays: r.intervalDays, message: r.message, source: r.source, severity: r.severity ?? "ALERT", standard: true })),
+          data: missing.map((r) => ({ practiceId, key: r.key, name: r.name, description: r.description, criteria: JSON.stringify(r.criteria), satisfiedBy: r.satisfiedBy, intervalDays: r.intervalDays, message: r.message, source: r.source, severity: r.severity ?? "ALERT", standard: true, specialty: packOf("rule", r.key) })),
         });
     })().catch((err) => {
       setups.delete(practiceId);
@@ -271,7 +297,8 @@ function lastSatisfied(satisfiedBy: string, p: PatientFacts[number]): Date | nul
 
 export async function careGapsFor(practiceId: string, patientIds: string[]) {
   await ensureCareRules(practiceId);
-  const [rules, facts] = await Promise.all([prisma.careRule.findMany({ where: { practiceId, active: true }, orderBy: { name: "asc" } }), loadFacts(patientIds)]);
+  const packs = parseSpecialties((await prisma.practiceSettings.findUnique({ where: { practiceId }, select: { specialties: true } }))?.specialties);
+  const [rules, facts] = await Promise.all([prisma.careRule.findMany({ where: { practiceId, active: true, ...specialtyWhere(packs) }, orderBy: { name: "asc" } }), loadFacts(patientIds)]);
   const now = Date.now();
   const out = new Map<string, CareGap[]>();
   for (const p of facts) {

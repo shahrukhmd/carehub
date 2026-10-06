@@ -1,8 +1,8 @@
 // Claim and visit-billing vocabulary shared by the billing screens (no server imports).
 
 export const claimStatusLabel: Record<string, string> = {
-  DRAFT: "Draft",
-  READY: "Ready to submit",
+  DRAFT: "Pre-release · needs fixing",
+  READY: "Pre-release · ready to bill",
   HOLD: "On hold",
   SUBMITTED: "Submitted",
   ACCEPTED: "Accepted by payer",
@@ -18,6 +18,8 @@ export const claimStatusLabel: Record<string, string> = {
   VOID: "Voided",
 };
 
+// Pre-release: generated from a visit, waiting for billing to review and bill it.
+export const PRE_RELEASE_STATUSES = ["DRAFT", "READY"];
 // Claims that can still be changed and (re)sent.
 export const EDITABLE_CLAIM_STATUSES = ["DRAFT", "READY", "HOLD", "EDI_REJECTED"];
 // Claims the payer has, or has answered.

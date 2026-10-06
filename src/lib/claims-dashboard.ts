@@ -38,8 +38,8 @@ const DAY = 86_400_000;
 // The overview rows, in the order a claim moves through them. A claim sits in the row for its status; the
 // last rows are cross-cutting views (a claim there also appears under its status).
 export const BUCKETS: { key: string; label: string; hint: string; status?: string }[] = [
-  { key: "DRAFT", status: "DRAFT", label: "Pre-released (draft)", hint: "Created from a visit, not yet reviewed" },
-  { key: "READY", status: "READY", label: "Ready to submit", hint: "Reviewed and waiting to go to the clearinghouse" },
+  { key: "DRAFT", status: "DRAFT", label: "Pre-release – needs fixing", hint: "Generated from a visit; a claim edit must be fixed before it can be billed" },
+  { key: "READY", status: "READY", label: "Pre-release – ready to bill", hint: "Generated and clean; waiting in the pre-release queue for billing to bill it" },
   { key: "HOLD", status: "HOLD", label: "On hold", hint: "Held by a biller" },
   { key: "EDI_REJECTED", status: "EDI_REJECTED", label: "EDI rejections", hint: "Rejected by the clearinghouse — fix and resubmit" },
   { key: "SUBMITTED", status: "SUBMITTED", label: "EDI – awaiting payer response", hint: "Sent, no answer from the payer yet" },

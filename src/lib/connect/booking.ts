@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { timeToMinutes } from "@/lib/schedule";
 import { parseOfficeHours } from "@/lib/scheduler";
 import { dayKey } from "@/lib/holidays";
+import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 
 // Online self-scheduling: open slots from provider availability minus booked visits, reserved time,
 // office hours and clinic closures.
@@ -12,7 +13,8 @@ export type Slot = { start: Date; end: Date; providerId: string; providerName: s
 const ACTIVE = { notIn: ["CANCELLED", "NO_SHOW"] };
 
 export async function bookableTypes(practiceId: string) {
-  return prisma.visitType.findMany({ where: { practiceId, active: true, onlineBooking: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+  const packs = parseSpecialties((await prisma.practiceSettings.findUnique({ where: { practiceId }, select: { specialties: true } }))?.specialties);
+  return prisma.visitType.findMany({ where: { practiceId, active: true, onlineBooking: true, ...specialtyWhere(packs) }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
 }
 
 export async function openSlots(

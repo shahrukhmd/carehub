@@ -7,7 +7,7 @@ import { REPORTS, reportRange, runReport } from "@/lib/financial-reports";
 type Search = { r?: string; from?: string; to?: string; patientId?: string };
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-const RANGED = ["collections", "cpt", "provider", "denials", "denial_rate", "denial_categories", "denial_providers", "appeals"];
+const RANGED = ["collections", "cpt", "provider", "denials", "denial_rate", "denial_categories", "denial_providers", "appeals", "payer_mix", "em_levels"];
 
 export default async function FinancialReportsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(["ADMIN", "BILLER"]);

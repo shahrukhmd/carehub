@@ -1503,6 +1503,8 @@ model PracticeCode {
 // A chart document: either a built-in chart section (CC/HPI, vitals, wounds, superbill...) or a
 // designable form whose fields are defined in `fields` (JSON FieldDef[]).
 model DocumentTemplate {
+  // Specialty pack this belongs to; null = general (shown whatever packs are on).
+  specialty  String?
   id          String   @id @default(cuid())
   practiceId  String
   practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -1537,6 +1539,8 @@ model DocumentTemplate {
 
 // Which documents a visit type charts, in what order, and which must be complete to finalize.
 model ChartWorkflow {
+  // Specialty pack this belongs to; null = general (shown whatever packs are on).
+  specialty  String?
   id          String   @id @default(cuid())
   practiceId  String
   practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -1623,6 +1627,8 @@ model DocumentationView {
 
 // Facility setup - general settings (claim pay-to, statement addresses, billing rules, clearinghouse).
 model PracticeSettings {
+  // Specialty packs turned on (comma list, see src/lib/specialties.ts): WOUND_CARE, PRIMARY_CARE...
+  specialties      String   @default("WOUND_CARE")
   id          String   @id @default(cuid())
   practiceId  String   @unique
   practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -1667,6 +1673,8 @@ model PracticeSettings {
   suppressSecondaryEraAdjustments Boolean @default(false)
   holdClaimsForCredentialing Boolean @default(false)
   clearinghouse    String   @default("MOCK")
+  // Accounting period close: no deposit may be posted dated on or before this day.
+  closedThrough    DateTime?
   // Read uploaded patient documents with Claude (sends the file to Anthropic) instead of on-device OCR.
   documentAiEnabled Boolean @default(false)
   // Electronic fax line shown on the Faxing page; MOCK until a fax service is connected.
@@ -1724,6 +1732,8 @@ model PatientDocument {
 
 // Encounter / visit types with their default length and calendar colours.
 model VisitType {
+  // Specialty pack this belongs to; null = general (shown whatever packs are on).
+  specialty  String?
   id         String   @id @default(cuid())
   practiceId String
   practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -2133,6 +2143,8 @@ model Recall {
 // ---- Clinical decision support (care gaps) ----
 
 model CareRule {
+  // Specialty pack this belongs to; null = general (shown whatever packs are on).
+  specialty  String?
   id           String   @id @default(cuid())
   practiceId   String
   practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -2368,6 +2380,8 @@ model OrderProvider {
 }
 
 model OrderCatalogItem {
+  // Specialty pack this belongs to; null = general (shown whatever packs are on).
+  specialty  String?
   id          String   @id @default(cuid())
   practiceId  String
   practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -2890,6 +2904,8 @@ model ChargeScheduleItem {
   description String
   feeCents    Int            @default(0)
   // UB-04 revenue code (4 characters) for facility claims.
+  // Expected reimbursement for the code under this schedule (an allowable schedule); null = not known.
+  allowedCents Int?
   revenueCode String?
 
   @@unique([scheduleId, code])

@@ -77,20 +77,24 @@ export async function saveSchedule(scheduleId: string, fd: FormData) {
   const path = `/settings/charge-schedules/${schedule.id}`;
   const header = await readHeader(fd, user.practiceId, path);
 
-  const changes: { id: string; feeCents: number; revenueCode: string | null }[] = [];
+  const changes: { id: string; feeCents: number; revenueCode: string | null; allowedCents: number | null }[] = [];
   for (const item of schedule.items) {
     if (!fd.has(`fee_${item.id}`)) continue;
     const feeText = str(fd, `fee_${item.id}`).replace(/[$,\s]/g, "");
     const fee = feeText === "" ? 0 : Number(feeText);
     if (!Number.isFinite(fee) || fee < 0) back(path, { error: `${item.code}: the fee only accepts positive values.` });
+    const allowText = str(fd, `allow_${item.id}`).replace(/[$,\s]/g, "");
+    const allowed = allowText === "" ? null : Number(allowText);
+    if (allowed !== null && (!Number.isFinite(allowed) || allowed < 0)) back(path, { error: `${item.code}: the allowed amount only accepts positive values.` });
     const revenue = str(fd, `rev_${item.id}`).toUpperCase();
     if (revenue.length > 4) back(path, { error: `${item.code}: the revenue code is limited to 4 characters.` });
     const feeCents = Math.round(fee * 100);
-    if (feeCents !== item.feeCents || (revenue || null) !== item.revenueCode) changes.push({ id: item.id, feeCents, revenueCode: revenue || null });
+    const allowedCents = allowed === null ? null : Math.round(allowed * 100);
+    if (feeCents !== item.feeCents || (revenue || null) !== item.revenueCode || allowedCents !== item.allowedCents) changes.push({ id: item.id, feeCents, revenueCode: revenue || null, allowedCents });
   }
   await prisma.$transaction([
     prisma.chargeSchedule.update({ where: { id: schedule.id }, data: header }),
-    ...changes.map((c) => prisma.chargeScheduleItem.update({ where: { id: c.id }, data: { feeCents: c.feeCents, revenueCode: c.revenueCode } })),
+    ...changes.map((c) => prisma.chargeScheduleItem.update({ where: { id: c.id }, data: { feeCents: c.feeCents, revenueCode: c.revenueCode, allowedCents: c.allowedCents } })),
   ]);
   await logAudit(user.practiceId, user.id, "UPDATE_CHARGE_SCHEDULE", "ChargeSchedule", schedule.id, `${header.name} · ${changes.length} fee(s) changed`);
   back(path, { ok: `Schedule saved${changes.length ? ` — ${changes.length} fee${changes.length === 1 ? "" : "s"} changed` : ""}.` });
@@ -107,11 +111,14 @@ export async function addScheduleCode(scheduleId: string, fd: FormData) {
   if (!Number.isFinite(fee) || fee < 0) back(path, { error: "The fee only accepts positive values." });
   const revenue = str(fd, "revenueCode").toUpperCase();
   if (revenue.length > 4) back(path, { error: "The revenue code is limited to 4 characters." });
+  const allowText = str(fd, "allowed").replace(/[$,\s]/g, "");
+  const allowed = allowText === "" ? null : Number(allowText);
+  if (allowed !== null && (!Number.isFinite(allowed) || allowed < 0)) back(path, { error: "The allowed amount only accepts positive values." });
   const known = await prisma.practiceCode.findFirst({ where: { practiceId: user.practiceId, type: "CPT", code } });
   // The description comes from the practice's own list, then the code library.
   const library = known ? null : await prisma.masterCode.findFirst({ where: { codeSet: { in: ["CPT", "HCPCS"] }, code } });
   const description = str(fd, "description").slice(0, 300) || known?.description || library?.description.slice(0, 300) || code;
-  await prisma.chargeScheduleItem.create({ data: { scheduleId: schedule.id, code, description, feeCents: Math.round(fee * 100), revenueCode: revenue || null } });
+  await prisma.chargeScheduleItem.create({ data: { scheduleId: schedule.id, code, description, feeCents: Math.round(fee * 100), revenueCode: revenue || null, allowedCents: allowed === null ? null : Math.round(allowed * 100) } });
   await logAudit(user.practiceId, user.id, "ADD_CHARGE_SCHEDULE_CODE", "ChargeSchedule", schedule.id, code);
   back(path, { ok: `${code} added.` });
 }
@@ -147,11 +154,13 @@ export async function importSchedule(scheduleId: string, fd: FormData) {
       const have = byCode.get(r.code);
       if (!have) {
         added++;
-        return [prisma.chargeScheduleItem.create({ data: { scheduleId: schedule.id, code: r.code, description: r.description || names.get(r.code) || r.code, feeCents: r.feeCents, revenueCode: r.revenueCode } })];
+        return [prisma.chargeScheduleItem.create({ data: { scheduleId: schedule.id, code: r.code, description: r.description || names.get(r.code) || r.code, feeCents: r.feeCents, revenueCode: r.revenueCode, allowedCents: r.allowedCents } })];
       }
-      if (have.feeCents === r.feeCents && have.revenueCode === r.revenueCode && (!r.description || r.description === have.description)) return [];
+      // An allowed column left blank in the file keeps the amount already on the schedule.
+      const allowedCents = r.allowedCents ?? have.allowedCents;
+      if (have.feeCents === r.feeCents && have.revenueCode === r.revenueCode && have.allowedCents === allowedCents && (!r.description || r.description === have.description)) return [];
       updated++;
-      return [prisma.chargeScheduleItem.update({ where: { id: have.id }, data: { feeCents: r.feeCents, revenueCode: r.revenueCode, ...(r.description ? { description: r.description } : {}) } })];
+      return [prisma.chargeScheduleItem.update({ where: { id: have.id }, data: { feeCents: r.feeCents, revenueCode: r.revenueCode, allowedCents, ...(r.description ? { description: r.description } : {}) } })];
     })
   );
   await logAudit(user.practiceId, user.id, "IMPORT_CHARGE_SCHEDULE", "ChargeSchedule", schedule.id, `${added} added, ${updated} updated, ${problems.length} skipped`);
@@ -172,7 +181,7 @@ export async function copySchedule(scheduleId: string) {
       locationIds: schedule.locationIds,
       providerIds: schedule.providerIds,
       payerIds: schedule.payerIds,
-      items: { create: schedule.items.map((i) => ({ code: i.code, description: i.description, feeCents: i.feeCents, revenueCode: i.revenueCode })) },
+      items: { create: schedule.items.map((i) => ({ code: i.code, description: i.description, feeCents: i.feeCents, revenueCode: i.revenueCode, allowedCents: i.allowedCents })) },
     },
   });
   await logAudit(user.practiceId, user.id, "COPY_CHARGE_SCHEDULE", "ChargeSchedule", copy.id, `from ${schedule.name}`);

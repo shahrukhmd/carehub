@@ -76,6 +76,8 @@ export interface ClaimSubmissionRequest {
   frequencyCode: string;
   diagnosisCodes: string[];
   lines: { cptCode: string; chargeCents: number; units: number; pointers: string }[];
+  // The 837P interchange built for the claim (src/lib/x12-837p.ts). A live adapter uploads this.
+  edi837?: string;
 }
 
 export interface ClaimSubmissionResult {

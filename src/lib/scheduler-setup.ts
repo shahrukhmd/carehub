@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { DEFAULT_CANCELLATION_REASONS, DEFAULT_VISIT_TYPES } from "@/lib/scheduler";
 import { visitTypeLabel } from "@/lib/format";
+import { packOf, parseSpecialties, specialtyWhere } from "@/lib/specialties";
 
 // One setup run per practice, shared by concurrent callers (pages load settings and types in parallel).
 const setups = new Map<string, Promise<void>>();
@@ -20,17 +21,25 @@ export function ensureSchedulerSetup(practiceId: string) {
 }
 
 async function setup(practiceId: string) {
-  if ((await prisma.visitType.count({ where: { practiceId } })) === 0) {
+  // Standard visit types the practice does not have yet (a fresh practice gets them all; an existing one gets
+  // the ones added since, e.g. a new specialty pack). Types the practice retired stay retired.
+  const have = new Set((await prisma.visitType.findMany({ where: { practiceId }, select: { code: true } })).map((t) => t.code));
+  const fresh = have.size === 0;
+  const missing = DEFAULT_VISIT_TYPES.map((t, i) => ({ t, i })).filter(({ t }) => !have.has(t.code));
+  if (missing.length) {
     await prisma.visitType.createMany({
-      data: DEFAULT_VISIT_TYPES.map((t, i) => ({
+      data: missing.map(({ t, i }) => ({
         practiceId,
         code: t.code,
         name: t.name,
         durationMin: t.durationMin,
         billable: t.billable ?? true,
+        specialty: packOf("visitType", t.code),
         sortOrder: (i + 1) * 10,
       })),
     });
+  }
+  if (fresh) {
     // The telehealth visit types chart with the Telehealth workflow, where one exists.
     const tele = (await prisma.chartWorkflow.findMany({ where: { practiceId } })).find((w) => (w.visitTypes ?? "").split(",").includes("TELE"));
     if (tele) {
@@ -52,10 +61,12 @@ export async function getSchedulerSettings(practiceId: string) {
   return prisma.schedulerSettings.findUniqueOrThrow({ where: { practiceId } });
 }
 
+// Active types of the specialty packs that are on (for pickers); includeInactive lists everything (for Settings).
 export async function getVisitTypes(practiceId: string, { includeInactive = false } = {}) {
   await ensureSchedulerSetup(practiceId);
+  const packs = includeInactive ? null : parseSpecialties((await prisma.practiceSettings.findUnique({ where: { practiceId }, select: { specialties: true } }))?.specialties);
   return prisma.visitType.findMany({
-    where: { practiceId, ...(includeInactive ? {} : { active: true }) },
+    where: { practiceId, ...(includeInactive ? {} : { active: true, ...specialtyWhere(packs!) }) },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 }

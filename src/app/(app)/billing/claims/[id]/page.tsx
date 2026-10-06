@@ -34,6 +34,7 @@ import {
 } from "../actions";
 import { denialCodeOptions } from "@/lib/denials";
 import { DenialPanel, loadDenialPanel } from "./denial-panel";
+import { EDI_FILE_EVENT, build837ForClaim } from "@/lib/x12-837p";
 
 function d(v: Date | null | undefined) {
   return v ? v.toISOString().slice(0, 10) : "";
@@ -97,6 +98,10 @@ export default async function ClaimPage({
   const nav = await claimNeighbours(user.practiceId, claim);
   const lastSaved = claim.events[0] ?? null;
   const editable = EDITABLE_CLAIM_STATUSES.includes(claim.status);
+  // The 837P: what will be sent while the claim is in pre-release, what was sent once it has been billed.
+  const sentEdi = claim.events.find((e) => e.action === EDI_FILE_EVENT) ?? null;
+  const edi = sentEdi ? null : ["DRAFT", "READY", "EDI_REJECTED", "HOLD"].includes(claim.status) ? await build837ForClaim(claim.id, user.practiceId) : null;
+  const log = claim.events.filter((e) => e.action !== EDI_FILE_EVENT);
   const edits = claimEdits(claim, await claimRuleOptions(user.practiceId, claim));
   const errors = edits.filter((e) => e.severity === "error");
   const warnings = edits.filter((e) => e.severity === "warning");
@@ -142,15 +147,15 @@ export default async function ClaimPage({
           </Link>
           {["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status) && (
             <form action={submitClaim.bind(null, claim.id, null)}>
-              <button className="btn" type="submit" disabled={errors.length > 0}>
-                {claim.status === "EDI_REJECTED" ? "Resubmit to clearinghouse" : "Submit claim"}
+              <button className="btn" type="submit" disabled={errors.length > 0} title="Sends the 837P to the clearinghouse">
+                {claim.status === "EDI_REJECTED" ? "Rebill to insurance" : "Bill to insurance"}
               </button>
             </form>
           )}
           {["DRAFT", "READY", "EDI_REJECTED"].includes(claim.status) && (nav.next ?? nav.previous) && (
             <form action={submitClaim.bind(null, claim.id, nav.next ?? nav.previous)}>
-              <button className="btn secondary" type="submit" disabled={errors.length > 0} title="Submit this claim and open the next one in the same list">
-                Submit and next
+              <button className="btn secondary" type="submit" disabled={errors.length > 0} title="Bill this claim and open the next one in the same list">
+                Bill and next
               </button>
             </form>
           )}
@@ -614,6 +619,21 @@ export default async function ClaimPage({
         </details>
       )}
 
+      {/* ---------------- The 837P ---------------- */}
+      {(edi || sentEdi) && (
+        <details className="panel">
+          <summary>
+            <strong>837P claim file</strong>{" "}
+            <span className="muted">
+              {sentEdi
+                ? `sent ${formatDate(sentEdi.createdAt)} · interchange ${sentEdi.field ?? ""}${sentEdi.newValue ? ` · clearinghouse ID ${sentEdi.newValue}` : ""}`
+                : `as it will be sent · ${edi!.segments} segments${edi!.missing.length ? ` · missing: ${edi!.missing.join(", ")}` : ""}`}
+            </span>
+          </summary>
+          <pre className="cl-edi">{sentEdi ? sentEdi.note : edi!.text}</pre>
+        </details>
+      )}
+
       {/* ---------------- After submission ---------------- */}
       {!editable && claim.status !== "VOID" && (
         <div className="two-col">
@@ -776,7 +796,7 @@ export default async function ClaimPage({
             </tr>
           </thead>
           <tbody>
-            {claim.events.map((ev) => (
+            {log.map((ev) => (
               <tr key={ev.id}>
                 <td>{formatDate(ev.createdAt)}</td>
                 <td>{ev.user?.name ?? "System"}</td>
@@ -789,7 +809,7 @@ export default async function ClaimPage({
                 <td className="cl-val">{ev.newValue ?? ""}</td>
               </tr>
             ))}
-            {claim.events.length === 0 && (
+            {log.length === 0 && (
               <tr>
                 <td colSpan={6} className="muted">
                   No changes yet.

@@ -8,6 +8,9 @@ import { logAudit } from "@/lib/audit";
 import { ensureSchedulerSetup } from "@/lib/scheduler-setup";
 import { CALENDAR_STATUSES, COLOR_MODES, PREVIEW_FIELDS, type DayHours } from "@/lib/scheduler";
 import { FEDERAL_HOLIDAYS, dayKey, holidaysFor } from "@/lib/holidays";
+import { SPECIALTIES } from "@/lib/specialties";
+
+const specialtyOf = (v: string | null) => (v && v in SPECIALTIES ? v : null);
 
 class SchedError extends Error {}
 function fail(message: string): never {
@@ -54,6 +57,7 @@ export async function saveVisitTypes(fd: FormData) {
           name: name.slice(0, 80),
           durationMin: duration,
           billable: on(fd, `bill_${t.id}`),
+          specialty: specialtyOf(str(fd, `spec_${t.id}`)),
           woundAnalytics: on(fd, `wa_${t.id}`),
           active: on(fd, `active_${t.id}`),
           onlineBooking: on(fd, `online_${t.id}`),
@@ -81,6 +85,7 @@ export async function addVisitType(fd: FormData) {
         name: name.slice(0, 80),
         durationMin: Number.isInteger(dur) && dur >= 5 && dur <= 480 ? dur : null,
         billable: !on(fd, "nonBillable"),
+        specialty: specialtyOf(str(fd, "specialty")),
         woundAnalytics: on(fd, "woundAnalytics"),
         sortOrder: 900,
       },

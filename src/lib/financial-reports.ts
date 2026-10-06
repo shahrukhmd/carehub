@@ -17,6 +17,10 @@ export const REPORTS: [string, string, string][] = [
   ["denial_providers", "Denial rate by provider", "Denials against claims submitted, per rendering provider"],
   ["appeals", "Appeal outcomes", "Appeals filed in the period: overturned, upheld, pending and money recovered"],
   ["ledger", "Patient ledger", "Every charge, payment and adjustment for one patient"],
+  ["payer_mix", "Payer mix", "Share of visits, charges and collections by insurance type and payer, with the collection rate"],
+  ["allowable", "Aging by allowable", "Open insurance balances against the expected reimbursement on the charge schedule — what is really collectable"],
+  ["ar_trend", "A/R trend", "Open balance by the month the claims were billed, with days outstanding"],
+  ["em_levels", "Visit coding (E/M levels)", "How each provider codes office visits — new and established E/M levels as a share of their visits"],
 ];
 
 export type Table = { columns: string[]; rows: (string | number)[][]; totals?: (string | number)[]; money?: number[] };
@@ -213,6 +217,108 @@ export async function runReport(practiceId: string, key: string, from: Date, to:
           .map(([k, r]) => [...k.split("|"), r.filed, r.won, r.lost, r.pending, r.won + r.lost > 0 ? `${Math.round((r.won / (r.won + r.lost)) * 100)}%` : "—", r.decided ? Math.round(r.days / r.decided) : "—", $(r.recovered)]),
         money: [8],
       };
+    }
+    case "payer_mix": {
+      const claims = await prisma.claim.findMany({ where: { practiceId, status: { not: "VOID" }, payerRank: "PRIMARY", encounter: { date: range } }, include: { payer: { select: { insuranceType: true } } } });
+      const { insuranceTypeLabel } = await import("@/lib/format");
+      const g = new Map<string, { n: number; billed: number; paid: number; adj: number; open: number }>();
+      for (const c of claims) {
+        const k = `${insuranceTypeLabel[c.payer?.insuranceType ?? ""] ?? "Not set"}|${c.payerName}`;
+        const r = g.get(k) ?? { n: 0, billed: 0, paid: 0, adj: 0, open: 0 };
+        r.n++;
+        r.billed += c.billedCents;
+        r.paid += c.paidCents;
+        r.adj += c.adjustedCents;
+        r.open += balanceOf(c);
+        g.set(k, r);
+      }
+      const totalN = claims.length || 1;
+      const totalBilled = claims.reduce((s, c) => s + c.billedCents, 0) || 1;
+      const rate = (r: { billed: number; paid: number; adj: number }) => (r.billed - r.adj > 0 ? `${Math.round((r.paid / (r.billed - r.adj)) * 100)}%` : "—");
+      const rows = [...g.entries()].sort((a, b) => b[1].billed - a[1].billed).map(([k, r]) => [...k.split("|"), r.n, `${Math.round((r.n / totalN) * 100)}%`, $(r.billed), `${Math.round((r.billed / totalBilled) * 100)}%`, $(r.paid), $(r.adj), $(r.open), rate(r)]);
+      const t = [...g.values()].reduce((s, r) => ({ n: s.n + r.n, billed: s.billed + r.billed, paid: s.paid + r.paid, adj: s.adj + r.adj, open: s.open + r.open }), { n: 0, billed: 0, paid: 0, adj: 0, open: 0 });
+      return { columns: ["Insurance type", "Payer", "Claims", "Share of claims", "Charges", "Share of charges", "Paid", "Adjusted", "Open", "Net collection rate"], rows, totals: ["Total", "", t.n, "100%", $(t.billed), "100%", $(t.paid), $(t.adj), $(t.open), rate(t)], money: [4, 6, 7, 8] };
+    }
+    case "allowable": {
+      const { scheduleFor } = await import("@/lib/charge-schedules");
+      const claims = await prisma.claim.findMany({
+        where: { practiceId, status: { in: [...OPEN_AR_STATUSES, "TRANSFERRED"] }, balanceResponsibility: "INSURANCE" },
+        include: { lines: true, encounter: { select: { date: true, providerId: true, appointment: { select: { startsAt: true, locationId: true } }, patient: { select: { siteOfServiceId: true } } } } },
+      });
+      const renderers = new Map((await prisma.renderingProvider.findMany({ where: { practiceId }, select: { id: true, userId: true } })).map((r) => [r.userId ?? "", r.id]));
+      const g = new Map<string, { billed: number; allowed: number; paid: number; open: number; noSchedule: number; r: number[] }>();
+      for (const c of claims) {
+        const bal = balanceOf(c);
+        if (!bal) continue;
+        const sched = await scheduleFor(practiceId, { date: c.encounter.appointment?.startsAt ?? c.encounter.date, locationId: c.encounter.appointment?.locationId ?? c.encounter.patient.siteOfServiceId, providerId: renderers.get(c.encounter.providerId) ?? null, payerId: c.payerId });
+        let allowed = 0;
+        let known = true;
+        for (const l of c.lines) {
+          const a = sched?.fees.get(l.cptCode.toUpperCase())?.allowedCents;
+          if (a == null) known = false;
+          else allowed += a * l.units;
+        }
+        const r = g.get(c.payerName) ?? { billed: 0, allowed: 0, paid: 0, open: 0, noSchedule: 0, r: [0, 0, 0, 0] };
+        r.billed += c.billedCents;
+        r.paid += c.paidCents;
+        r.open += bal;
+        if (known && c.lines.length) {
+          // Still expected from the payer: the allowable less what it has paid, never below zero.
+          const expected = Math.max(allowed - c.paidCents, 0);
+          r.allowed += expected;
+          r.r[BUCKETS.indexOf(agingBucket(ageDays(c.submittedAt ?? c.createdAt)))] += expected;
+        } else r.noSchedule++;
+        g.set(c.payerName, r);
+      }
+      const rows = [...g.entries()].sort((a, b) => b[1].open - a[1].open).map(([p, r]) => [p, $(r.open), $(r.allowed), ...r.r.map($), r.noSchedule, r.open ? `${Math.round((r.allowed / r.open) * 100)}%` : "—"]);
+      const t = [...g.values()].reduce((s, r) => ({ open: s.open + r.open, allowed: s.allowed + r.allowed, r: s.r.map((x, i) => x + r.r[i]), noSchedule: s.noSchedule + r.noSchedule }), { open: 0, allowed: 0, r: [0, 0, 0, 0], noSchedule: 0 });
+      return { columns: ["Payer", "Open balance (billed)", "Expected (allowable)", ...BUCKETS.map((b) => `Expected ${b}`), "Claims without an allowable", "Expected ÷ billed"], rows, totals: ["Total", $(t.open), $(t.allowed), ...t.r.map($), t.noSchedule, t.open ? `${Math.round((t.allowed / t.open) * 100)}%` : "—"], money: [1, 2, 3, 4, 5, 6] };
+    }
+    case "ar_trend": {
+      const claims = await prisma.claim.findMany({ where: { practiceId, status: { notIn: ["VOID", "DRAFT", "READY", "HOLD"] }, submittedAt: { not: null } }, select: { submittedAt: true, billedCents: true, paidCents: true, adjustedCents: true, status: true } });
+      const g = new Map<string, { n: number; billed: number; paid: number; adj: number; open: number; openN: number; days: number[] }>();
+      for (const c of claims) {
+        const k = c.submittedAt!.toISOString().slice(0, 7);
+        const r = g.get(k) ?? { n: 0, billed: 0, paid: 0, adj: 0, open: 0, openN: 0, days: [] };
+        r.n++;
+        r.billed += c.billedCents;
+        r.paid += c.paidCents;
+        r.adj += c.adjustedCents;
+        const bal = balanceOf(c);
+        if (bal > 0 && !["PAID", "WRITTEN_OFF"].includes(c.status)) {
+          r.open += bal;
+          r.openN++;
+          r.days.push(ageDays(c.submittedAt));
+        }
+        g.set(k, r);
+      }
+      const rows = [...g.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 24).map(([m, r]) => [m, r.n, $(r.billed), $(r.paid), $(r.adj), r.openN, $(r.open), r.billed ? `${Math.round((r.open / r.billed) * 100)}%` : "—", r.days.length ? Math.round(r.days.reduce((a, b) => a + b, 0) / r.days.length) : "—"]);
+      const t = [...g.values()].reduce((s, r) => ({ n: s.n + r.n, billed: s.billed + r.billed, paid: s.paid + r.paid, adj: s.adj + r.adj, open: s.open + r.open, openN: s.openN + r.openN }), { n: 0, billed: 0, paid: 0, adj: 0, open: 0, openN: 0 });
+      return { columns: ["Month billed", "Claims", "Charges", "Paid", "Adjusted", "Still open", "Open balance", "Open ÷ charges", "Avg days outstanding"], rows, totals: ["All months", t.n, $(t.billed), $(t.paid), $(t.adj), t.openN, $(t.open), t.billed ? `${Math.round((t.open / t.billed) * 100)}%` : "—", ""], money: [2, 3, 4, 6] };
+    }
+    case "em_levels": {
+      const EM = ["99202", "99203", "99204", "99205", "99212", "99213", "99214", "99215"];
+      const lines = await prisma.claimLine.findMany({ where: { dosFrom: range, cptCode: { in: EM }, claim: { practiceId, status: { not: "VOID" }, payerRank: "PRIMARY" } }, select: { cptCode: true, claim: { select: { renderingProvider: { select: { name: true } } } } } });
+      const g = new Map<string, number[]>();
+      for (const l of lines) {
+        const p = l.claim.renderingProvider?.name ?? "No rendering provider";
+        const r = g.get(p) ?? EM.map(() => 0);
+        r[EM.indexOf(l.cptCode)]++;
+        g.set(p, r);
+      }
+      const level = (r: number[]) => {
+        const n = r.reduce((a, b) => a + b, 0);
+        if (!n) return "—";
+        const weighted = r.reduce((s, x, i) => s + x * ((i % 4) + 2), 0);
+        return (weighted / n).toFixed(2);
+      };
+      const rows = [...g.entries()].sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0)).map(([p, r]) => {
+        const n = r.reduce((a, b) => a + b, 0);
+        return [p, n, ...r.map((x) => (n ? `${x} (${Math.round((x / n) * 100)}%)` : "0")), level(r)];
+      });
+      const t = EM.map((_, i) => [...g.values()].reduce((s, r) => s + r[i], 0));
+      const tn = t.reduce((a, b) => a + b, 0);
+      return { columns: ["Provider", "E/M visits", ...EM, "Average level (2–5)"], rows, totals: ["All providers", tn, ...t.map((x) => (tn ? `${x} (${Math.round((x / tn) * 100)}%)` : "0")), level(t)] };
     }
     case "ledger": {
       if (!patientId) return { columns: ["Pick a patient"], rows: [] };

@@ -676,6 +676,14 @@ export async function createDeposit(formData: FormData) {
   const amount = Number(required(formData, "amount"));
   const note = String(formData.get("note") ?? "").trim() || null;
   const totalCents = Math.round(amount * 100);
+  // Posted date: today unless the biller backdates it; never into a closed accounting period.
+  const postedText = String(formData.get("postedAt") ?? "").trim();
+  const postedAt = /^\d{4}-\d{2}-\d{2}$/.test(postedText) ? new Date(`${postedText}T12:00:00`) : new Date();
+  if (Number.isNaN(postedAt.getTime()) || postedAt > new Date()) redirect(`/billing?tab=deposits&error=${encodeURIComponent("The posted date must be today or earlier.")}`);
+  const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { closedThrough: true } });
+  if (settings?.closedThrough && postedAt <= settings.closedThrough) {
+    redirect(`/billing?tab=deposits&error=${encodeURIComponent(`The accounting period is closed through ${settings.closedThrough.toISOString().slice(0, 10)} — post the deposit with a later date, or reopen the period in Practice setup.`)}`);
+  }
 
   const deposit = await prisma.deposit.create({
     data: {
@@ -687,6 +695,7 @@ export async function createDeposit(formData: FormData) {
       totalCents,
       unappliedCents: totalCents,
       note,
+      postedAt,
     },
   });
 

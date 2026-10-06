@@ -459,6 +459,38 @@ export async function applyPayment(claimId: string, fd: FormData) {
   });
 }
 
+// Zero-balance adjustment: every open claim whose remaining balance is at or under the threshold is adjusted to
+// zero and written off. Done from the AR tab; each claim keeps a log entry with the amount.
+export async function writeOffSmallBalances(fd: FormData) {
+  const user = await requireUser(BILLING_ROLES);
+  const here = "/billing?tab=ar";
+  const threshold = Math.round(Number(text(fd, "threshold")?.replace(/[$,\s]/g, "") ?? "0") * 100);
+  if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 10000) redirect(`${here}&error=${encodeURIComponent("The threshold must be between $0.01 and $100.")}`);
+  const who = text(fd, "who") ?? "INSURANCE";
+  const claims = await prisma.claim.findMany({
+    where: {
+      practiceId: user.practiceId,
+      status: { in: ["SUBMITTED", "ACCEPTED", "PARTIAL", "TRANSFERRED", "DELINQUENT", "IN_COLLECTION"] },
+      ...(who === "ALL" ? {} : { balanceResponsibility: who === "PATIENT" ? "PATIENT" : "INSURANCE" }),
+    },
+    select: { id: true, encounterId: true, billedCents: true, paidCents: true, adjustedCents: true, status: true },
+  });
+  let n = 0;
+  let cents = 0;
+  for (const c of claims) {
+    const balance = c.billedCents - c.paidCents - c.adjustedCents;
+    if (balance <= 0 || balance > threshold) continue;
+    await prisma.claim.update({ where: { id: c.id }, data: { adjustedCents: c.adjustedCents + balance, status: "WRITTEN_OFF", statusNote: `Small balance write-off ($${(balance / 100).toFixed(2)})` } });
+    await logClaimEvent(c.id, user.id, "ADJUSTMENT", { field: "status", oldValue: c.status, newValue: "WRITTEN_OFF", note: `Small balance write-off · $${(balance / 100).toFixed(2)} (threshold $${(threshold / 100).toFixed(2)})` });
+    await refreshVisitBillingStatus(c.encounterId);
+    n++;
+    cents += balance;
+  }
+  await logAudit(user.practiceId, user.id, "SMALL_BALANCE_WRITEOFF", "Claim", undefined, `${n} claim(s) · $${(cents / 100).toFixed(2)}`);
+  revalidatePath("/billing");
+  redirect(`${here}&ok=${encodeURIComponent(n ? `${n} claim${n === 1 ? "" : "s"} written off — $${(cents / 100).toFixed(2)} in total.` : "No open claims had a balance at or under the threshold.")}`);
+}
+
 export async function setBalanceResponsibility(claimId: string, fd: FormData) {
   const user = await requireUser(BILLING_ROLES);
   return guarded(`/billing/claims/${claimId}`, async () => {
