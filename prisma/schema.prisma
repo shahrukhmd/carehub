@@ -198,6 +198,8 @@ model User {
   signatureUpdatedAt       DateTime?
   // JSON list of widget keys shown on the patient dashboard, in order (null = default layout).
   patientDashboard         String?
+  // The practice dashboard tiles this user chose ("My view"), JSON list of tile keys.
+  dashboardTiles           String?
   documentsCompleted       EncounterDocument[]  @relation("DocumentCompletedBy")
   documentsSigned          EncounterDocument[]  @relation("DocumentSignedBy")
   attachmentsUploaded      EncounterAttachment[]

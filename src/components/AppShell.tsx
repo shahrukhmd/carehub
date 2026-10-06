@@ -15,9 +15,15 @@ import { can, type PermissionKey } from "@/lib/permissions";
 type Tab = { href: string; label: string; permission: PermissionKey };
 type Entry = { label: string; icon: string; tabs: Tab[] };
 
+// No separate communication space by design: Tasks & messages and Patient Connect are reached from Settings;
+// team communication lives on the patient inside each team's step.
 // The side menu is grouped by the kind of work. An entry with several tabs is one menu item; its tabs sit in the
 // top bar. What a role sees comes from the permission map, the same place the pages check.
 const MENU: { group: string; entries: Entry[] }[] = [
+  {
+    group: "Overview",
+    entries: [{ label: "Dashboard", icon: "reports", tabs: [{ href: "/dashboard", label: "Dashboard", permission: "tasks.work" }] }],
+  },
   {
     group: "Front office",
     entries: [
@@ -33,9 +39,7 @@ const MENU: { group: string; entries: Entry[] }[] = [
           { href: "/recalls", label: "Recalls", permission: "recalls.work" },
         ],
       },
-      { label: "Patient Connect", icon: "connect", tabs: [{ href: "/connect", label: "Patient Connect", permission: "connect.work" }] },
       { label: "Faxing", icon: "connect", tabs: [{ href: "/faxing", label: "Faxing", permission: "fax.work" }] },
-      { label: "Tasks & messages", icon: "tasks", tabs: [{ href: "/tasks", label: "Tasks & messages", permission: "tasks.work" }] },
     ],
   },
   {
@@ -76,7 +80,7 @@ const MENU: { group: string; entries: Entry[] }[] = [
         label: "Reports",
         icon: "reports",
         tabs: [
-          { href: "/reports", label: "Reports", permission: "reports.ops" },
+          { href: "/reports", label: "All reports", permission: "tasks.work" },
           { href: "/reports/registry", label: "Patient registry", permission: "reports.clinical" },
           { href: "/reports/quality", label: "Quality measures", permission: "reports.clinical" },
         ],

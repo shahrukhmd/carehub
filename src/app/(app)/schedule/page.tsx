@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { HandoffHeader } from "@/components/HandoffHeader";
+import { PatientPicker } from "@/components/PatientPicker";
 
 import type { Prisma } from "@prisma/client";
 import { cancelAppointment, createAppointment, startEncounter, updateAppointmentStatus } from "@/app/actions";
@@ -92,8 +93,9 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     }
   }
 
-  const [patients, providers, locations, collaborators, resources] = await Promise.all([
-    prisma.patient.findMany({ where: { practiceId: user.practiceId, status: { notIn: ["INACTIVE", "DECEASED"] } }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }] }),
+  const [bookingPatient, providers, locations, collaborators, resources] = await Promise.all([
+    // The booking form searches for the patient; only a pre-chosen one (from the Gateway or a retry) is loaded here.
+    sp.patientId ? prisma.patient.findFirst({ where: { id: sp.patientId, practiceId: user.practiceId }, select: { id: true, firstName: true, lastName: true, mrn: true } }) : Promise.resolve(null),
     prisma.user.findMany({ where: { practiceId: user.practiceId, role: "CLINICIAN" }, orderBy: { name: "asc" } }),
     prisma.location.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
     prisma.renderingProvider.findMany({ where: { practiceId: user.practiceId, isRendering: true, status: "ACTIVE" }, orderBy: { name: "asc" } }),
@@ -720,13 +722,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
               {sp.returnTo && <input type="hidden" name="returnTo" value={sp.returnTo} />}
               <label>
                 Patient
-                <select name="patientId" required defaultValue={sp.patientId}>
-                  {patients.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {patientName(p)} ({p.mrn})
-                    </option>
-                  ))}
-                </select>
+                <PatientPicker initial={bookingPatient ? { id: bookingPatient.id, name: patientName(bookingPatient), mrn: bookingPatient.mrn } : null} />
               </label>
               <div className="form-grid">
                 <label>

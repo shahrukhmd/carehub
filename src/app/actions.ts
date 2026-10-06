@@ -175,7 +175,8 @@ export async function addChargeFromTemplate(encounterId: string, templateItemId:
 
 export async function createAppointment(formData: FormData) {
   const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
-  const patientId = required(formData, "patientId");
+  const patientId = String(formData.get("patientId") ?? "").trim();
+  if (!patientId) redirect(`/schedule?conflicts=${encodeURIComponent("Not booked — choose the patient from the search results first.")}&blocked=1#book`);
   const providerId = required(formData, "providerId");
   const locationId = required(formData, "locationId");
   const startsAtRaw = required(formData, "startsAt");

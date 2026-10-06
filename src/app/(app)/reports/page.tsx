@@ -2,12 +2,16 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { reportRange } from "@/lib/financial-reports";
 import { OPS_REPORTS, runOpsReport } from "@/lib/ops-reports";
+import { REPORTS as FINANCIAL_REPORTS } from "@/lib/financial-reports";
+import { can } from "@/lib/permissions";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ r?: string; from?: string; to?: string }> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"]);
+  const user = await requireUser();
   const sp = await searchParams;
+  if (!sp.r) return <ReportsHome role={user.role} />;
+  if (!can(user.role, "reports.ops") && !can(user.role, "reports.clinical")) return <ReportsHome role={user.role} />;
   const key = OPS_REPORTS.some(([k]) => k === sp.r) ? sp.r! : "daily";
   const { from, to } = reportRange(sp);
   const table = await runOpsReport(user.practiceId, key, from, to);
@@ -20,7 +24,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     <div className="stack">
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
-          <p className="muted">Practice reports</p>
+          <p className="muted">
+            <Link href="/reports">Reports</Link> · Front office &amp; operations
+          </p>
           <h1>{meta[1]}</h1>
           <p className="muted" style={{ margin: 0 }}>
             {meta[2]}
@@ -100,6 +106,77 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+// ---- The reports catalogue: every report in CareHub, grouped by the work it serves, one click to run. ----
+
+const CLINICAL_OPS = new Set(["wound_outcomes", "wound_provider", "hbo"]);
+
+function ReportsHome({ role }: { role: string }) {
+  const ops = OPS_REPORTS.filter(([k]) => !CLINICAL_OPS.has(k));
+  const clinical = OPS_REPORTS.filter(([k]) => CLINICAL_OPS.has(k));
+  const groups: { title: string; about: string; show: boolean; items: { href: string; label: string; about: string }[] }[] = [
+    {
+      title: "Front office & operations",
+      about: "The day, the schedule, the waiting room and the cash drawer",
+      show: can(role, "reports.ops"),
+      items: ops.map(([k, l, d]) => ({ href: `/reports?r=${k}`, label: l, about: d })),
+    },
+    {
+      title: "Clinical & outcomes",
+      about: "How patients are doing, what is due, and quality measures",
+      show: can(role, "reports.clinical") || can(role, "caregaps.view"),
+      items: [
+        ...clinical.map(([k, l, d]) => ({ href: `/reports?r=${k}`, label: l, about: d })),
+        { href: "/care-gaps", label: "Care gaps", about: "Active patients due for a screening, lab or assessment" },
+        { href: "/reports/registry", label: "Patient registry", about: "Build a patient list from diagnoses, medications and demographics; export" },
+        { href: "/reports/quality", label: "Quality measures", about: "eCQM / MIPS measure performance for the period" },
+      ],
+    },
+    {
+      title: "Revenue cycle",
+      about: "Collections, A/R, denials, payer mix and coding",
+      show: can(role, "billing.work"),
+      items: FINANCIAL_REPORTS.map(([k, l, d]) => ({ href: `/billing/reports?r=${k}`, label: l, about: d })),
+    },
+    {
+      title: "Credentialing",
+      about: "Enrollments and expirations",
+      show: can(role, "credentialing.work"),
+      items: [{ href: "/credentialing", label: "Enrollment status grid", about: "Every provider × payer line with its status" }, { href: "/api/credentialing/export", label: "Credentialing export (CSV)", about: "The full enrollment list for spreadsheets" }],
+    },
+  ];
+  return (
+    <div className="stack">
+      <div className="page-head" style={{ marginBottom: 0 }}>
+        <div>
+          <p className="muted">Insights</p>
+          <h1>Reports</h1>
+          <p className="muted" style={{ margin: 0 }}>
+            Every report, by the work it serves. Each one runs for a date range and exports to CSV. The <Link href="/dashboard">dashboard</Link> shows today&apos;s numbers at a glance.
+          </p>
+        </div>
+      </div>
+      {groups
+        .filter((g) => g.show)
+        .map((g) => (
+          <section className="panel" key={g.title}>
+            <div className="gw-section-head">
+              <h2>{g.title}</h2>
+              <span className="muted">{g.about}</span>
+            </div>
+            <ul className="rp-catalog">
+              {g.items.map((i) => (
+                <li key={i.href}>
+                  <Link href={i.href}>{i.label}</Link>
+                  <span className="muted">{i.about}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
     </div>
   );
 }

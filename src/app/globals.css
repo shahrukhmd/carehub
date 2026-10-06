@@ -7671,3 +7671,134 @@ td.num {
   font-style: normal;
   color: var(--muted, #667);
 }
+
+/* Patient picker (search as you type) */
+.pk {
+  position: relative;
+}
+.pk-chosen {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border, #e3e6ea);
+  border-radius: 6px;
+  background: var(--surface-2, #f6f7f9);
+}
+.pk-list {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  margin: 0.2rem 0 0;
+  padding: 0.2rem;
+  list-style: none;
+  max-height: 16rem;
+  overflow: auto;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e3e6ea);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+.pk-list li {
+  padding: 0;
+}
+.pk-list li.muted {
+  padding: 0.4rem 0.6rem;
+}
+.pk-list button {
+  width: 100%;
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.pk-list button:hover,
+.pk-list button:focus {
+  background: var(--surface-2, #f0f3f7);
+}
+
+/* Dashboard */
+.db-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 1rem;
+}
+.db-tile {
+  border-top: 3px solid var(--border, #e3e6ea);
+}
+.db-tile.db-ok {
+  border-top-color: #2e8b57;
+}
+.db-tile.db-warn {
+  border-top-color: #d99a1a;
+}
+.db-tile.db-bad {
+  border-top-color: #c0392b;
+}
+.db-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.db-value {
+  margin: 0.4rem 0 0.3rem;
+}
+.db-value strong {
+  font-size: 1.8rem;
+  font-weight: 650;
+}
+.db-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.db-rows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.2rem 0;
+  border-top: 1px solid var(--border, #eef0f3);
+  font-size: 0.88rem;
+}
+.db-rows li.db-row-bad strong {
+  color: #c0392b;
+}
+.db-rows li.db-row-warn strong {
+  color: #b7791f;
+}
+.db-rows li.db-row-muted {
+  color: var(--muted, #667);
+}
+.dp-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.8rem;
+}
+.dp-row {
+  display: block;
+  margin: 0.2rem 0;
+}
+
+/* Reports catalogue */
+.rp-catalog {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 0.4rem 1.2rem;
+}
+.rp-catalog li {
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--border, #eef0f3);
+}
+.rp-catalog li a {
+  font-weight: 600;
+}
+.rp-catalog li span {
+  font-size: 0.82rem;
+}
