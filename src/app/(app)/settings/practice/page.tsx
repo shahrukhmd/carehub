@@ -10,6 +10,7 @@ import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 import { FAX_PROVIDERS } from "@/lib/fax";
 import { savePracticeSettings } from "./actions";
 import { SPECIALTIES, parseSpecialties } from "@/lib/specialties";
+import { AddressValidator } from "@/components/AddressValidator";
 
 type S = Awaited<ReturnType<typeof getPracticeSettings>>;
 
@@ -51,6 +52,7 @@ function AddressBlock({ s, block }: { s: S; block: (typeof BLOCKS)[number] }) {
           ZIP
           <input name={`${block.key}Zip`} defaultValue={v("Zip")} />
         </label>
+      <AddressValidator fields={{ line1: `${block.key}Address1`, line2: `${block.key}Address2`, city: `${block.key}City`, state: `${block.key}State`, zip: `${block.key}Zip` }} />
       </div>
     </fieldset>
   );

@@ -9,6 +9,7 @@ import { sexLabel, splitName, yesNoUnknownLabel } from "@/lib/patient-fields";
 import { DOC_TYPES } from "@/lib/patient-docs";
 import { PatientShell, loadPatientShell } from "../patient-shell";
 import { checkCoverageEligibility, deleteAuthorization, deletePatientInsurance, saveAuthorization, savePatientInsurance, setInsuranceActive } from "./actions";
+import { AddressValidator } from "@/components/AddressValidator";
 
 const day = (v: Date | null | undefined) => (v ? v.toISOString().slice(0, 10) : "");
 const dollars = (c: number | null | undefined) => (c === null || c === undefined ? "" : (c / 100).toFixed(2));
@@ -217,6 +218,7 @@ function CoverageForm({ patientId, ins, payers, prefill, taken }: { patientId: s
               Zip code
               <input name="insuredZip" defaultValue={ins?.insuredZip ?? ""} maxLength={10} />
             </label>
+            <AddressValidator fields={{ line1: "insuredAddress1", line2: "insuredAddress2", city: "insuredCity", state: "insuredState", zip: "insuredZip" }} />
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { US_STATES, providerCredentialLabel, providerRoleLabel, providerTitleLabel } from "@/lib/format";
+import { AddressValidator } from "@/components/AddressValidator";
 
 type Role = keyof typeof providerRoleLabel;
 
@@ -282,6 +283,7 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
                 ZIP
                 <input name="zip" defaultValue={v("zip")} inputMode="numeric" />
               </label>
+        <AddressValidator fields={{ line1: "addressLine1", line2: "addressLine2", city: "city", state: "state", zip: "zip" }} />
             </span>
             <label>
               Phone

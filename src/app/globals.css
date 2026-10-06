@@ -7802,3 +7802,36 @@ td.num {
 .rp-catalog li span {
   font-size: 0.82rem;
 }
+
+/* Address validator */
+.av {
+  grid-column: 1 / -1;
+  margin: 0.2rem 0 0.4rem;
+  font-size: 0.88rem;
+}
+.av-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.av-msg {
+  margin: 0.3rem 0 0;
+}
+.av-fix {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.4rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border, #e3e6ea);
+  border-left: 3px solid #d99a1a;
+  border-radius: 6px;
+  background: var(--surface-2, #fbfaf4);
+}
+.av-fix ul {
+  margin: 0.2rem 0 0;
+  padding-left: 1.1rem;
+}

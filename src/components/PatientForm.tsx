@@ -16,6 +16,7 @@ import type { FieldConflict, FilledField, InsuranceDraft, PatientDraft } from "@
 import { ReadDocumentsButton } from "@/components/ReadDocumentsButton";
 import { MarkPrefilled } from "@/components/MarkPrefilled";
 import { readRegistrationDocuments, removeRegistrationDocument } from "@/app/(app)/patients/new/actions";
+import { AddressValidator } from "@/components/AddressValidator";
 import {
   HOW_HEARD,
   LANGUAGES,
@@ -99,6 +100,7 @@ function AddressFields({ prefix, value, county = true }: { prefix: string; value
         Zip code
         <input name={`${prefix}Zip`} defaultValue={value.zip ?? ""} maxLength={10} inputMode="numeric" />
       </label>
+      <AddressValidator fields={{ line1: `${prefix}Line1`, line2: `${prefix}Line2`, city: `${prefix}City`, state: `${prefix}State`, zip: `${prefix}Zip`, county: county ? `${prefix}County` : undefined }} />
       {county && (
         <label>
           County
@@ -188,6 +190,7 @@ function InsuranceBlock({ rank, ins, payers, open }: { rank: string; ins?: Insur
               Zip code
               <input name={`${p}insuredZip`} defaultValue={ins?.insuredZip ?? ""} maxLength={10} />
             </label>
+      <AddressValidator fields={{ line1: `${p}insuredAddress`, city: `${p}insuredCity`, state: `${p}insuredState`, zip: `${p}insuredZip` }} />
             <label>
               Insured phone number
               <input name={`${p}insuredPhone`} defaultValue={ins?.insuredPhone ?? ""} />
@@ -622,6 +625,7 @@ export function PatientForm({ action, patient, documents = [], review, locations
             Zip code
             <input name="zip" defaultValue={p?.zip ?? ""} maxLength={10} inputMode="numeric" />
           </label>
+              <AddressValidator fields={{ line1: "addressLine1", line2: "addressLine2", city: "city", state: "state", zip: "zip", county: "county" }} />
           <label>
             County
             <input name="county" defaultValue={p?.county ?? ""} />

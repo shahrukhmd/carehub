@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatMoney, insuranceTypeLabel, providerRoleLabel } from "@/lib/format";
+import { AddressValidator } from "@/components/AddressValidator";
 import {
   addSuperbillTemplateItem,
   createBillingProvider,
@@ -359,6 +360,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
               ZIP
               <input name="zip" />
             </label>
+                <AddressValidator fields={{ line1: "addressLine1", city: "city", state: "state", zip: "zip" }} />
           </div>
           <button className="btn" type="submit">
             Add billing provider

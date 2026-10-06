@@ -6,6 +6,7 @@ import { US_STATES } from "@/lib/format";
 import { placeOfServiceLabel } from "@/lib/superbill";
 import { SettingsNav } from "../settings-nav";
 import { addSite, deleteServiceType, saveServiceType, updateSite } from "./actions";
+import { AddressValidator } from "@/components/AddressValidator";
 
 type Search = { tab?: string; q?: string; type?: string; add?: string; edit?: string; error?: string; ok?: string };
 
@@ -55,6 +56,7 @@ function SiteForm({ site, types, action, cancel }: { site?: Location; types: { i
           ZIP
           <input name="zip" defaultValue={site?.zip ?? ""} placeholder="12345 or 12345-6789" maxLength={10} />
         </label>
+        <AddressValidator fields={{ line1: "addressLine1", line2: "addressLine2", city: "city", state: "state", zip: "zip" }} />
         <label>
           Phone
           <input name="phone" defaultValue={site?.phone ?? ""} maxLength={30} />

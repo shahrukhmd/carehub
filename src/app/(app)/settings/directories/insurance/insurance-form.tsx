@@ -1,6 +1,7 @@
 import { PayerLookup } from "./payer-lookup";
 import type { Payer } from "@prisma/client";
 import { US_STATES, insuranceTypeLabel, timelyFilingUnitLabel } from "@/lib/format";
+import { AddressValidator } from "@/components/AddressValidator";
 
 type Props = {
   action: (formData: FormData) => Promise<void>;
@@ -114,6 +115,7 @@ export function InsuranceForm({ action, payer, otherPayers, submitLabel, from }:
                 ZIP
                 <input name="zip" defaultValue={v("zip")} inputMode="numeric" />
               </label>
+        <AddressValidator fields={{ line1: "addressLine1", line2: "addressLine2", city: "city", state: "state", zip: "zip" }} />
             </span>
           </div>
 
