@@ -3,7 +3,8 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { patientName } from "@/lib/format";
-import { REPORTS, reportRange, runReport } from "@/lib/financial-reports";
+import { REPORTS, reportRange } from "@/lib/financial-reports";
+import { EXTRA_FINANCIAL, runCatalogReport } from "@/lib/report-catalog";
 
 type Search = { r?: string; from?: string; to?: string; patientId?: string };
 
@@ -13,13 +14,14 @@ const RANGED = ["collections", "cpt", "provider", "denials", "denial_rate", "den
 export default async function FinancialReportsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
-  const key = REPORTS.some(([k]) => k === sp.r) ? sp.r! : "collections";
+  const ALL = [...REPORTS, ...EXTRA_FINANCIAL];
+  const key = ALL.some(([k]) => k === sp.r) ? sp.r! : "collections";
   const { from, to } = reportRange(sp);
   const [table, patients] = await Promise.all([
-    runReport(user.practiceId, key, from, to, sp.patientId),
+    runCatalogReport(user.practiceId, key, from, to, sp.patientId),
     key === "ledger" ? prisma.patient.findMany({ where: { practiceId: user.practiceId }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }], take: 2000 }) : Promise.resolve([]),
   ]);
-  const meta = REPORTS.find(([k]) => k === key)!;
+  const meta = ALL.find(([k]) => k === key)!;
   const money = new Set(table.money ?? []);
   const fmt = (v: string | number, i: number) => (money.has(i) && typeof v === "number" ? v.toLocaleString("en-US", { style: "currency", currency: "USD" }) : v);
   const qs = new URLSearchParams({ r: key, from: iso(from), to: iso(to), ...(sp.patientId ? { patientId: sp.patientId } : {}) });
@@ -41,7 +43,7 @@ export default async function FinancialReportsPage({ searchParams }: { searchPar
         </a>
       </div>
       <nav className="cn-filters">
-        {REPORTS.map(([k, l]) => (
+        {ALL.map(([k, l]) => (
           <Link key={k} href={`/billing/reports?r=${k}&from=${iso(from)}&to=${iso(to)}`} className={k === key ? "active" : ""}>
             {l}
           </Link>

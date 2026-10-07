@@ -10,6 +10,7 @@ import { QuickActions } from "@/components/QuickActions";
 import { PatientTabs } from "@/components/PatientTabs";
 import { can, allowed, roleOf, type Overrides, type Subject, rolesFor } from "@/lib/permissions";
 import { StatusBadge } from "@/components/StatusBadge";
+import { PatientAlerts } from "@/components/PatientAlerts";
 import { setPatientStatus, startEncounter } from "@/app/actions";
 
 const START_ROLES = rolesFor("chart.start");
@@ -53,6 +54,8 @@ export async function loadPatientShell(patientId: string, user: { id: string; pr
     caseId: intake?.id ?? null,
     formRequest,
     role: { role: user.role, overrides: user.overrides ?? null } as Subject,
+    viewerId: user.id,
+    practiceId: user.practiceId,
     access,
     // The practice's custom fields this patient has an answer for.
     custom: customFields.map((f) => ({ label: f.label, value: showCustomValue(f, parseCustomValues(patient.customFields)[f.key]) })).filter((c) => c.value),
@@ -131,6 +134,8 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
             Restricted chart{data.access === "EMERGENCY" ? " · emergency access" : ""}
           </p>
         )}
+
+        <PatientAlerts practiceId={data.practiceId} patientId={p.id} placement="chart" userId={data.viewerId} />
 
         <div className="pd-block">
           <h4>Patient medical record number</h4>
@@ -257,6 +262,7 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
             ...(can(role, "careplan.edit") || roleOf(role) === "CLINICIAN" ? [{ href: `/patients/${p.id}/care-plan`, label: "Care plan" }] : []),
             ...(ageFromDob(p.dob) < 20 && can(role, "chart.view") ? [{ href: `/patients/${p.id}/growth`, label: "Growth" }] : []),
             ...(can(role, "payments.take") ? [{ href: `/patients/${p.id}/claims`, label: "Claims & balance" }] : []),
+            ...(can(role, "patients.alerts") ? [{ href: `/patients/${p.id}/alerts`, label: "Alerts" }] : []),
             { href: `/patients/${p.id}/thread`, label: "Communication" },
             { href: `/patients/${p.id}/privacy`, label: "Privacy" },
           ]}

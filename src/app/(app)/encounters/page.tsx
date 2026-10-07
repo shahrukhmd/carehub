@@ -63,7 +63,7 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
   const dated = queue === "all";
 
   const patientFilter: Prisma.PatientWhereInput | undefined = q
-    ? { OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }, { mrn: { contains: q } }] }
+    ? { OR: [{ lastName: { contains: q, mode: "insensitive" } }, { firstName: { contains: q, mode: "insensitive" } }, { mrn: { contains: q, mode: "insensitive" } }] }
     : undefined;
   const encounterWhere: Prisma.EncounterWhereInput = {
     practiceId: user.practiceId,

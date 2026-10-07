@@ -1,4 +1,4 @@
-export function StatusBadge({ value }: { value: string }) {
+export function StatusBadge({ value, label }: { value: string; label?: string }) {
   const tone = value.toLowerCase().replace(/_/g, "-");
-  return <span className={`badge badge-${tone}`}>{value.replaceAll("_", " ")}</span>;
+  return <span className={`badge badge-${tone}`}>{label ?? value.replaceAll("_", " ")}</span>;
 }

@@ -10,6 +10,7 @@ import { faxNumberOrNull, getFaxAdapter } from "@/lib/fax";
 import { saveGenerated } from "@/lib/storage";
 import { ORDER_ROLES, ORDER_WRITE_ROLES, RESULT_FLAGS, afterResults, ensureOrderCatalog, importHl7Results, newRequisition, requisitionPdf } from "@/lib/orders";
 import { completeSourceTasks, createTask } from "@/lib/tasks";
+import { processInterfaceMessage, receiveInterfaceMessage } from "@/lib/interfaces";
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const go = (to: string, msg?: { error?: string; ok?: string }) => {
@@ -198,12 +199,54 @@ export async function importResultsFile(fd: FormData) {
   if (!(file instanceof File) || file.size === 0) go("/orders?view=import", { error: "Choose an HL7 results file." });
   if ((file as File).size > 5_000_000) go("/orders?view=import", { error: "The file is larger than 5 MB." });
   try {
-    const r = await importHl7Results(user.practiceId, await (file as File).text(), user.id);
-    go("/orders?view=review", r.unmatched.length ? { error: `${r.filed.length} results filed on ${r.orders} order(s). No order found for requisition ${r.unmatched.join(", ")}.` } : { ok: `${r.filed.length} results filed on ${r.orders} order(s).` });
+    const r = await receiveInterfaceMessage(user.practiceId, await (file as File).text(), { channel: "FILE", userId: user.id });
+    go(r.status === "FILED" ? "/orders?view=review" : "/orders?view=inbox", r.status === "FILED" ? { ok: r.message.detail ?? "Results filed." } : { error: r.message.detail ?? r.status });
   } catch (err) {
     if ((err as { digest?: string }).digest?.startsWith("NEXT_")) throw err;
     go("/orders?view=import", { error: (err as Error).message });
   }
+}
+
+// ---- Interface inbox: messages that could not be filed automatically ----
+
+async function ownMessage(practiceId: string, id: string) {
+  const m = await prisma.interfaceMessage.findFirst({ where: { id, practiceId } });
+  if (!m) go("/orders?view=inbox", { error: "Message not found." });
+  return m!;
+}
+
+// File the message on a chosen order (by order id from the suggestions, or a typed requisition number).
+export async function linkInterfaceMessage(id: string, fd: FormData) {
+  const user = await requireUser(RESULT_ROLES);
+  const m = await ownMessage(user.practiceId, id);
+  if (m.status === "FILED" || m.status === "DISCARDED") go("/orders?view=inbox", { error: "This message was already handled." });
+  const orderId = str(fd, "orderId");
+  const req = str(fd, "requisition").toUpperCase();
+  const order = orderId ? await prisma.clinicalOrder.findFirst({ where: { id: orderId, practiceId: user.practiceId } }) : req ? await prisma.clinicalOrder.findFirst({ where: { practiceId: user.practiceId, requisition: req } }) : null;
+  if (!order) go("/orders?view=inbox", { error: req ? `No order with requisition ${req}.` : "Pick an order or type a requisition number." });
+  if (order!.status === "CANCELLED") go("/orders?view=inbox", { error: "That order was cancelled." });
+  const r = await processInterfaceMessage(m.id, user.id, order!.requisition);
+  await logAudit(user.practiceId, user.id, "LINK_INTERFACE_MESSAGE", "ClinicalOrder", order!.id, `${r.filed} results from message ${m.controlId ?? m.id}`);
+  go(r.status === "FILED" ? `/orders/${order!.id}` : "/orders?view=inbox", r.status === "FILED" ? { ok: r.message.detail ?? "Filed." } : { error: r.message.detail ?? r.status });
+}
+
+// Try again as received (after the order was created or the requisition corrected).
+export async function replayInterfaceMessage(id: string) {
+  const user = await requireUser(RESULT_ROLES);
+  const m = await ownMessage(user.practiceId, id);
+  if (m.status === "FILED") go("/orders?view=inbox", { error: "Already filed; replaying would duplicate the results." });
+  const r = await processInterfaceMessage(m.id, user.id);
+  go("/orders?view=inbox", r.status === "FILED" ? { ok: r.message.detail ?? "Filed." } : { error: r.message.detail ?? r.status });
+}
+
+export async function discardInterfaceMessage(id: string, fd: FormData) {
+  const user = await requireUser(RESULT_ROLES);
+  const m = await ownMessage(user.practiceId, id);
+  const reason = str(fd, "reason").slice(0, 200);
+  if (!reason) go("/orders?view=inbox", { error: "Say why the message is being discarded (it stays in the log)." });
+  await prisma.interfaceMessage.update({ where: { id: m.id }, data: { status: "DISCARDED", detail: `Discarded by ${user.name}: ${reason}` } });
+  await logAudit(user.practiceId, user.id, "DISCARD_INTERFACE_MESSAGE", "InterfaceMessage", m.id, reason);
+  go("/orders?view=inbox", { ok: "Message discarded (kept in the log)." });
 }
 
 // ---- Settings: labs, imaging centers & catalog ----

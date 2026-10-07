@@ -9,6 +9,7 @@ import { isMessageLive } from "@/lib/system-messages";
 import { teamHome, waitingPatientCount } from "@/lib/patient-thread";
 import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
 import { allowed } from "@/lib/permissions";
+import { organizationHold } from "@/lib/organization";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
@@ -25,6 +26,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const messages = (await prisma.systemMessage.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { createdAt: "desc" } }))
     .filter((m) => isMessageLive(m))
     .map((m) => ({ id: m.id, title: m.title, message: m.message, level: m.level, version: m.updatedAt.toISOString() }));
+  const hold = await organizationHold(user.practiceId);
+  if (hold) messages.unshift({ id: "org-hold", title: "Client account on hold", message: hold, level: "WARNING", version: "hold" });
   return (
     <AppShell user={user} credentialingAlertCount={alertCount} taskCount={taskCount} waitingHome={teamHome(user.role)} navCollapsed={navCollapsed} theme={theme} ai={provider ? documentAiLabel[provider] : null} systemMessages={messages}>
       {children}

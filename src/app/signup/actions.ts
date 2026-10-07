@@ -60,6 +60,7 @@ export async function signup(formData: FormData) {
         email,
         role: "ADMIN",
         passwordHash: hashPassword(password),
+        passwordChangedAt: new Date(),
       },
     });
 

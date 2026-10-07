@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatMoney } from "@/lib/format";
 import { authStatusLabel, careStatusLabel, eligibilityStatusLabel, vobDecisionLabel } from "@/lib/gateway";
 import { networkStatusForPayer } from "@/lib/credentialing";
+import { PatientAlerts } from "@/components/PatientAlerts";
 
 // What the earlier teams decided about this patient, shown where the next team works: the data-entry brief, the
 // VOB decision and its scope, the authorization and how much of it is used, the latest eligibility answer, whether
@@ -80,8 +81,10 @@ export async function HandoffHeader({
   const authExhausted = intake?.authVisitsApproved != null && visitsUsed != null && visitsUsed >= intake.authVisitsApproved;
   const tone = (ok: boolean, warn = false) => (ok ? "ok" : warn ? "warn" : "bad");
 
+  const placement = audience === "booking" ? "schedule" : audience === "claim" ? "billing" : "chart";
   return (
     <section className={`panel hh hh-${audience}`} aria-label="Hand-off from the other teams">
+      <PatientAlerts practiceId={practiceId} patientId={patientId} placement={placement} manageLink={audience === "booking"} />
       <div className="hh-row">
         {intake && (
           <div className="hh-item">

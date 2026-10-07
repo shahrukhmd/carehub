@@ -30,11 +30,16 @@ export default async function EditInsurancePage({ params }: { params: Promise<{ 
             {payer.name} <StatusBadge value={payer.active ? "ACTIVE" : "INACTIVE"} />
           </h1>
         </div>
-        <form action={togglePayerActive.bind(null, payer.id)}>
-          <button className="btn secondary" type="submit">
-            {payer.active ? "Deactivate" : "Reactivate"}
-          </button>
-        </form>
+        <div className="cn-inline">
+          <Link className="btn" href={`/settings/directories/insurance/${payer.id}/rules`}>
+            Billing rules
+          </Link>
+          <form action={togglePayerActive.bind(null, payer.id)}>
+            <button className="btn secondary" type="submit">
+              {payer.active ? "Deactivate" : "Reactivate"}
+            </button>
+          </form>
+        </div>
       </div>
       <InsuranceForm
         action={saveInsurance.bind(null, payer.id)}

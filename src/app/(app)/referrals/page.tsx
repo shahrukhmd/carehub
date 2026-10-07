@@ -27,7 +27,7 @@ export default async function ReferralsPage({ searchParams }: { searchParams: Pr
           : { status: { in: ["CLOSED", "CANCELLED"] } };
   const now = Date.now();
   const q = sp.q?.trim();
-  const patientWhere: Prisma.OutgoingReferralWhereInput = q ? { OR: [{ patient: { lastName: { contains: q } } }, { patient: { firstName: { contains: q } } }, { patient: { mrn: { contains: q } } }, { toName: { contains: q } }] } : {};
+  const patientWhere: Prisma.OutgoingReferralWhereInput = q ? { OR: [{ patient: { lastName: { contains: q, mode: "insensitive" } } }, { patient: { firstName: { contains: q, mode: "insensitive" } } }, { patient: { mrn: { contains: q, mode: "insensitive" } } }, { toName: { contains: q, mode: "insensitive" } }] } : {};
   let refs = await prisma.outgoingReferral.findMany({ where: { practiceId: user.practiceId, ...where, ...patientWhere }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 300 });
   const overdue = (r: (typeof refs)[number]) => Boolean(r.sentAt && ["SENT", "SCHEDULED"].includes(r.status) && now - r.sentAt.getTime() > r.followUpDays * 86_400_000);
   if (view === "overdue") refs = refs.filter(overdue);

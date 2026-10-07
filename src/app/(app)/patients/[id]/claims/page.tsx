@@ -6,6 +6,8 @@ import { claimNumber, claimStatusLabel } from "@/lib/claim-format";
 import { ageFromDob, formatDate, formatMoney, formatTime, patientName } from "@/lib/format";
 import { PatientShell, loadPatientShell } from "../patient-shell";
 import { allowed, rolesFor } from "@/lib/permissions";
+import { STATEMENT_CHANNELS } from "@/lib/statements";
+import { saveStatementPreference } from "@/app/(app)/statements/actions";
 
 // Billing staff open a claim; the front desk sees the account (for patient questions) without the claim editor.
 const CLAIM_OPEN_ROLES = rolesFor("billing.work");
@@ -13,7 +15,7 @@ const CLOSED = ["PAID", "VOID", "WRITTEN_OFF"];
 const WITH_PAYER = ["DENIED", "EDI_REJECTED", "APPEAL"];
 const METHODS: Record<string, string> = { CHECK: "Check", EFT: "EFT / ACH", CARD: "Card", CASH: "Cash", NON: "No payment", OTHER: "Other" };
 
-type Search = { from?: string; to?: string; payerType?: string; method?: string; ref?: string; amount?: string };
+type Search = { from?: string; to?: string; payerType?: string; method?: string; ref?: string; amount?: string; ok?: string; error?: string };
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const minus = (cents: number) => (cents ? `- ${formatMoney(cents)}` : "");
@@ -31,6 +33,7 @@ export default async function PatientAccountPage({ params, searchParams }: { par
   const sp = await searchParams;
   const shell = await loadPatientShell(id, user);
   const canOpen = allowed(user, CLAIM_OPEN_ROLES);
+  const statementPrefs = await prisma.patient.findUnique({ where: { id }, select: { statementPreference: true, statementHold: true, statementHoldReason: true, statementHoldUntil: true } });
 
   const now = new Date();
   const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
@@ -221,6 +224,38 @@ export default async function PatientAccountPage({ params, searchParams }: { par
         </dl>
       </details>
 
+      {sp.ok && <p className="notice-ok">{sp.ok}</p>}
+      {sp.error && (
+        <p className="gw-error" role="alert">
+          {sp.error}
+        </p>
+      )}
+      <form className="panel cn-inline" action={saveStatementPreference.bind(null, id)} style={{ marginBottom: "1rem", alignItems: "flex-end" }}>
+        <label>
+          Statements by
+          <select name="statementPreference" defaultValue={statementPrefs?.statementPreference ?? "PAPER"}>
+            {Object.entries(STATEMENT_CHANNELS).map(([k, l]) => (
+              <option key={k} value={k}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="checkbox-inline">
+          <input type="checkbox" name="statementHold" defaultChecked={statementPrefs?.statementHold ?? false} /> Hold statements
+        </label>
+        <label>
+          Reason
+          <input name="statementHoldReason" defaultValue={statementPrefs?.statementHoldReason ?? ""} placeholder="e.g. returned mail, dispute" />
+        </label>
+        <label>
+          Until
+          <input name="statementHoldUntil" type="date" defaultValue={statementPrefs?.statementHoldUntil ? statementPrefs.statementHoldUntil.toISOString().slice(0, 10) : ""} />
+        </label>
+        <button className="btn secondary" type="submit">
+          Save
+        </button>
+      </form>
       <section className="panel gw-table acct-ledger">
         <table>
           <thead>

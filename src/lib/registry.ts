@@ -61,18 +61,18 @@ export async function runRegistry(practiceId: string, c: RegistryCriteria, opts:
   if (dx.length) {
     and.push({
       OR: dx.flatMap((code) => [
-        { problems: { some: { status: "ACTIVE", icd10: { startsWith: code } } } },
-        { encounters: { some: { diagnoses: { some: { icd10: { startsWith: code } } } } } },
+        { problems: { some: { status: "ACTIVE", icd10: { startsWith: code, mode: "insensitive" } } } },
+        { encounters: { some: { diagnoses: { some: { icd10: { startsWith: code, mode: "insensitive" } } } } } },
       ]),
     });
   }
-  if (meds.length) and.push({ OR: meds.map((name) => ({ medications: { some: { status: "ACTIVE", name: { contains: name } } } })) });
+  if (meds.length) and.push({ OR: meds.map((name) => ({ medications: { some: { status: "ACTIVE", name: { contains: name, mode: "insensitive" } } } })) });
   if (c.wound === "ANY") and.push({ wounds: { some: { status: "ACTIVE" } } });
   else if (c.wound === "NONE") and.push({ wounds: { none: { status: "ACTIVE" } } });
   else if (c.wound && c.wound in etiologyLabel) and.push({ wounds: { some: { status: "ACTIVE", etiology: c.wound } } });
   if (c.payer) and.push({ insurances: { some: { active: true, payerId: c.payer } } });
   if (c.provider) and.push({ OR: [{ woundCarePhysicianId: c.provider }, { primaryCarePhysicianId: c.provider }, { referringPhysicianId: c.provider }] });
-  if (c.need && c.need in sdohDomainLabel) and.push({ sdohScreenings: { some: { needs: { contains: c.need } } } });
+  if (c.need && c.need in sdohDomainLabel) and.push({ sdohScreenings: { some: { needs: { contains: c.need, mode: "insensitive" } } } });
   if (c.consent === "YES" || c.consent === "NO") and.push({ textConsent: c.consent });
   if (c.consent === "NONE") and.push({ textConsent: null });
 

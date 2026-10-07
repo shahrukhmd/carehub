@@ -1,4 +1,7 @@
 import { PatientThread } from "@/components/PatientThread";
+import { ChartTools } from "@/components/ChartTools";
+import { EducationPanel } from "./education-panel";
+import { ageFromDob } from "@/lib/format";
 import { HandoffHeader } from "@/components/HandoffHeader";
 
 import { CodeLookup } from "@/components/CodeLookup";
@@ -122,13 +125,13 @@ export default async function EncounterPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; step?: string; wound?: string; threadOk?: string; threadError?: string }>;
+  searchParams: Promise<{ error?: string; step?: string; wound?: string; threadOk?: string; threadError?: string; eduError?: string }>;
 }) {
   const user = await requireUser(ENCOUNTER_VIEW_ROLES);
   const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
   await requireEncounterAccess(user, id);
-  const { error, step: stepParam, wound: woundParam, threadOk, threadError } = await searchParams;
+  const { error, step: stepParam, wound: woundParam, threadOk, threadError, eduError } = await searchParams;
   const encounter = await prisma.encounter.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -198,6 +201,7 @@ export default async function EncounterPage({
   const reconciledBy = encounter.reconciledById ? (staffMembers.find((m) => m.userId === encounter.reconciledById)?.user.name ?? null) : null;
   const noteEmpty = !encounter.subjective && !encounter.objective && !encounter.assessment && !encounter.plan;
   const codingEditable = canEditCoding(status, user);
+  const macros = clinicalEditable ? await prisma.textMacro.findMany({ where: { practiceId: user.practiceId, OR: [{ userId: null }, { userId: user.id }] }, orderBy: { shortcut: "asc" } }) : [];
   // No self-review: the step's forms are replaced by a notice when this person documented or reviewed the visit.
   const cdsSelf = CDS_STAGES.includes(status) && isCdsRole(user) ? await selfReviewBlock(encounter.id, user.id, "cds") : null;
   const codingSelf = status === "READY_FOR_CODING" && isCoderRole(user) ? await selfReviewBlock(encounter.id, user.id, "coding") : null;
@@ -1508,6 +1512,18 @@ export default async function EncounterPage({
 
       <div className="stack">
         <HandoffHeader practiceId={user.practiceId} patientId={encounter.patientId} encounterId={encounter.id} audience={status === "READY_FOR_CODING" || status === "CODING_QUERY" ? "coding" : "chart"} />
+        {clinicalEditable && (
+          <ChartTools
+            macros={macros.map((m) => ({ shortcut: m.shortcut, text: m.text, section: m.section }))}
+            context={{
+              patient: patientName(encounter.patient),
+              age: String(ageFromDob(encounter.patient.dob)),
+              sex: encounter.patient.sex === "F" ? "female" : encounter.patient.sex === "M" ? "male" : "patient",
+              today: new Date().toLocaleDateString("en-US"),
+              vitals: encounter.vitals ? [encounter.vitals.bpSystolic && encounter.vitals.bpDiastolic ? `BP ${encounter.vitals.bpSystolic}/${encounter.vitals.bpDiastolic}` : "", encounter.vitals.heartRate ? `HR ${encounter.vitals.heartRate}` : "", encounter.vitals.spo2 ? `SpO2 ${encounter.vitals.spo2}%` : "", encounter.vitals.weightKg ? `Wt ${encounter.vitals.weightKg} kg` : ""].filter(Boolean).join(", ") : "",
+            }}
+          />
+        )}
         <div className="page-head vw-head" style={{ marginBottom: 0 }}>
           <div>
             <p className="muted">
@@ -1924,6 +1940,8 @@ export default async function EncounterPage({
             )}
           </fieldset>
         </form>
+
+        <EducationPanel encounterId={encounter.id} editable={clinicalEditable} error={eduError} />
 
         {/* ---------------- Team communication, kept on the patient ---------------- */}
         <PatientThread

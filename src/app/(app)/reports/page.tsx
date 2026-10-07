@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { reportRange } from "@/lib/financial-reports";
 import { OPS_REPORTS, runOpsReport } from "@/lib/ops-reports";
 import { REPORTS as FINANCIAL_REPORTS } from "@/lib/financial-reports";
+import { CATALOG } from "@/lib/report-catalog";
 import { can, type Subject } from "@/lib/permissions";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -139,7 +140,19 @@ function ReportsHome({ role }: { role: Subject }) {
       title: "Revenue cycle",
       about: "Collections, A/R, denials, payer mix and coding",
       show: can(role, "billing.work"),
-      items: FINANCIAL_REPORTS.map(([k, l, d]) => ({ href: `/billing/reports?r=${k}`, label: l, about: d })),
+      items: [...FINANCIAL_REPORTS.map(([k, l, d]) => ({ href: `/billing/reports?r=${k}`, label: l, about: d })), ...CATALOG.filter((r) => r.group === "revenue" && !FINANCIAL_REPORTS.some(([k]) => k === r.key)).map((r) => ({ href: r.href, label: r.label, about: r.about }))],
+    },
+    {
+      title: "Patient accounts",
+      about: "Statements, payment plans and collections",
+      show: can(role, "billing.work"),
+      items: CATALOG.filter((r) => r.group === "accounts").map((r) => ({ href: r.href, label: r.label, about: r.about })),
+    },
+    {
+      title: "Operations",
+      about: "Deposits and the bank, imports, automation runs",
+      show: can(role, "billing.work"),
+      items: CATALOG.filter((r) => r.group === "operations").map((r) => ({ href: r.href, label: r.label, about: r.about })),
     },
     {
       title: "Credentialing",
@@ -155,7 +168,7 @@ function ReportsHome({ role }: { role: Subject }) {
           <p className="muted">Insights</p>
           <h1>Reports</h1>
           <p className="muted" style={{ margin: 0 }}>
-            Every report, by the work it serves. Each one runs for a date range and exports to CSV. The <Link href="/dashboard">dashboard</Link> shows today&apos;s numbers at a glance.
+            Every report, by the work it serves. Each one runs for a date range and exports to CSV. <Link href="/reports/subscriptions">Saved views &amp; email subscriptions</Link>. The <Link href="/dashboard">dashboard</Link> shows today&apos;s numbers at a glance.
           </p>
         </div>
       </div>

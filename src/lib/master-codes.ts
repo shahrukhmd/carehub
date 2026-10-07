@@ -175,7 +175,7 @@ export async function searchMasterCodes(q: string, sets: CodeSet[], take = 30): 
   const rows = await prisma.masterCode.findMany({
     where: {
       codeSet: { in: sets },
-      OR: [{ code: { startsWith: needle.toUpperCase() } }, ...(looksLikeCode ? [] : [{ AND: words.map((w) => ({ description: { contains: w } })) }])],
+      OR: [{ code: { startsWith: needle.toUpperCase(), mode: "insensitive" as const } }, ...(looksLikeCode ? [] : [{ AND: words.map((w) => ({ description: { contains: w, mode: "insensitive" as const } })) }])],
     },
     orderBy: [{ billable: "desc" }, { code: "asc" }],
     take,

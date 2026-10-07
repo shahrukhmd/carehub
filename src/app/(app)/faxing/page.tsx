@@ -243,7 +243,7 @@ async function Outbound({ practiceId, sp }: { practiceId: string; sp: Search }) 
     ...(finalized === "yes" ? { status: { in: SIGNED_STATUSES } } : finalized === "no" ? { status: { notIn: SIGNED_STATUSES } } : {}),
     ...(sp.providerId ? { providerId: sp.providerId } : {}),
     ...(sp.locationId ? { appointment: { locationId: sp.locationId } } : {}),
-    ...(sp.patient ? { patient: { OR: [{ lastName: { contains: sp.patient } }, { firstName: { contains: sp.patient } }, { mrn: { contains: sp.patient } }] } } : {}),
+    ...(sp.patient ? { patient: { OR: [{ lastName: { contains: sp.patient, mode: "insensitive" } }, { firstName: { contains: sp.patient, mode: "insensitive" } }, { mrn: { contains: sp.patient, mode: "insensitive" } }] } } : {}),
   };
   const encounters = await prisma.encounter.findMany({
     where,

@@ -154,6 +154,10 @@ export function InsuranceForm({ action, payer, otherPayers, submitLabel, from }:
               Appeal limit (days from denial)
               <input name="appealLimitDays" type="number" min="0" defaultValue={v("appealLimitDays")} placeholder="120" />
             </label>
+            <label title="Days after submission with no remittance before the nightly job opens a follow-up item.">
+              Follow up after (days with no response)
+              <input name="outstandingDays" type="number" min="1" max="365" defaultValue={v("outstandingDays")} placeholder="30" />
+            </label>
           </div>
         </section>
 

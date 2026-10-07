@@ -19,7 +19,7 @@ export default async function PatientScansPage({ params, searchParams }: { param
 
   const [scans, visits] = await Promise.all([
     prisma.patientDocument.findMany({
-      where: { patientId: id, practiceId: user.practiceId, ...(q ? { name: { contains: q } } : {}) },
+      where: { patientId: id, practiceId: user.practiceId, ...(q ? { name: { contains: q, mode: "insensitive" } } : {}) },
       orderBy: { createdAt: "desc" },
       take: 500,
     }),

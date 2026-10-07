@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatTime, patientName } from "@/lib/format";
+import { alertMarks } from "@/lib/patient-alerts";
 import { FLOW_ROLES, FLOW_STAGES, flowTimes, minutesBetween } from "@/lib/flow";
 import { visitTypeNames } from "@/lib/scheduler-setup";
 import { AutoRefresh } from "@/components/AutoRefresh";
@@ -52,6 +53,7 @@ export default async function FlowBoardPage({ searchParams }: { searchParams: Pr
     noShows: rows.filter((r) => r.a.status === "NO_SHOW").length,
   };
   const name = (p: { firstName: string; lastName: string }) => (privacy ? `${p.firstName[0]}. ${p.lastName[0]}.` : patientName(p));
+  const marks = await alertMarks(user.practiceId, [...new Set(appts.map((a) => a.patientId))]);
   const q = (extra: Record<string, string>) => {
     const u = new URLSearchParams({ ...(sp.date ? { date: sp.date } : {}), ...(sp.locationId ? { locationId: sp.locationId } : {}), ...(sp.providerId ? { providerId: sp.providerId } : {}), ...(privacy ? { privacy: "1" } : {}), ...extra });
     return `/flow?${u}`;
@@ -131,7 +133,14 @@ export default async function FlowBoardPage({ searchParams }: { searchParams: Pr
               {list.map(({ a, t, waitNow, late }) => (
                 <article key={a.id} className={`fb-card${waitNow !== null && waitNow >= 20 ? " fb-long" : ""}${late ? " fb-late" : ""}`}>
                   <div className="fb-top">
-                    <strong>{name(a.patient)}</strong>
+                    <strong>
+                      {name(a.patient)}
+                      {marks.get(a.patientId) && (
+                        <Link href={`/patients/${a.patientId}/alerts`} className={`pa-dot pa-${marks.get(a.patientId)!.severity.toLowerCase()}`} title={`${marks.get(a.patientId)!.count} patient alert${marks.get(a.patientId)!.count === 1 ? "" : "s"}`}>
+                          {marks.get(a.patientId)!.severity === "STOP" ? "⛔" : "⚠"}
+                        </Link>
+                      )}
+                    </strong>
                     <span className="muted">{formatTime(a.startsAt)}</span>
                   </div>
                   <div className="muted cn-small">

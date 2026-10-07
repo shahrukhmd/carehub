@@ -18,7 +18,7 @@ export async function goToClaim(fd: FormData) {
   const candidates = await prisma.claim.findMany({
     where: {
       practiceId: user.practiceId,
-      OR: [{ id: raw }, { clearinghouseClaimId: raw }, { id: { endsWith: tail.slice(-6).toLowerCase() } }],
+      OR: [{ id: raw }, { clearinghouseClaimId: raw }, { id: { endsWith: tail.slice(-6).toLowerCase(), mode: "insensitive" } }],
     },
     select: { id: true, createdAt: true, clearinghouseClaimId: true },
     take: 20,

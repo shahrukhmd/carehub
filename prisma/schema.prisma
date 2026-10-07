@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -14,9 +14,46 @@ model Organization {
   name      String
   createdAt DateTime   @default(now())
   practices Practice[]
+  // Client account (a billing company's customer): details, status, commercial terms and onboarding.
+  legalName          String?
+  taxId              String?
+  contactName        String?
+  contactEmail       String?
+  contactPhone       String?
+  accountManager     String?
+  status             String    @default("ACTIVE")
+  statusReason       String?
+  terminatedAt       DateTime?
+  feePercent         Float?
+  minimumMonthlyCents Int?
+  invoiceDay         Int       @default(1)
+  onboarding         String?
+  notes              String?
+  // Sign-in policy for every user in the organization's practices.
+  maxFailedLogins    Int       @default(5)
+  lockoutMinutes     Int       @default(15)
+  passwordMaxAgeDays Int       @default(0)
+  twoFactorRequired  Boolean   @default(false)
+  idleTimeoutMinutes Int       @default(0)
+  ipAllowlist        String?
+  ipAllowlistExempt  String?
 }
 
 model Practice {
+  interfaceMessages InterfaceMessage[]
+  textMacros     TextMacro[]
+  educationResources EducationResource[]
+  reportSubscriptions ReportSubscription[]
+  monitoringRules MonitoringRule[]
+  importMappings ImportMapping[]
+  payerRuleSets  PayerRuleSet[]
+  periodCloses   PeriodClose[]
+  bankImports    BankImport[]
+  statementRuns  StatementRun[]
+  paymentPlans   PaymentPlan[]
+  collectionsCases CollectionsCase[]
+  claimFollowUps ClaimFollowUp[]
+  patientAlerts PatientAlert[]
   woundProducts WoundProduct[]
   treatmentSteps TreatmentStep[]
   woundTreatments WoundTreatment[]
@@ -118,6 +155,7 @@ model Membership {
 }
 
 model Location {
+  billingOverrides PayerBillingOverride[]
   id           String        @id @default(cuid())
   practiceId   String
   practice     Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -156,6 +194,13 @@ model Location {
 }
 
 model User {
+  textMacros      TextMacro[]
+  reportSubscriptions ReportSubscription[]
+  followUpsOwned  ClaimFollowUp[] @relation("FollowUpOwner")
+  alertsCreated   PatientAlert[] @relation("AlertCreator")
+  alertsResolved  PatientAlert[] @relation("AlertResolver")
+  alertsAssigned  PatientAlert[] @relation("AlertAssignee")
+  alertAcks       AlertAcknowledgement[]
   woundTreatments WoundTreatment[]
   id          String        @id @default(cuid())
   practiceId  String
@@ -202,6 +247,12 @@ model User {
   patientDashboard         String?
   // The practice dashboard tiles this user chose ("My view"), JSON list of tile keys.
   dashboardTiles           String?
+  // Account security: lockout after failed sign-ins, forced password change, second factor.
+  failedLogins             Int       @default(0)
+  lockedUntil              DateTime?
+  mustChangePassword       Boolean   @default(false)
+  passwordChangedAt        DateTime?
+  twoFactorMethod          String    @default("NONE")
   documentsCompleted       EncounterDocument[]  @relation("DocumentCompletedBy")
   documentsSigned          EncounterDocument[]  @relation("DocumentSignedBy")
   attachmentsUploaded      EncounterAttachment[]
@@ -258,9 +309,24 @@ model Session {
   activePractice   Practice? @relation(fields: [activePracticeId], references: [id], onDelete: SetNull)
   expiresAt        DateTime
   createdAt        DateTime  @default(now())
+  // Idle timeout and the emailed second factor (only the code's hash is kept).
+  lastSeenAt       DateTime  @default(now())
+  twoFactorPending Boolean   @default(false)
+  otpHash          String?
+  otpExpiresAt     DateTime?
+  otpAttempts      Int       @default(0)
 }
 
 model Patient {
+  educationResources EducationResource[]
+  paymentPlans PaymentPlan[]
+  collectionsCases CollectionsCase[]
+  // Statement delivery and hold (Claims & balance page).
+  statementPreference String   @default("PAPER")
+  statementHold       Boolean  @default(false)
+  statementHoldReason String?
+  statementHoldUntil  DateTime?
+  alerts       PatientAlert[]
   teamMessages PatientMessage[]
   id              String        @id @default(cuid())
   practiceId      String
@@ -463,6 +529,7 @@ model Insurance {
 }
 
 model Payer {
+  ruleSets     PayerRuleSet[]
   id           String      @id @default(cuid())
   practiceId   String
   practice     Practice    @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -502,6 +569,8 @@ model Payer {
   timelyFilingAlertDays Int?
   // Days the payer allows to appeal a denial, counted from the denial date.
   appealLimitDays       Int?
+  // Days after submission with no remittance before a follow-up item opens (nightly job); default 30.
+  outstandingDays       Int?
   reimbursementRate     Float?
   notes                 String?
   insurances   Insurance[]
@@ -560,6 +629,7 @@ model GroupPayerEnrollment {
 // One record per provider, carrying any mix of roles (referring, clinician,
 // rendering, supervising). Only rendering providers are credentialed with payers.
 model RenderingProvider {
+  billingOverrides PayerBillingOverride[]
   id                    String    @id @default(cuid())
   practiceId            String
   practice              Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -791,6 +861,7 @@ model Appointment {
 }
 
 model Encounter {
+  educationResources EducationResource[]
   woundTreatments WoundTreatment[]
   id            String        @id @default(cuid())
   practiceId    String
@@ -1002,6 +1073,10 @@ model Claim {
   rejectionReason       String?
 
   lines          ClaimLine[]
+  followUps      ClaimFollowUp[]
+  // Dunning: how many statements this claim has been on, and when the last went out.
+  statementCycle   Int       @default(0)
+  lastStatementAt  DateTime?
   diagnoses      ClaimDiagnosis[]
   events         ClaimEvent[]
   applications   PaymentApplication[]
@@ -1042,6 +1117,87 @@ model Statement {
   totalCents Int
   createdAt  DateTime        @default(now())
   lines      StatementLine[]
+  // The dunning cycle: which notice this is, how it went out, and the run it belongs to.
+  runId        String?
+  run          StatementRun?   @relation(fields: [runId], references: [id], onDelete: SetNull)
+  cycle        Int             @default(1)
+  channel      String          @default("PAPER")
+  status       String          @default("GENERATED")
+  sentAt       DateTime?
+  message      String?
+  deliveryNote String?
+}
+
+// One statement run: who ran it, how many statements, the total.
+model StatementRun {
+  id          String      @id @default(cuid())
+  practiceId  String
+  practice    Practice    @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  createdById String?
+  createdAt   DateTime    @default(now())
+  status      String      @default("GENERATED")
+  count       Int         @default(0)
+  totalCents  Int         @default(0)
+  note        String?
+  statements  Statement[]
+}
+
+// A patient's agreed instalments; active plans pause statements and follow-ups.
+model PaymentPlan {
+  id              String                   @id @default(cuid())
+  practiceId      String
+  practice        Practice                 @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  totalCents      Int
+  installmentCents Int
+  frequency       String                   @default("MONTHLY")
+  method          String                   @default("MANUAL")
+  cardRef         String?
+  nextDueAt       DateTime?
+  paidCents       Int                      @default(0)
+  missed          Int                      @default(0)
+  status          String                   @default("ACTIVE")
+  note            String?
+  createdById     String?
+  createdAt       DateTime                 @default(now())
+  completedAt     DateTime?
+  installments    PaymentPlanInstallment[]
+
+  @@index([practiceId, status])
+}
+
+model PaymentPlanInstallment {
+  id         String      @id @default(cuid())
+  planId     String
+  plan       PaymentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  dueAt      DateTime
+  amountCents Int
+  status     String      @default("DUE")
+  paidAt     DateTime?
+  receiptId  String?
+}
+
+// An account that finished the statement cycle: what the practice decided and, when referred, which agency.
+model CollectionsCase {
+  id           String    @id @default(cuid())
+  practiceId   String
+  practice     Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  balanceCents Int
+  status       String    @default("REVIEW")
+  agency       String?
+  referredAt   DateTime?
+  note         String?
+  outcome      String?
+  createdById  String?
+  decidedById  String?
+  decidedAt    DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([practiceId, status])
 }
 
 model StatementLine {
@@ -1068,6 +1224,41 @@ model Deposit {
   applications   PaymentApplication[]
   // Front-desk collections (copays, prepayments) waiting to be applied to the patient's claims.
   patientId      String?
+  // Bank side: OPEN -> DEPOSITED (on a slip) -> RECONCILED (matched to a bank statement credit).
+  status         String    @default("OPEN")
+  depositDate    DateTime?
+  bankAccount    String?
+  bankRef        String?
+  reconciledAt   DateTime?
+}
+
+// A closed month: who closed it, the frozen numbers, and any reopening.
+model PeriodClose {
+  id           String    @id @default(cuid())
+  practiceId   String
+  practice     Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  period       String
+  closedAt     DateTime  @default(now())
+  closedById   String?
+  note         String?
+  snapshot     String?
+  reopenedAt   DateTime?
+  reopenedById String?
+  reopenReason String?
+
+  @@unique([practiceId, period])
+}
+
+// One bank statement import and what it could not match.
+model BankImport {
+  id           String   @id @default(cuid())
+  practiceId   String
+  practice     Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  importedById String?
+  createdAt    DateTime @default(now())
+  lines        Int      @default(0)
+  matched      Int      @default(0)
+  unmatched    String   @default("[]")
 }
 
 model PaymentApplication {
@@ -1710,6 +1901,17 @@ model PracticeSettings {
   referralFollowUpDays Int @default(30)
   // Thresholds & timers (Practice setup): small-balance write-off default, and how far ahead an appeal deadline is flagged.
   smallBalanceCents    Int @default(500)
+  // A patient balance at or above this raises a computed "collect balance" alert (0 = off).
+  alertBalanceCents    Int @default(10000)
+  // An ERA paying under the charge-schedule allowable by more than this opens an underpayment follow-up.
+  underpaymentToleranceCents Int @default(500)
+  // Statement cycle: days between notices, notices before collections, minimum balance, the message per notice.
+  statementMinDays   Int     @default(28)
+  statementCycles    Int     @default(3)
+  statementMinCents  Int     @default(500)
+  statementMessage1  String?
+  statementMessage2  String?
+  statementMessage3  String?
   appealAlertDays      Int @default(14)
 }
 
@@ -2609,6 +2811,8 @@ model ImportBatch {
   practiceId  String
   practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   fileName    String
+  // PATIENTS | COVERAGE | BALANCES | APPOINTMENTS
+  kind        String   @default("PATIENTS")
   // PREVIEW | IMPORTED | UNDONE
   status      String   @default("PREVIEW")
   // JSON: column mapping, parsed rows with validation results
@@ -3132,4 +3336,259 @@ model WoundTreatmentLine {
   unit         String         @default("each")
   instructions String?
   sortOrder    Int            @default(0)
+}
+
+// A sticky note on a patient that shows wherever the patient is opened, in the chosen places, during its dates.
+model PatientAlert {
+  id             String    @id @default(cuid())
+  practiceId     String
+  practice       Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type           String
+  severity       String    @default("WARNING")
+  message        String
+  // Comma-separated placements: chart, schedule, checkin, billing.
+  showOn         String
+  activeFrom     DateTime  @default(now())
+  activeTo       DateTime?
+  assignedToId   String?
+  assignedTo     User?     @relation("AlertAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  status         String    @default("ACTIVE")
+  createdById    String?
+  createdBy      User?     @relation("AlertCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+  resolvedById   String?
+  resolvedBy     User?     @relation("AlertResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolvedAt     DateTime?
+  resolveComment String?
+  acknowledgements AlertAcknowledgement[]
+
+  @@index([practiceId, patientId, status])
+}
+
+// Who saw a STOP alert, where and when; booking and check-in need one from the person doing the step.
+model AlertAcknowledgement {
+  id        String       @id @default(cuid())
+  alertId   String
+  alert     PatientAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  placement String
+  createdAt DateTime     @default(now())
+
+  @@index([alertId, userId, createdAt])
+}
+
+// One run of a background job (scheduled or by hand), with its outcome.
+model JobRun {
+  id          String    @id @default(cuid())
+  job         String
+  triggeredBy String    @default("SCHEDULE")
+  userId      String?
+  status      String    @default("RUNNING")
+  startedAt   DateTime  @default(now())
+  finishedAt  DateTime?
+  summary     String?
+  error       String?
+
+  @@index([job, startedAt])
+}
+
+// One worked AR item per claim: why it is open, who owns it, how urgent, when to look again, and the SLA.
+model ClaimFollowUp {
+  id             String    @id @default(cuid())
+  practiceId     String
+  practice       Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  claimId        String
+  claim          Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  trigger        String
+  status         String    @default("OPEN")
+  note           String?
+  lastAction     String?
+  ownerId        String?
+  owner          User?     @relation("FollowUpOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  priority       Int       @default(0)
+  balanceCents   Int       @default(0)
+  expectedCents  Int?
+  paidCents      Int?
+  tickleAt       DateTime?
+  tickles        Int       @default(0)
+  slaDueAt       DateTime?
+  deadlineAt     DateTime?
+  escalatedAt    DateTime?
+  resolvedReason String?
+  resolvedAt     DateTime?
+  lastActionAt   DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([practiceId, status, priority])
+  @@index([claimId])
+}
+
+// How claims to a payer are built, effective by date of service. One set applies at a time.
+model PayerRuleSet {
+  id                  String    @id @default(cuid())
+  practiceId          String
+  practice            Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  payerId             String
+  payer               Payer     @relation(fields: [payerId], references: [id], onDelete: Cascade)
+  effectiveFrom       DateTime
+  effectiveTo         DateTime?
+  submissionType      String    @default("ELECTRONIC")
+  paperForm           String    @default("CMS1500")
+  claimPayerId        String?
+  eligibilityPayerId  String?
+  statusPayerId       String?
+  crossover           String    @default("AUTO")
+  renderingRule       String    @default("ALWAYS")
+  serviceLocationRule String    @default("ALWAYS")
+  homeBound           Boolean   @default(false)
+  hold                Boolean   @default(false)
+  holdReason          String?
+  holdUntil           DateTime?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  overrides           PayerBillingOverride[]
+
+  @@index([practiceId, payerId, effectiveFrom])
+}
+
+// Whom to bill under, which tax identifier and which pay-to address, for a site and/or rendering provider.
+model PayerBillingOverride {
+  id                  String            @id @default(cuid())
+  ruleSetId           String
+  ruleSet             PayerRuleSet      @relation(fields: [ruleSetId], references: [id], onDelete: Cascade)
+  locationId          String?
+  location            Location?         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  renderingProviderId String?
+  renderingProvider   RenderingProvider? @relation(fields: [renderingProviderId], references: [id], onDelete: Cascade)
+  billUnder           String            @default("PRACTICE")
+  taxIdType           String            @default("EIN")
+  payTo               String            @default("PRACTICE")
+  payToName           String?
+  payToLine1          String?
+  payToLine2          String?
+  payToCity           String?
+  payToState          String?
+  payToZip            String?
+  taxonomy            String?
+  legacyId            String?
+}
+
+// A column mapping remembered per practice and kind of file, keyed by the file's header row.
+model ImportMapping {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  kind       String
+  signature  String
+  name       String
+  map        String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([practiceId, kind, signature])
+}
+
+// A user's saved report view (cadence NONE) or a scheduled CSV delivery by email.
+model ReportSubscription {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reportKey   String
+  name        String
+  cadence     String    @default("NONE")
+  rangePreset String    @default("LAST_7")
+  active      Boolean   @default(true)
+  lastSentAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([practiceId, userId])
+}
+
+// A built-in data-quality check switched on for a practice, with its threshold, recipients and last result.
+model MonitoringRule {
+  id         String    @id @default(cuid())
+  practiceId String
+  practice   Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  checkKey   String
+  active     Boolean   @default(true)
+  threshold  Int       @default(1)
+  recipients String?
+  lastRunAt  DateTime?
+  lastCount  Int?
+  lastDetail String?
+  createdAt  DateTime  @default(now())
+
+  @@unique([practiceId, checkKey])
+}
+
+// A dot-phrase: ".shortcut" expands to text in any note field. userId null = the practice set.
+model TextMacro {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shortcut    String
+  section     String   @default("UNIVERSAL")
+  text        String
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([practiceId, userId, shortcut])
+}
+
+// Education material or instructions attached to a visit, printed on the visit summary.
+model EducationResource {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  encounterId String
+  encounter   Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  title       String
+  url         String?
+  summary     String?
+  source      String    @default("Provider")
+  language    String    @default("en")
+  forCode     String?
+  addedById   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([encounterId])
+}
+
+// A result message received from a lab/imaging interface (HL7 v2 ORU, FHIR DiagnosticReport or an uploaded
+// file). The raw payload is kept so a message can be re-filed after the order is linked or corrected.
+model InterfaceMessage {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  apiClientId String?
+  // HL7 | FHIR | FILE
+  channel     String    @default("HL7")
+  messageType String?
+  controlId   String?
+  sender      String?
+  raw         String
+  // RECEIVED | FILED | PARTIAL | UNMATCHED | FAILED | DISCARDED
+  status      String    @default("RECEIVED")
+  patientHint String?
+  requisition String?
+  orderId     String?
+  filedCount  Int       @default(0)
+  detail      String?
+  ack         String?
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([practiceId, status, receivedAt])
 }

@@ -67,7 +67,7 @@ export async function applyPatientCredit(patientId: string, userId: string | nul
 async function nextReceiptNumber(practiceId: string) {
   const d = new Date();
   const prefix = `RC${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-  const n = await prisma.receipt.count({ where: { practiceId, number: { startsWith: prefix } } });
+  const n = await prisma.receipt.count({ where: { practiceId, number: { startsWith: prefix, mode: "insensitive" } } });
   return `${prefix}-${String(n + 1).padStart(3, "0")}`;
 }
 
@@ -104,6 +104,8 @@ export async function collectPayment(input: { practiceId: string; patientId: str
   });
   // Balance payments apply now; copays/prepayments wait as credit until the claim comes back.
   const applied = input.kind === "BALANCE" ? await applyPatientCredit(patient.id, input.userId) : 0;
+  // A payment on an account already placed with an agency is flagged for the billing team.
+  await (await import("@/lib/statements")).flagPaymentAfterReferral(input.practiceId, patient.id, input.amountCents, input.userId);
   await logAudit(input.practiceId, input.userId, "COLLECT_PAYMENT", "Receipt", receipt.id, `${receipt.number} ${formatMoney(input.amountCents)} ${input.method}${applied ? ` · applied ${formatMoney(applied)}` : ""}`);
   return { receipt, applied };
 }

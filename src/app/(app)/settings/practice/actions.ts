@@ -42,6 +42,10 @@ export async function savePracticeSettings(fd: FormData) {
   const appealAlertDays = Number(str("appealAlertDays") ?? 14);
   if (!(Number.isInteger(appealAlertDays) && appealAlertDays >= 1 && appealAlertDays <= 90)) errors.push("Appeal deadline alert must be 1–90 days.");
   const referralFollowUpDays = Number(str("referralFollowUpDays") ?? 30);
+  const alertBalance = Number((str("alertBalance") ?? "100").replace(/[$,\s]/g, ""));
+  const underpayment = Number((str("underpaymentTolerance") ?? "5").replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(underpayment) || underpayment < 0 || underpayment > 1000) errors.push("Underpayment tolerance must be between $0 and $1,000.");
+  if (!Number.isFinite(alertBalance) || alertBalance < 0 || alertBalance > 100000) errors.push("Balance alert must be between $0 and $100,000.");
   if (!(Number.isInteger(referralFollowUpDays) && referralFollowUpDays >= 1 && referralFollowUpDays <= 365)) errors.push("Referral follow-up must be 1–365 days.");
   const clearinghouse = str("clearinghouse") ?? "MOCK";
   const faxRaw = str("faxNumber");
@@ -80,6 +84,14 @@ export async function savePracticeSettings(fd: FormData) {
     smallBalanceCents: Math.round(smallBalance * 100),
     appealAlertDays,
     referralFollowUpDays,
+    alertBalanceCents: Math.round(alertBalance * 100),
+    underpaymentToleranceCents: Math.round(underpayment * 100),
+    statementMinDays: Number(str("statementMinDays") ?? 28) >= 1 && Number(str("statementMinDays") ?? 28) <= 180 ? Math.round(Number(str("statementMinDays") ?? 28)) : 28,
+    statementCycles: Number(str("statementCycles") ?? 3) >= 1 && Number(str("statementCycles") ?? 3) <= 6 ? Math.round(Number(str("statementCycles") ?? 3)) : 3,
+    statementMinCents: Math.max(0, Math.round(Number((str("statementMin") ?? "5").replace(/[$,\s]/g, "")) * 100) || 0),
+    statementMessage1: str("statementMessage1")?.slice(0, 500) ?? null,
+    statementMessage2: str("statementMessage2")?.slice(0, 500) ?? null,
+    statementMessage3: str("statementMessage3")?.slice(0, 500) ?? null,
     documentAiEnabled: on("documentAiEnabled"),
     faxNumber: faxNumber,
     faxProvider: str("faxProvider") && str("faxProvider")! in FAX_PROVIDERS ? str("faxProvider")! : "MOCK",

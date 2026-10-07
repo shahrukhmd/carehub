@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { ensureFollowUp, expectedAllowable, resolveFollowUps } from "@/lib/followups";
 import { logAudit } from "@/lib/audit";
 import { logClaimEvent, refreshVisitBillingStatus } from "@/lib/claims";
 import { claimNumber } from "@/lib/claim-format";
@@ -306,7 +307,7 @@ async function findClaim(practiceId: string, c: ParsedEraClaim) {
   // Our claim number (CLM-YY + last six of the id).
   const m = /^CLM-(\d{2})([A-Z0-9]{6})$/.exec(control);
   if (m) {
-    const hits = await prisma.claim.findMany({ where: { ...open, id: { endsWith: m[2].toLowerCase() } } });
+    const hits = await prisma.claim.findMany({ where: { ...open, id: { endsWith: m[2].toLowerCase(), mode: "insensitive" } } });
     const hit = hits.find((h) => claimNumber(h) === control);
     if (hit) return hit;
   }
@@ -433,9 +434,21 @@ async function postOne(eraClaimId: string, depositId: string, userId: string | n
       remarks: ec.remarks,
       userId,
     });
+    await ensureFollowUp({ claimId: claim.id, trigger: "DENIAL", note: `${reasonText || CLP_STATUS[ec.statusCode] || "Denied"}${main?.reason ? ` (${main.group}-${main.reason})` : ""}`, userId });
   } else {
     await creditRecovery(claim.id, ec.paidCents);
     await resolveDenials(claim.id, ec.paidCents > 0 ? "PAID" : status === "PAID" ? "WRITTEN_OFF" : "PATIENT", userId);
+    // Paid in full closes the follow-up; paid below the allowable opens an underpayment item; a patient balance
+    // hands the claim to the statement cycle.
+    const expected = await expectedAllowable({ ...claim, lines: claim.lines });
+    const tolerance = (await prisma.practiceSettings.findUnique({ where: { practiceId: claim.practiceId }, select: { underpaymentToleranceCents: true } }))?.underpaymentToleranceCents ?? 500;
+    if (expected !== null && ec.paidCents + patientResp + tolerance < expected) {
+      await ensureFollowUp({ claimId: claim.id, trigger: "UNDERPAYMENT", note: `Paid $${(ec.paidCents / 100).toFixed(2)} against an allowable of $${(expected / 100).toFixed(2)}`, userId, expectedCents: expected, paidCents: ec.paidCents });
+    } else if (status === "PAID" || balance <= 0) {
+      await resolveFollowUps(claim.id, "PAID", userId);
+    } else if (balanceResponsibility === "PATIENT") {
+      await ensureFollowUp({ claimId: claim.id, trigger: "PATIENT_BALANCE", note: `Patient responsibility $${(balance / 100).toFixed(2)} after the payer's remittance`, userId, status: "WAITING_PATIENT" });
+    }
   }
   await refreshVisitBillingStatus(claim.encounterId);
   return null;

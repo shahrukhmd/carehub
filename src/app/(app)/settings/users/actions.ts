@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import { ensureRenderingProviderForUser } from "@/lib/credentialing";
-import { PERMISSIONS, parseOverrides, serializeOverrides, type Overrides, type PermissionKey, rolesFor } from "@/lib/permissions";
+import { PERMISSIONS, can, parseOverrideDetails, serializeOverrides, type OverrideDetails, type PermissionKey, rolesFor } from "@/lib/permissions";
 
 const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
 
@@ -33,6 +33,7 @@ export async function createStaff(formData: FormData) {
       email,
       role,
       passwordHash: hashPassword(password),
+      mustChangePassword: true,
       npi: String(formData.get("npi") ?? "").trim() || null,
       specialty: String(formData.get("specialty") ?? "").trim() || null,
     },
@@ -114,7 +115,7 @@ export async function resetStaffPassword(userId: string, formData: FormData) {
   const target = await prisma.user.findFirstOrThrow({ where: { id: userId, practiceId: actor.practiceId } });
   await prisma.user.update({
     where: { id: target.id },
-    data: { passwordHash: hashPassword(password) },
+    data: { passwordHash: hashPassword(password), mustChangePassword: true, failedLogins: 0, lockedUntil: null },
   });
   await prisma.session.deleteMany({ where: { userId: target.id } });
 
@@ -183,26 +184,59 @@ export async function savePermissionOverrides(membershipId: string, formData: Fo
   });
   if (membership.userId === actor.id) throw new Error("You cannot change your own permissions");
 
-  const overrides: Overrides = {};
+  const before = parseOverrideDetails(membership.permissions);
+  const overrides: OverrideDetails = {};
   if (formData.get("intent") !== "reset") {
+    const reason = String(formData.get("reason") ?? "").trim().slice(0, 200);
+    const until = String(formData.get("until") ?? "").trim();
+    if (until && !/^\d{4}-\d{2}-\d{2}$/.test(until)) throw new Error("Pick a valid expiry date");
+    const stamp = new Date().toISOString().slice(0, 10);
+    let changed = 0;
     for (const key of Object.keys(PERMISSIONS) as PermissionKey[]) {
       const v = formData.get(`perm:${key}`);
-      if (v === "allow") overrides[key] = true;
-      else if (v === "deny") overrides[key] = false;
+      const allow = v === "allow" ? true : v === "deny" ? false : undefined;
+      if (allow === undefined) continue;
+      // Anti-escalation: an admin can only grant what they themselves hold in this practice.
+      if (allow && !can(actor, key)) throw new Error(`You cannot grant "${PERMISSIONS[key].label}" — you do not hold it yourself in this practice.`);
+      const prev = before[key];
+      if (prev && prev.allow === allow && !reason && !until) overrides[key] = prev;
+      else {
+        overrides[key] = { allow, reason: reason || prev?.reason, by: actor.id, at: stamp, until: until || prev?.until };
+        changed++;
+      }
     }
+    if (changed && !reason && !Object.values(overrides).some((d) => d?.reason)) throw new Error("Say why these permissions change (a reason is kept with the override).");
   }
   const json = serializeOverrides(membership.role, overrides);
   await prisma.membership.update({ where: { id: membership.id }, data: { permissions: json } });
 
-  const before = parseOverrides(membership.permissions) ?? {};
-  const after = parseOverrides(json) ?? {};
+  const after = parseOverrideDetails(json);
   const changes = (Object.keys(PERMISSIONS) as PermissionKey[])
-    .filter((k) => before[k] !== after[k])
-    .map((k) => `${k}: ${after[k] === undefined ? "default" : after[k] ? "allow" : "deny"}`);
+    .filter((k) => before[k]?.allow !== after[k]?.allow || before[k]?.until !== after[k]?.until)
+    .map((k) => `${k}: ${!after[k] ? "default" : `${after[k]!.allow ? "allow" : "deny"}${after[k]!.until ? ` until ${after[k]!.until}` : ""}${after[k]!.reason ? ` (${after[k]!.reason})` : ""}`}`);
   if (changes.length) {
     await logAudit(actor.practiceId, actor.id, "SET_PERMISSION_OVERRIDES", "User", membership.userId, `${membership.user.email}: ${changes.join(", ")}`);
   }
 
   revalidatePath("/settings/users");
   redirect(`/settings/users?perms=${membership.id}&saved=1#permissions-editor`);
+}
+
+// Lift a lockout before it expires.
+export async function unlockStaff(userId: string) {
+  const actor = await requireUser(["ADMIN"]);
+  const target = await prisma.user.findFirstOrThrow({ where: { id: userId, memberships: { some: { practiceId: actor.practiceId } } } });
+  await prisma.user.update({ where: { id: target.id }, data: { lockedUntil: null, failedLogins: 0 } });
+  await logAudit(actor.practiceId, actor.id, "UNLOCK_ACCOUNT", "User", target.id, target.email);
+  revalidatePath("/settings/users");
+}
+
+// Second factor per user: none, or a code by email at every sign-in.
+export async function setTwoFactor(userId: string, formData: FormData) {
+  const actor = await requireUser(["ADMIN"]);
+  const method = String(formData.get("method") ?? "NONE") === "EMAIL" ? "EMAIL" : "NONE";
+  const target = await prisma.user.findFirstOrThrow({ where: { id: userId, memberships: { some: { practiceId: actor.practiceId } } } });
+  await prisma.user.update({ where: { id: target.id }, data: { twoFactorMethod: method } });
+  await logAudit(actor.practiceId, actor.id, "SET_TWO_FACTOR", "User", target.id, `${target.email}: ${method}`);
+  revalidatePath("/settings/users");
 }

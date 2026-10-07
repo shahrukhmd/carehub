@@ -211,9 +211,9 @@ export async function handleFhir(client: { id: string; practiceId: string; name:
         practiceId,
         // Restricted charts stay out of the API: a client token has no break-the-glass.
         restricted: false,
-        ...(family ? { lastName: { startsWith: family } } : {}),
-        ...(given ? { firstName: { startsWith: given } } : {}),
-        ...(nameQ ? { OR: [{ lastName: { startsWith: nameQ } }, { firstName: { startsWith: nameQ } }] } : {}),
+        ...(family ? { lastName: { startsWith: family, mode: "insensitive" } } : {}),
+        ...(given ? { firstName: { startsWith: given, mode: "insensitive" } } : {}),
+        ...(nameQ ? { OR: [{ lastName: { startsWith: nameQ, mode: "insensitive" } }, { firstName: { startsWith: nameQ, mode: "insensitive" } }] } : {}),
         ...(birth && /^\d{4}-\d{2}-\d{2}$/.test(birth) ? { dob: { gte: new Date(`${birth}T00:00:00Z`), lt: new Date(new Date(`${birth}T00:00:00Z`).getTime() + 86_400_000) } } : {}),
         ...(ident ? { mrn: ident } : {}),
       },

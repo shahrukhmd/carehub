@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { resolveBillingRules } from "@/lib/payer-rules";
 import { claimNumber } from "@/lib/claim-format";
 
 // Builds the ASC X12 005010X222A1 professional claim (837P) for one claim — the file a clearinghouse takes.
@@ -95,13 +96,22 @@ export type Edi837 = { text: string; segments: number; controlNumber: string; mi
 export async function build837P(c: ClaimForEdi, now = new Date()): Promise<Edi837> {
   const settings = await prisma.practiceSettings.findUnique({ where: { practiceId: c.practiceId } });
   const clearinghouse = settings?.clearinghouse ?? "MOCK";
-  const bp = c.billingProvider;
+  const rules = await resolveBillingRules(c);
+  // Whom the claim bills under: the practice's billing provider, the rendering provider's own NPI, or the site's.
+  const bp =
+    rules.billUnder === "PROVIDER" && c.renderingProvider?.npi
+      ? { ...c.billingProvider, name: c.renderingProvider.name, npi: c.renderingProvider.npi, taxonomy: c.renderingProvider.taxonomy ?? c.billingProvider?.taxonomy ?? null, addressLine1: c.renderingProvider.addressLine1 ?? c.billingProvider?.addressLine1 ?? null, addressLine2: c.renderingProvider.addressLine2 ?? null, city: c.renderingProvider.city ?? c.billingProvider?.city ?? null, state: c.renderingProvider.state ?? c.billingProvider?.state ?? null, zip: c.renderingProvider.zip ?? c.billingProvider?.zip ?? null, taxId: c.billingProvider?.taxId ?? null, phone: c.billingProvider?.phone ?? null }
+      : rules.billUnder === "LOCATION" && c.serviceLocation?.npi
+        ? { ...c.billingProvider, name: c.serviceLocation.name, npi: c.serviceLocation.npi, taxonomy: c.billingProvider?.taxonomy ?? null, addressLine1: c.serviceLocation.addressLine1 ?? null, addressLine2: null, city: c.serviceLocation.city ?? null, state: c.serviceLocation.state ?? null, zip: c.serviceLocation.zip ?? null, taxId: c.billingProvider?.taxId ?? null, phone: c.billingProvider?.phone ?? null }
+        : c.billingProvider;
   const taxId = digits((settings?.taxIdSource === "PRACTICE" && settings.practiceTaxId) || bp?.taxId);
+  const billingTaxonomy = rules.taxonomy ?? bp?.taxonomy;
+  const payerId = rules.claimPayerId ?? c.payer?.payerCode;
   const missing: string[] = [];
   if (!bp) missing.push("billing provider");
   if (!bp?.npi) missing.push("billing provider NPI");
   if (!taxId) missing.push("tax ID");
-  if (!c.payer?.payerCode) missing.push("payer ID");
+  if (!payerId) missing.push("payer ID");
   if (!c.insurance?.memberId) missing.push("member ID");
   if (!c.renderingProvider?.npi) missing.push("rendering provider NPI");
   if (c.diagnoses.length === 0) missing.push("diagnosis");
@@ -141,10 +151,26 @@ export async function build837P(c: ClaimForEdi, now = new Date()): Promise<Edi83
   // ---- 2000A / 2010AA billing provider
   let hl = 1;
   body.push(seg("HL", hl, "", "20", "1"));
-  if (taxonomyCode(bp?.taxonomy)) body.push(seg("PRV", "BI", "PXC", taxonomyCode(bp?.taxonomy)));
-  body.push(seg("NM1", "85", "2", clean(bp?.name, 60), "", "", "", "", "XX", digits(bp?.npi)));
+  if (taxonomyCode(billingTaxonomy)) body.push(seg("PRV", "BI", "PXC", taxonomyCode(billingTaxonomy)));
+  body.push(seg("NM1", "85", rules.billUnder === "PROVIDER" ? "1" : "2", clean(bp?.name, 60), "", "", "", "", "XX", digits(bp?.npi)));
   body.push(...address(bp ?? {}));
-  body.push(seg("REF", "EI", taxId));
+  body.push(seg("REF", rules.taxIdType === "SSN" ? "SY" : "EI", taxId));
+  if (rules.legacyId) body.push(seg("REF", "G2", clean(rules.legacyId, 50)));
+  // 2010AB pay-to: only when the money goes somewhere other than the billing provider's address.
+  const payToAddr =
+    rules.payTo === "CUSTOM" && rules.payToAddress
+      ? rules.payToAddress
+      : rules.payTo === "PRACTICE" && settings?.payToAddress1 && rules.billUnder !== "PRACTICE"
+        ? { name: settings.payToName, line1: settings.payToAddress1, line2: settings.payToAddress2, city: settings.payToCity, state: settings.payToState, zip: settings.payToZip }
+        : rules.payTo === "LOCATION" && c.serviceLocation?.addressLine1
+          ? { name: c.serviceLocation.name, line1: c.serviceLocation.addressLine1, line2: null, city: c.serviceLocation.city, state: c.serviceLocation.state, zip: c.serviceLocation.zip }
+          : rules.payTo === "PROVIDER" && c.renderingProvider?.addressLine1
+            ? { name: c.renderingProvider.name, line1: c.renderingProvider.addressLine1, line2: c.renderingProvider.addressLine2, city: c.renderingProvider.city, state: c.renderingProvider.state, zip: c.renderingProvider.zip }
+            : null;
+  if (payToAddr?.line1) {
+    body.push(seg("NM1", "87", "2", clean(payToAddr.name ?? bp?.name, 60)));
+    body.push(...address({ addressLine1: payToAddr.line1, addressLine2: payToAddr.line2, city: payToAddr.city, state: payToAddr.state, zip: payToAddr.zip }));
+  }
   // ---- 2000B subscriber
   const subscriberHl = ++hl;
   body.push(seg("HL", subscriberHl, "1", "22", subscriberIsPatient ? "0" : "1"));
@@ -152,7 +178,7 @@ export async function build837P(c: ClaimForEdi, now = new Date()): Promise<Edi83
   body.push(seg("NM1", "IL", "1", subscriber.last, subscriber.first, subscriber.middle, "", "", "MI", clean(ins?.memberId, 80)));
   body.push(...address(subscriber));
   if (subscriber.dob) body.push(seg("DMG", "D8", d8(subscriber.dob), sex(subscriber.sex)));
-  body.push(seg("NM1", "PR", "2", clean(c.payer?.name ?? c.payerName, 60), "", "", "", "", "PI", clean(c.payer?.payerCode, 80)));
+  body.push(seg("NM1", "PR", "2", clean(c.payer?.name ?? c.payerName, 60), "", "", "", "", "PI", clean(payerId, 80)));
   body.push(...address(c.payer ?? {}));
   // ---- 2000C patient, when someone else holds the policy
   if (!subscriberIsPatient) {
@@ -200,6 +226,7 @@ export async function build837P(c: ClaimForEdi, now = new Date()): Promise<Edi83
   if (c.frequencyCode !== "1" && c.originalReference) body.push(seg("REF", "F8", clean(c.originalReference, 50)));
   if (c.cliaNumber) body.push(seg("REF", "X4", clean(c.cliaNumber, 50)));
   if (c.claimNote) body.push(seg("NTE", "ADD", clean(c.claimNote, 80)));
+  if (rules.homeBound) body.push(seg("CRC", "75", "Y", "IH"));
   if (c.diagnoses.length) {
     body.push(seg("HI", ...c.diagnoses.slice(0, 12).map((d, i) => `${i === 0 ? "ABK" : "ABF"}:${d.icd10.replace(".", "").toUpperCase()}`)));
   }
@@ -210,13 +237,13 @@ export async function build837P(c: ClaimForEdi, now = new Date()): Promise<Edi83
     body.push(seg("NM1", "DN", "1", n.last, n.first, n.middle, "", "", "XX", digits(ref.npi)));
   }
   const rp = c.renderingProvider;
-  if (rp) {
+  if (rp && rules.renderingLoop) {
     const n = personName(rp);
     body.push(seg("NM1", "82", "1", n.last, n.first, n.middle, "", "", "XX", digits(rp.npi)));
     if (taxonomyCode(rp.taxonomy)) body.push(seg("PRV", "PE", "PXC", taxonomyCode(rp.taxonomy)));
   }
   const loc = c.serviceLocation;
-  if (loc && pos !== "12") {
+  if (loc && pos !== "12" && rules.serviceLocationLoop) {
     body.push(seg("NM1", "77", "2", clean(loc.name, 60), "", "", "", "", loc.npi ? "XX" : "", digits(loc.npi) || undefined));
     body.push(...address(loc));
   }

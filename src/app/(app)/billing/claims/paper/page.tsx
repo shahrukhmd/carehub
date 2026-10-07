@@ -34,7 +34,7 @@ export default async function PaperClaimsPage({ searchParams }: { searchParams: 
     ...(view === "PRINTED" ? { clearinghouseStatus: PAPER_STATUS, status: { not: "VOID" } } : { status: { in: RELEASABLE_STATUSES } }),
     ...(view === "AWAITING" ? { OR: [{ payerId: null }, { payer: { payerCode: null } }, { payer: { payerCode: "" } }] } : {}),
     ...(sp.payer ? { payerId: sp.payer } : {}),
-    ...(sp.patient?.trim() ? { patient: { OR: [{ lastName: { contains: sp.patient.trim() } }, { firstName: { contains: sp.patient.trim() } }, { mrn: { startsWith: sp.patient.trim() } }] } } : {}),
+    ...(sp.patient?.trim() ? { patient: { OR: [{ lastName: { contains: sp.patient.trim(), mode: "insensitive" } }, { firstName: { contains: sp.patient.trim(), mode: "insensitive" } }, { mrn: { startsWith: sp.patient.trim(), mode: "insensitive" } }] } } : {}),
   };
   const [found, payers] = await Promise.all([
     prisma.claim.findMany({

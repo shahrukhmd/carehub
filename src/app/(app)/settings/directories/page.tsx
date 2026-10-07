@@ -46,7 +46,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
           where: {
             practiceId: user.practiceId,
             ...(role ? { [role]: true } : {}),
-            ...(q ? { OR: [{ name: { contains: q } }, { npi: { contains: q } }, { specialty: { contains: q } }] } : {}),
+            ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { npi: { contains: q, mode: "insensitive" } }, { specialty: { contains: q, mode: "insensitive" } }] } : {}),
           },
           include: { supervisingProvider: true, user: true },
           orderBy: [{ status: "asc" }, { name: "asc" }],
@@ -56,8 +56,8 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
       ? prisma.payer.findMany({
           where: {
             practiceId: user.practiceId,
-            ...(letter ? { name: { startsWith: letter } } : {}),
-            ...(q ? { OR: [{ name: { contains: q } }, { payerCode: { contains: q } }, { eraPayerId: { contains: q } }] } : {}),
+            ...(letter ? { name: { startsWith: letter, mode: "insensitive" } } : {}),
+            ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { payerCode: { contains: q, mode: "insensitive" } }, { eraPayerId: { contains: q, mode: "insensitive" } }] } : {}),
           },
           include: { parentPayer: true, alternatePayer: true },
           orderBy: { name: "asc" },

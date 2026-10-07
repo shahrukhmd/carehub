@@ -30,7 +30,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
           },
         }
       : {}),
-    ...(sp.q ? { OR: [{ detail: { contains: sp.q } }, { entityId: { contains: sp.q } }] } : {}),
+    ...(sp.q ? { OR: [{ detail: { contains: sp.q, mode: "insensitive" } }, { entityId: { contains: sp.q, mode: "insensitive" } }] } : {}),
   };
 
   const [logs, total, users, actions, entities] = await Promise.all([

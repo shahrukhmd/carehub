@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { PERMISSIONS, PERMISSION_GROUPS, ROLES as ALL_ROLES, can, parseOverrides, type PermissionKey, rolesFor } from "@/lib/permissions";
+import { PERMISSIONS, PERMISSION_GROUPS, ROLES as ALL_ROLES, can, parseOverrideDetails, parseOverrides, type PermissionKey, rolesFor } from "@/lib/permissions";
 import { SettingsNav } from "../settings-nav";
 import { prisma } from "@/lib/prisma";
 import { roleLabel } from "@/lib/format";
@@ -12,13 +12,15 @@ import {
   removeMembership,
   resetStaffPassword,
   savePermissionOverrides,
+  setTwoFactor,
   toggleStaffActive,
+  unlockStaff,
   updateStaffRole,
 } from "./actions";
 
 const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
 
-export default async function StaffPage({ searchParams }: { searchParams: Promise<{ perms?: string }> }) {
+export default async function StaffPage({ searchParams }: { searchParams: Promise<{ perms?: string; who?: string }> }) {
   const me = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const memberships = await prisma.membership.findMany({
@@ -50,6 +52,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                 <th>Role here</th>
                 <th>Permissions</th>
                 <th>Status</th>
+                <th>Security</th>
                 <th></th>
               </tr>
             </thead>
@@ -98,6 +101,26 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                     </td>
                     <td>
                       <StatusBadge value={u.active ? "ACTIVE" : "INACTIVE"} />
+                    </td>
+                    <td className="cn-small">
+                      {u.lockedUntil && u.lockedUntil > new Date() ? (
+                        <form action={unlockStaff.bind(null, u.id)}>
+                          <span className="gw-tag gw-tag-bad">Locked</span>{" "}
+                          <button className="btn ghost" type="submit">
+                            Unlock
+                          </button>
+                        </form>
+                      ) : null}
+                      {u.mustChangePassword && <div className="muted">Must change password</div>}
+                      <form action={setTwoFactor.bind(null, u.id)} className="cn-inline">
+                        <select name="method" defaultValue={u.twoFactorMethod} aria-label="Second factor">
+                          <option value="NONE">No sign-in code</option>
+                          <option value="EMAIL">Code by email</option>
+                        </select>
+                        <button className="btn ghost" type="submit">
+                          Set
+                        </button>
+                      </form>
                     </td>
                     <td>
                       <div className="stack">
@@ -207,6 +230,38 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
         </section>
       )}
 
+      <section className="panel" id="who">
+        <h2>Who can do what</h2>
+        <form className="cn-inline" method="get" action="/settings/users">
+          <select name="who" defaultValue={sp.who ?? ""} aria-label="Permission">
+            <option value="">Pick a permission…</option>
+            {PERMISSION_GROUPS.map((g) => (
+              <optgroup key={g} label={g}>
+                {(Object.entries(PERMISSIONS) as [PermissionKey, { label: string; group: string }][])
+                  .filter(([, p]) => p.group === g)
+                  .map(([k, p]) => (
+                    <option key={k} value={k}>
+                      {p.label}
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+          <button className="btn secondary" type="submit">
+            Show
+          </button>
+        </form>
+        {sp.who && sp.who in PERMISSIONS && (
+          <p>
+            <strong>{PERMISSIONS[sp.who as PermissionKey].label}</strong> in this practice:{" "}
+            {memberships
+              .filter((m) => m.user.active && can({ role: m.role, overrides: parseOverrides(m.permissions) }, sp.who as PermissionKey))
+              .map((m) => `${m.user.name} (${roleLabel[m.role] ?? m.role}${parseOverrides(m.permissions)?.[sp.who as PermissionKey] !== undefined ? ", override" : ""})`)
+              .join(", ") || "nobody"}
+          </p>
+        )}
+      </section>
+
       <section className="panel" id="permissions">
         <h2>What each role can do</h2>
         <p className="muted">
@@ -270,12 +325,24 @@ function overrideSummary(json: string | null) {
 // that differ from the role are stored.
 function PermissionEditor({ membershipId, role, json }: { membershipId: string; role: string; json: string | null }) {
   const overrides = parseOverrides(json) ?? {};
+  const details = parseOverrideDetails(json);
   const changed = Object.keys(overrides).length;
   return (
     <form className="stack pm-overrides" action={savePermissionOverrides.bind(null, membershipId)}>
       <p className="muted">
-        Default follows the {roleLabel[role] ?? role} role (● = allowed by role, — = not). Allow or deny changes only this person, only in this practice.
+        Default follows the {roleLabel[role] ?? role} role (● = allowed by role, — = not). Allow or deny changes only this person, only in this practice. You can
+        only grant permissions you hold yourself.
       </p>
+      <div className="form-grid gw-grid-3">
+        <label>
+          Reason for this change (kept with the override)
+          <input name="reason" maxLength={200} placeholder="e.g. covering billing while Alex is out" />
+        </label>
+        <label>
+          Expires on (optional)
+          <input name="until" type="date" />
+        </label>
+      </div>
       <div className="pm-columns">
         {PERMISSION_GROUPS.map((g) => (
           <table key={g} className="cn-table pm-table pm-edit">
@@ -295,7 +362,15 @@ function PermissionEditor({ membershipId, role, json }: { membershipId: string; 
                   const value = overrides[k] === undefined ? "default" : overrides[k] ? "allow" : "deny";
                   return (
                     <tr key={k} className={value !== "default" ? "pm-changed" : undefined}>
-                      <td>{p.label}</td>
+                      <td>
+                        {p.label}
+                        {details[k] && (details[k]!.reason || details[k]!.until) && (
+                          <div className="muted cn-small">
+                            {details[k]!.reason ?? ""}
+                            {details[k]!.until ? ` · until ${details[k]!.until}` : ""}
+                          </div>
+                        )}
+                      </td>
                       <td className="pm-cell">
                         <label title={byRole ? "Allowed by role" : "Not allowed by role"}>
                           <input type="radio" name={`perm:${k}`} value="default" defaultChecked={value === "default"} /> {byRole ? "●" : "—"}

@@ -26,20 +26,20 @@ export async function GET(request: Request) {
     and.push({ dob: { gte: start, lt: new Date(start.getTime() + 86_400_000) } });
   } else if (by === "phone") {
     const digits = q.replace(/\D/g, "");
-    and.push({ phone: { contains: digits.length >= 4 ? digits.slice(-4) : q } });
+    and.push({ phone: { contains: digits.length >= 4 ? digits.slice(-4) : q, mode: "insensitive" } });
   } else if (by === "mrn") {
-    and.push({ mrn: { contains: q } });
+    and.push({ mrn: { contains: q, mode: "insensitive" } });
   } else if (by === "memberId") {
-    and.push({ insurances: { some: { memberId: { contains: q } } } });
+    and.push({ insurances: { some: { memberId: { contains: q, mode: "insensitive" } } } });
   } else if (by === "account") {
-    and.push({ appointments: { some: { accountNumber: { contains: q } } } });
+    and.push({ appointments: { some: { accountNumber: { contains: q, mode: "insensitive" } } } });
   } else if (by === "firstName") {
-    and.push({ firstName: { contains: q } });
+    and.push({ firstName: { contains: q, mode: "insensitive" } });
   } else {
     // Last name, or "Last, First".
     const [last, first] = q.split(",").map((s) => s.trim());
-    and.push({ lastName: { contains: last } });
-    if (first) and.push({ firstName: { contains: first } });
+    and.push({ lastName: { contains: last, mode: "insensitive" } });
+    if (first) and.push({ firstName: { contains: first, mode: "insensitive" } });
   }
 
   const patients = await prisma.patient.findMany({

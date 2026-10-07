@@ -36,7 +36,7 @@ export default async function NewClaimPage({ searchParams }: { searchParams: Pro
   const matches =
     !patient && q.length >= 2
       ? await prisma.patient.findMany({
-          where: { practiceId: user.practiceId, OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }, { mrn: { startsWith: q } }] },
+          where: { practiceId: user.practiceId, OR: [{ lastName: { contains: q, mode: "insensitive" } }, { firstName: { contains: q, mode: "insensitive" } }, { mrn: { startsWith: q, mode: "insensitive" } }] },
           include: { insurances: { where: { active: true, rank: "PRIMARY" }, include: { payer: true } } },
           orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
           take: 25,

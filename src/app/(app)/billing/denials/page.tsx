@@ -59,7 +59,7 @@ export default async function DenialsPage({ searchParams }: { searchParams: Prom
       ? {
           claim: {
             ...(sp.payer ? { payerName: sp.payer } : {}),
-            OR: [{ patient: { lastName: { contains: q } } }, { patient: { firstName: { contains: q } } }, { patient: { mrn: { contains: q } } }, { payerName: { contains: q } }],
+            OR: [{ patient: { lastName: { contains: q, mode: "insensitive" } } }, { patient: { firstName: { contains: q, mode: "insensitive" } } }, { patient: { mrn: { contains: q, mode: "insensitive" } } }, { payerName: { contains: q, mode: "insensitive" } }],
           },
         }
       : {}),

@@ -185,7 +185,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     ? await prisma.patient.findMany({
         where: {
           practiceId: user.practiceId,
-          OR: [{ lastName: { contains: nextQuery } }, { firstName: { contains: nextQuery } }, { mrn: { contains: nextQuery } }],
+          OR: [{ lastName: { contains: nextQuery, mode: "insensitive" } }, { firstName: { contains: nextQuery, mode: "insensitive" } }, { mrn: { contains: nextQuery, mode: "insensitive" } }],
         },
         include: {
           appointments: {

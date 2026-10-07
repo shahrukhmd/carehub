@@ -1,6 +1,7 @@
 import "server-only";
 import { PDFDocument } from "pdf-lib";
 import { prisma } from "@/lib/prisma";
+import { resolveBillingRules } from "@/lib/payer-rules";
 import { renderCms1500, type Cms1500Data } from "@/lib/cms1500-pdf";
 import { settingsAddress } from "@/lib/practice-settings";
 
@@ -52,9 +53,11 @@ export async function cms1500ForClaims(practiceId: string, ids: string[], opts: 
   // Facility setup: box 33 uses the claim pay-to address when one is set; box 25 can use the practice tax ID.
   const payTo = settingsAddress(settings as unknown as Record<string, unknown>, "payTo");
 
+  const decisions = new Map(await Promise.all(claims.map(async (c) => [c.id, await resolveBillingRules(c)] as const)));
   return ids.flatMap((id) => {
     const claim = claims.find((c) => c.id === id);
     if (!claim) return [];
+    const rules = decisions.get(claim.id)!;
     const { patient, insurance: ins, billingProvider: bp } = claim;
     const self = !ins || ins.relationshipToInsured === "18";
     const patientAddr = {
@@ -72,8 +75,8 @@ export async function cms1500ForClaims(practiceId: string, ids: string[], opts: 
           ? { qualifier: "DK", p: claim.orderingProvider }
           : null;
     const providerSig = claim.encounter.signatures[0];
-    const renderingNpi = claim.renderingProvider?.npi ?? bp?.npi ?? "";
-    const facility = claim.serviceLocation;
+    const renderingNpi = rules.renderingLoop ? (claim.renderingProvider?.npi ?? bp?.npi ?? "") : "";
+    const facility = rules.serviceLocationLoop ? claim.serviceLocation : null;
 
     const data: Cms1500Data = {
       payerName: claim.payerName,

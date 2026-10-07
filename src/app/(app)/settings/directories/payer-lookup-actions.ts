@@ -45,8 +45,8 @@ export async function searchPayerList(query: string): Promise<PayerLookupResult>
       clearinghouse,
       OR: [
         // Any of the payer's IDs: the clearinghouse's own or the industry-standard one.
-        ...(["payerId", "institutionalId", "eraId", "eligibilityId", "standardId"] as const).map((k) => ({ [k]: { startsWith: q } })),
-        { AND: words.map((w) => ({ OR: [{ name: { contains: w } }, { relatedNames: { contains: w } }] })) },
+        ...(["payerId", "institutionalId", "eraId", "eligibilityId", "standardId"] as const).map((k) => ({ [k]: { startsWith: q, mode: "insensitive" } })),
+        { AND: words.map((w) => ({ OR: [{ name: { contains: w, mode: "insensitive" } }, { relatedNames: { contains: w, mode: "insensitive" } }] })) },
       ],
     },
     orderBy: [{ name: "asc" }],

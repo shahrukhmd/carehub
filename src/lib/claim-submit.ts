@@ -1,5 +1,8 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { resolveBillingRules } from "@/lib/payer-rules";
+import { ensureFollowUp, resolveFollowUps } from "@/lib/followups";
+import { organizationHold } from "@/lib/organization";
 import { logAudit } from "@/lib/audit";
 import { getClearinghouseAdapter } from "@/lib/clearinghouse";
 import { claimStatusLabel } from "@/lib/claim-format";
@@ -40,7 +43,13 @@ export function batchId(prefix: "RB" | "PB") {
 // The checks every claim passes before it leaves, whichever way it leaves. Returns why it can't go, or null.
 // paper: the "no EDI payer ID" warning is the reason the claim is being printed, so it never blocks.
 export async function releaseProblem(practiceId: string, claim: ClaimWithParts, opts: { warningsBlock?: boolean; paper?: boolean } = {}): Promise<string | null> {
+  const hold = await organizationHold(practiceId);
+  if (hold) return hold;
   if (!RELEASABLE_STATUSES.includes(claim.status)) return `A ${claimStatusLabel[claim.status]?.toLowerCase() ?? claim.status} claim can't be submitted.`;
+  // Payer billing rules: a hold on the payer stops everything; a paper-only payer stops electronic release.
+  const rules = await resolveBillingRules(claim);
+  if (rules.hold) return rules.hold;
+  if (rules.submissionType === "PAPER" && !opts.paper) return `${claim.payerName} is set up for paper claims — print it from the paper worklist instead of releasing it electronically.`;
   const encounter = await prisma.encounter.findUniqueOrThrow({ where: { id: claim.encounterId }, select: { status: true } });
   if (!SIGNED_STATUSES.includes(encounter.status)) return "The visit isn't signed and ready for billing.";
   const edits = claimEdits(claim, await claimRuleOptions(practiceId, claim));
@@ -97,6 +106,7 @@ export async function releaseClaimToClearinghouse(user: Actor, claimId: string, 
       },
     });
     await logClaimEvent(claim.id, user.id, "SUBMITTED", { note: `Accepted by clearinghouse · ${result.clearinghouseClaimId ?? ""}` });
+    if (claim.status === "EDI_REJECTED") await resolveFollowUps(claim.id, "RESUBMITTED", user.id);
     await logAudit(user.practiceId, user.id, "SUBMIT_CLAIM", "Claim", claim.id, result.clearinghouseClaimId);
     await markBilledIfComplete(claim.encounterId, user.id);
     out = { outcome: "RELEASED", message: `Accepted by the clearinghouse${result.clearinghouseClaimId ? ` · ${result.clearinghouseClaimId}` : ""}`, encounterId: claim.encounterId };
@@ -106,6 +116,7 @@ export async function releaseClaimToClearinghouse(user: Actor, claimId: string, 
       data: { status: "EDI_REJECTED", clearinghouseStatus: "REJECTED", rejectionReason: result.rejectionReason ?? "Rejected" },
     });
     await logClaimEvent(claim.id, user.id, "EDI_REJECTED", { note: result.rejectionReason });
+    await ensureFollowUp({ claimId: claim.id, trigger: "REJECTION", note: result.rejectionReason ?? "Rejected by the clearinghouse", userId: user.id });
     await logAudit(user.practiceId, user.id, "EDI_REJECTED", "Claim", claim.id, result.rejectionReason);
     out = { outcome: "REJECTED", message: result.rejectionReason ?? "Rejected by the clearinghouse", encounterId: claim.encounterId };
   } else {

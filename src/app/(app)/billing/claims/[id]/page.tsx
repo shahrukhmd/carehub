@@ -37,6 +37,7 @@ import {
 } from "../actions";
 import { denialCodeOptions } from "@/lib/denials";
 import { DenialPanel, loadDenialPanel } from "./denial-panel";
+import { FollowUpPanel, loadFollowUpPanel } from "./followup-panel";
 import { EDI_FILE_EVENT, build837ForClaim } from "@/lib/x12-837p";
 
 function d(v: Date | null | undefined) {
@@ -98,6 +99,7 @@ export default async function ClaimPage({
   ]);
 
   const denialData = await loadDenialPanel(claim.id, user.practiceId);
+  const followUpData = await loadFollowUpPanel(claim.id, user.practiceId);
   const nav = await claimNeighbours(user.practiceId, claim);
   const lastSaved = claim.events[0] ?? null;
   const editable = EDITABLE_CLAIM_STATUSES.includes(claim.status);
@@ -662,6 +664,7 @@ export default async function ClaimPage({
 
       {view === "payments" && (
         <>
+      <FollowUpPanel {...followUpData} claimId={claim.id} />
       <DenialPanel {...denialData} payerFax={claim.payer?.fax ?? null} />
       {/* ---------------- After submission ---------------- */}
       {!editable && claim.status !== "VOID" && (

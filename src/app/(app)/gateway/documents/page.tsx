@@ -30,7 +30,7 @@ export default async function PatientDocumentsPage({
     ...(tab === "review" ? { status: { in: ["PROCESSING", "READ", "FAILED"] } } : {}),
     ...(tab === "unfiled" ? { patientId: null } : {}),
     ...(tab === "applied" ? { status: "APPLIED" } : {}),
-    ...(sp.q ? { name: { contains: sp.q } } : {}),
+    ...(sp.q ? { name: { contains: sp.q, mode: "insensitive" } } : {}),
   };
   const [docs, counts, settings] = await Promise.all([
     prisma.patientDocument.findMany({

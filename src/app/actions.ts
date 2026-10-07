@@ -6,6 +6,7 @@ import { getSchedulerSettings } from "@/lib/scheduler-setup";
 import { redirect } from "next/navigation";
 import { recordFlow } from "@/lib/flow";
 import { prisma } from "@/lib/prisma";
+import { stopBlock } from "@/lib/patient-alerts";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { assertChartEditable } from "@/lib/visit-guard";
@@ -229,7 +230,10 @@ export async function createAppointment(formData: FormData) {
 
   // Workflow rules: the Gateway must have cleared the patient, and the provider must be credentialed with the payer.
   const rules = await workflowRules(user.practiceId);
-  const blocked = (rules.bookingRequiresGateway ? await bookingBlockedByGateway(user.practiceId, patientId) : null) ?? (rules.bookingChecksCredentialing ? await bookingBlockedByCredentialing(user.practiceId, patientId, providerId) : null);
+  const blocked =
+    (await stopBlock(user.practiceId, patientId, "schedule", user.id)) ??
+    (rules.bookingRequiresGateway ? await bookingBlockedByGateway(user.practiceId, patientId) : null) ??
+    (rules.bookingChecksCredentialing ? await bookingBlockedByCredentialing(user.practiceId, patientId, providerId) : null);
   if (blocked) {
     const back = new URLSearchParams({ conflicts: `Not booked — ${blocked}`, patientId, bookWith: providerId, bookLocation: locationId, bookStart: startsAtRaw, bookType: visitType, bookLen: String(minutes), blocked: "1" });
     redirect(`/schedule?${back}#book`);
@@ -862,49 +866,4 @@ export async function cancelLabOrder(labOrderId: string, encounterId: string) {
   revalidatePath(`/encounters/${encounterId}`, "layout");
 }
 
-export async function generateStatements(formData: FormData) {
-  const user = await requireUser(rolesFor("billing.work"));
-  const minBalanceCents = Math.round(Number(formData.get("minBalance") ?? 0) * 100) || 0;
-
-  const claims = await prisma.claim.findMany({
-    where: { balanceResponsibility: "PATIENT", practiceId: user.practiceId, status: { not: "VOID" } },
-    include: { patient: true },
-  });
-
-  const eligible = claims.filter((c) => c.billedCents - c.paidCents - c.adjustedCents > 0);
-  const byPatient = new Map<string, typeof eligible>();
-  for (const claim of eligible) {
-    // Combine dependents onto their guarantor's account, so a family gets one statement.
-    const billingAccountId = claim.patient.guarantorPatientId ?? claim.patientId;
-    const list = byPatient.get(billingAccountId) ?? [];
-    list.push(claim);
-    byPatient.set(billingAccountId, list);
-  }
-
-  let created = 0;
-  for (const [patientId, patientClaims] of byPatient) {
-    const totalCents = patientClaims.reduce(
-      (sum, c) => sum + (c.billedCents - c.paidCents - c.adjustedCents),
-      0
-    );
-    if (totalCents < minBalanceCents) continue;
-
-    await prisma.statement.create({
-      data: {
-        practiceId: user.practiceId,
-        patientId,
-        totalCents,
-        lines: {
-          create: patientClaims.map((c) => ({
-            claimId: c.id,
-            balanceCents: c.billedCents - c.paidCents - c.adjustedCents,
-          })),
-        },
-      },
-    });
-    created += 1;
-  }
-
-  await logAudit(user.practiceId, user.id, "GENERATE_STATEMENTS", "Statement", undefined, `${created} statement(s)`);
-  revalidatePath("/statements");
-}
+// Statement generation moved to the statement cycle (src/lib/statements.ts, /statements).

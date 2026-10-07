@@ -214,8 +214,8 @@ export async function runOpsReport(practiceId: string, key: string, from: Date, 
     case "hbo": {
       // HBO Treatment Records completed in the period, with the indication from the pretreatment checklist.
       const docs = await prisma.encounterDocument.findMany({
-        where: { status: "COMPLETE", template: { key: { startsWith: "hbo_treatment" } }, encounter: { practiceId, date: range } },
-        select: { data: true, encounter: { select: { patientId: true, date: true, documents: { where: { template: { key: { startsWith: "hbo_pretreatment" } } }, select: { data: true } } } } },
+        where: { status: "COMPLETE", template: { key: { startsWith: "hbo_treatment", mode: "insensitive" } }, encounter: { practiceId, date: range } },
+        select: { data: true, encounter: { select: { patientId: true, date: true, documents: { where: { template: { key: { startsWith: "hbo_pretreatment", mode: "insensitive" } } }, select: { data: true } } } } },
       });
       const read = (json: string | null, part: string) => {
         try {

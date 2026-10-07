@@ -14,7 +14,8 @@ export async function createApiClient(fd: FormData) {
   const name = String(fd.get("name") ?? "").trim().slice(0, 80);
   if (!name) redirect(`/settings/interop?error=${encodeURIComponent("Name the connected system.")}`);
   const token = newApiToken();
-  const c = await prisma.apiClient.create({ data: { practiceId: user.practiceId, name, tokenHash: hashApiToken(token), tokenHint: token.slice(-4), createdById: user.id } });
+  const scopes = fd.get("results") === "1" ? "patient/*.read interface/results.write" : "patient/*.read";
+  const c = await prisma.apiClient.create({ data: { practiceId: user.practiceId, name, tokenHash: hashApiToken(token), tokenHint: token.slice(-4), scopes, createdById: user.id } });
   await logAudit(user.practiceId, user.id, "CREATE_API_CLIENT", "ApiClient", c.id, name);
   // Shown once on the next page view; never stored in plain text.
   (await cookies()).set("ch_new_token", token, { httpOnly: true, sameSite: "strict", path: "/settings/interop", maxAge: 60 });

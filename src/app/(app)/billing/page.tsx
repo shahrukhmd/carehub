@@ -112,7 +112,7 @@ async function VisitsTab({ practiceId, sp }: { practiceId: string; sp: Search })
     practiceId,
     OR: [{ status: { in: SIGNED_STATUSES } }, { claims: { some: {} } }],
     ...(sp.billing && sp.billing in visitBillingStatusLabel ? { billingStatus: sp.billing } : {}),
-    ...(q ? { patient: { OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }, { mrn: { contains: q } }] } } : {}),
+    ...(q ? { patient: { OR: [{ lastName: { contains: q, mode: "insensitive" } }, { firstName: { contains: q, mode: "insensitive" } }, { mrn: { contains: q, mode: "insensitive" } }] } } : {}),
   };
   const visits = await prisma.encounter.findMany({
     where,

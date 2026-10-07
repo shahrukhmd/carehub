@@ -175,7 +175,7 @@ export async function afterResults(orderId: string, userId: string | null) {
 const HL7_FLAG: Record<string, string> = { H: "HIGH", HH: "CRITICAL", L: "LOW", LL: "CRITICAL", A: "ABNORMAL", AA: "CRITICAL", N: "NORMAL", "": "NORMAL", ">": "HIGH", "<": "LOW" };
 
 // Reads HL7 v2 ORU^R01 result messages and files each OBX against the order whose requisition is in OBR-2/ORC-2.
-export async function importHl7Results(practiceId: string, text: string, userId: string | null) {
+export async function importHl7Results(practiceId: string, text: string, userId: string | null, opts?: { forceRequisition?: string }) {
   const segs = text.replace(/\r\n|\n/g, "\r").split("\r").map((s) => s.trim()).filter(Boolean);
   if (!segs.some((s) => s.startsWith("MSH"))) throw new Error("This isn't an HL7 v2 file (no MSH segment).");
   const filed: string[] = [];
@@ -188,7 +188,7 @@ export async function importHl7Results(practiceId: string, text: string, userId:
     const f = seg.split("|");
     const tag = f[0];
     if (tag === "OBR" || tag === "ORC") {
-      const req = (f[2] || "").split("^")[0].trim();
+      const req = opts?.forceRequisition ?? (f[2] || "").split("^")[0].trim();
       if (req && req !== currentReq) {
         currentReq = req;
         order = await prisma.clinicalOrder.findFirst({ where: { practiceId, requisition: req } });

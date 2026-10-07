@@ -159,7 +159,7 @@ export async function TeamQueueTab({
     ...(q
       ? {
           patient: {
-            OR: [{ lastName: { contains: q } }, { firstName: { contains: q } }, { mrn: { contains: q } }],
+            OR: [{ lastName: { contains: q, mode: "insensitive" } }, { firstName: { contains: q, mode: "insensitive" } }, { mrn: { contains: q, mode: "insensitive" } }],
           },
         }
       : {}),
@@ -568,11 +568,11 @@ export async function RegistryTab({ user, sp }: { user: User; sp: GatewaySearch 
       const range = parseDob(q);
       and.push(range ? { dob: { gte: range.gte, lt: range.lt } } : { id: "__none__" });
     } else if (by === "memberId") {
-      and.push({ insurances: { some: { memberId: { contains: q } } } });
+      and.push({ insurances: { some: { memberId: { contains: q, mode: "insensitive" } } } });
     } else if (by === "phone") {
-      and.push({ phone: { contains: q.replace(/[^\d-]/g, "") || q } });
+      and.push({ phone: { contains: q.replace(/[^\d-]/g, "") || q, mode: "insensitive" } });
     } else {
-      and.push({ [by]: { contains: q } });
+      and.push({ [by]: { contains: q, mode: "insensitive" } });
     }
   }
   if (sp.sex) and.push({ sex: sp.sex });

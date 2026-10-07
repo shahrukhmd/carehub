@@ -51,6 +51,7 @@ export async function saveInsurance(payerId: string | null, formData: FormData) 
   const filingLimit = optionalNumber(formData, "timelyFilingLimit");
   const alertDays = optionalNumber(formData, "timelyFilingAlertDays");
   const appealDays = optionalNumber(formData, "appealLimitDays");
+  const outstandingDays = optionalNumber(formData, "outstandingDays");
 
   // The display name follows the name and type until someone types their own; a hand-typed one is kept.
   const name = required(formData, "name");
@@ -87,6 +88,7 @@ export async function saveInsurance(payerId: string | null, formData: FormData) 
     timelyFilingUnit: ["DAYS", "MONTHS", "YEARS"].includes(unit) ? unit : "DAYS",
     timelyFilingAlertDays: alertDays === null ? null : Math.round(alertDays),
     appealLimitDays: appealDays === null || appealDays <= 0 ? null : Math.round(appealDays),
+    outstandingDays: outstandingDays === null || outstandingDays <= 0 ? null : Math.round(outstandingDays),
     reimbursementRate: optionalNumber(formData, "reimbursementRate"),
     notes: optional(formData, "notes"),
   };

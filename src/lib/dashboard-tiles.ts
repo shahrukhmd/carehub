@@ -27,6 +27,7 @@ export const TILES: TileDef[] = [
   { key: "eligibility", title: "Eligibility problems", group: "Front office", permission: "eligibility.run", span: 1, about: "Upcoming visits whose last check was not active" },
   { key: "waiting", title: "Waiting for my team", group: "Front office", permission: "patients.thread", span: 1, about: "Patient messages and tasks waiting on your team" },
   { key: "tasks", title: "My open tasks", group: "Front office", permission: "tasks.work", span: 1, about: "Tasks assigned to you or your team" },
+  { key: "alerts", title: "Patient alerts", group: "Front office", permission: "patients.view", span: 1, about: "Active alerts, stop alerts and the ones assigned to you" },
   { key: "visits", title: "Visit pipeline", group: "Clinical", permission: "chart.worklist", span: 1, about: "Charts in progress, with CDS, coding, awaiting signature" },
   { key: "caregaps", title: "Care gaps due", group: "Clinical", permission: "caregaps.view", span: 1, about: "Active patients with a screening or lab due" },
   { key: "referrals", title: "Referrals overdue", group: "Clinical", permission: "referrals.work", span: 1, about: "Sent referrals with no consult note" },
@@ -35,6 +36,7 @@ export const TILES: TileDef[] = [
   { key: "ar", title: "A/R aging", group: "Revenue", permission: "billing.work", span: 1, about: "Open insurance balance by age" },
   { key: "collections", title: "Collections this month", group: "Revenue", permission: "billing.work", span: 1, about: "Received this month vs last month" },
   { key: "denials", title: "Denials & appeals", group: "Revenue", permission: "billing.work", span: 1, about: "Open denials and appeal deadlines" },
+  { key: "followups", title: "AR follow-up", group: "Revenue", permission: "billing.work", span: 1, about: "Items due today, the unassigned pool, deadlines within 10 days" },
   { key: "payers", title: "Top payers this month", group: "Revenue", permission: "billing.work", span: 1, about: "Charges by payer, month to date" },
   { key: "unbilled", title: "Unbilled visits", group: "Revenue", permission: "billing.work", span: 1, about: "Signed visits with charges and no claim" },
   { key: "credentialing", title: "Credentialing alerts", group: "Revenue", permission: "credentialing.work", span: 1, about: "Expiring and pending enrollments" },
@@ -43,9 +45,9 @@ export const TILES: TileDef[] = [
 // Preset views: a tab picks a set of tiles; "custom" uses the user's own selection.
 export const VIEWS: { key: string; label: string; tiles: string[] }[] = [
   { key: "practice", label: "Practice", tiles: ["today", "visits", "prerelease", "ar", "collections", "gateway", "waiting", "caregaps"] },
-  { key: "front", label: "Front office", tiles: ["today", "gateway", "eligibility", "waiting", "tasks", "referrals"] },
+  { key: "front", label: "Front office", tiles: ["today", "gateway", "eligibility", "alerts", "waiting", "tasks", "referrals"] },
   { key: "clinical", label: "Clinical", tiles: ["visits", "caregaps", "referrals", "outcomes", "waiting", "today"] },
-  { key: "revenue", label: "Revenue", tiles: ["prerelease", "unbilled", "ar", "collections", "denials", "payers", "credentialing"] },
+  { key: "revenue", label: "Revenue", tiles: ["prerelease", "unbilled", "followups", "ar", "collections", "denials", "payers", "credentialing"] },
   { key: "custom", label: "My view", tiles: [] },
 ];
 
@@ -64,6 +66,42 @@ export async function loadTile(key: string, user: User): Promise<TileData | null
   const p = user.practiceId;
   const now = new Date();
   switch (key) {
+    case "followups": {
+      const open = await prisma.claimFollowUp.findMany({ where: { practiceId: p, status: { in: ["OPEN", "WAITING_PAYER", "WAITING_PRACTICE", "WAITING_PATIENT"] } }, select: { ownerId: true, tickleAt: true, deadlineAt: true, balanceCents: true } });
+      const now = Date.now();
+      const dueMine = open.filter((f) => f.ownerId === user.id && f.tickleAt && f.tickleAt.getTime() <= now + 86_400_000).length;
+      const pool = open.filter((f) => !f.ownerId).length;
+      const deadlines = open.filter((f) => f.deadlineAt && f.deadlineAt.getTime() <= now + 10 * 86_400_000).length;
+      const resolved = await prisma.claimFollowUp.count({ where: { practiceId: p, status: { in: ["RESOLVED", "WRITTEN_OFF"] }, resolvedAt: { gte: new Date(now - 7 * 86_400_000) } } });
+      return {
+        value: open.length,
+        sub: `open · ${$(open.reduce((s, f) => s + f.balanceCents, 0))}`,
+        href: "/billing/followups",
+        tone: deadlines ? "bad" : dueMine ? "warn" : "ok",
+        rows: [
+          { label: "Mine due today", value: dueMine, href: "/billing/followups?view=due", tone: dueMine ? "warn" : "muted" },
+          { label: "Unassigned pool", value: pool, href: "/billing/followups?view=unassigned", tone: pool ? "warn" : "muted" },
+          { label: "Deadline within 10 days", value: deadlines, href: "/billing/followups?view=deadlines", tone: deadlines ? "bad" : "muted" },
+          { label: "Resolved this week", value: resolved, href: "/billing/followups?view=resolved" },
+        ],
+      };
+    }
+    case "alerts": {
+      const open = await prisma.patientAlert.findMany({ where: { practiceId: p, status: "ACTIVE", OR: [{ activeTo: null }, { activeTo: { gte: startOfDay() } }] }, select: { severity: true, assignedToId: true, patientId: true } });
+      const mine = open.filter((a) => a.assignedToId === user.id);
+      const stops = open.filter((a) => a.severity === "STOP");
+      return {
+        value: open.length,
+        sub: "active patient alerts",
+        href: mine[0] ? `/patients/${mine[0].patientId}/alerts` : stops[0] ? `/patients/${stops[0].patientId}/alerts` : "/flow",
+        tone: stops.length ? "warn" : "ok",
+        rows: [
+          { label: "Assigned to me", value: mine.length, tone: mine.length ? "warn" : "muted" },
+          { label: "Stop alerts", value: stops.length, tone: stops.length ? "bad" : "muted" },
+          { label: "Patients with alerts", value: new Set(open.map((a) => a.patientId)).size },
+        ],
+      };
+    }
     case "today": {
       const day = startOfDay();
       const appts = await prisma.appointment.findMany({ where: { practiceId: p, startsAt: { gte: day, lt: new Date(day.getTime() + 86_400_000) } }, select: { status: true } });

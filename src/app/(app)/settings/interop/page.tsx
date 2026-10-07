@@ -88,6 +88,7 @@ export default async function InteropPage({ searchParams }: { searchParams: Prom
                 </td>
                 <td>
                   <code>chk_…{c.tokenHint}</code>
+                  {c.scopes.includes("interface/results.write") && <div className="muted cn-small">sends results</div>}
                 </td>
                 <td>{c.lastUsedAt ? `${formatDate(c.lastUsedAt)} ${formatTime(c.lastUsedAt)}` : "Never"}</td>
                 <td>{c.active ? "Active" : <span className="muted">Revoked</span>}</td>
@@ -106,10 +107,22 @@ export default async function InteropPage({ searchParams }: { searchParams: Prom
         </table>
         <form action={createApiClient} className="cn-inline">
           <input name="name" required placeholder="e.g. Banner Health HIE" aria-label="Connected system name" />
+          <label className="cn-inline cn-small">
+            <input type="checkbox" name="results" value="1" /> May send lab / imaging results
+          </label>
           <button className="btn secondary" type="submit">
             Create API token
           </button>
         </form>
+      </section>
+      <section className="panel">
+        <h2>Results interface (inbound)</h2>
+        <p className="muted">
+          A lab or imaging center posts results with an API token that <strong>may send results</strong>. HL7 v2 ORU^R01 messages go to{" "}
+          <code>POST {origin}/api/interfaces/hl7</code> (the reply is an HL7 ACK); FHIR R4 DiagnosticReport resources or bundles go to{" "}
+          <code>POST {origin}/api/interfaces/fhir</code>. Results are filed on the order whose requisition number they carry (OBR-2 / basedOn identifier);
+          anything else waits in the <Link href="/orders?view=inbox">interface inbox</Link> to be linked and replayed. Every message is kept.
+        </p>
       </section>
       <section className="panel">
         <h2>C-CDA care summaries</h2>

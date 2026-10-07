@@ -40,6 +40,7 @@ export default async function EncounterPrintPage({
   const { view } = await searchParams;
   await ensureChartSetup(user.practiceId);
 
+  const education = await prisma.educationResource.findMany({ where: { encounterId: id }, orderBy: { createdAt: "asc" } });
   const encounter = await prisma.encounter.findFirst({
     where: { id, practiceId: user.practiceId },
     include: {
@@ -534,6 +535,20 @@ export default async function EncounterPrintPage({
         </div>
       </div>
 
+      {education.length > 0 && (
+        <section className="panel print-doc">
+          <h3>Patient education &amp; instructions</h3>
+          <ul>
+            {education.map((r) => (
+              <li key={r.id}>
+                <strong>{r.title}</strong>
+                {r.url ? ` — ${r.url}` : ""}
+                {r.summary ? <div className="cn-small">{r.summary}</div> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="panel print-doc">
         <div className="print-header">
           <div>

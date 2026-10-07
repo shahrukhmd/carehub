@@ -249,7 +249,46 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
               Referral follow-up (days)
               <input name="referralFollowUpDays" type="number" min={1} max={365} defaultValue={s.referralFollowUpDays} />
             </label>
+            <label title="A patient balance at or above this amount shows a &quot;collect balance&quot; alert at booking, check-in and on claims (0 turns it off).">
+              Patient balance alert at $
+              <input name="alertBalance" inputMode="decimal" defaultValue={(s.alertBalanceCents / 100).toFixed(2)} />
+            </label>
+            <label title="An ERA that pays under the charge-schedule allowable by more than this opens an underpayment follow-up.">
+              Underpayment tolerance $
+              <input name="underpaymentTolerance" inputMode="decimal" defaultValue={(s.underpaymentToleranceCents / 100).toFixed(2)} />
+            </label>
           </div>
+        </section>
+
+        <section className="panel" id="statements">
+          <h2>Statements</h2>
+          <p className="muted">The statement cycle: how often a notice goes out, how many before collections, and the message on each.</p>
+          <div className="form-grid gw-grid-3">
+            <label>
+              Days between notices
+              <input name="statementMinDays" type="number" min={1} max={180} defaultValue={s.statementMinDays} />
+            </label>
+            <label>
+              Notices before collections
+              <input name="statementCycles" type="number" min={1} max={6} defaultValue={s.statementCycles} />
+            </label>
+            <label>
+              Minimum balance to bill $
+              <input name="statementMin" inputMode="decimal" defaultValue={(s.statementMinCents / 100).toFixed(2)} />
+            </label>
+          </div>
+          <label>
+            Message on the first notice
+            <input name="statementMessage1" maxLength={500} defaultValue={s.statementMessage1 ?? ""} placeholder="Thank you for choosing us…" />
+          </label>
+          <label>
+            Second notice
+            <input name="statementMessage2" maxLength={500} defaultValue={s.statementMessage2 ?? ""} placeholder="Second notice: this balance is past due…" />
+          </label>
+          <label>
+            Final notice
+            <input name="statementMessage3" maxLength={500} defaultValue={s.statementMessage3 ?? ""} placeholder="Final notice: without payment or a plan the balance will be referred…" />
+          </label>
         </section>
 
         <section className="panel" id="fax">

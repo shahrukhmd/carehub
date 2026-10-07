@@ -24,6 +24,7 @@ export const PERMISSIONS = {
   "patients.privacy": { label: "Privacy: consents, restrictions and the disclosure log", group: "Patients", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "CLINICIAN", "BILLER"] },
   "patients.privacy.decide": { label: "Decide restrictions and record requests", group: "Patients", roles: ["ADMIN", "CLINICIAN"] },
   "patients.thread": { label: "Team communication on a patient", group: "Patients", roles: ALL },
+  "patients.alerts": { label: "Add and resolve patient alerts", group: "Patients", roles: ALL.filter((r) => r !== "CREDENTIALING") },
   "records.exchange": { label: "Care summaries (C-CDA) in and out", group: "Patients", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "CODER", "BILLER"] },
   // ---- Gateway
   "gateway.work": { label: "Patient Gateway (intake, verification, scheduling cases)", group: "Front office", roles: [...FRONT, "CLINICIAN"] },
@@ -117,24 +118,42 @@ export function allowed(subject: Subject, roles: RoleList | readonly string[]) {
   return Boolean(role && roles.includes(role));
 }
 
-export function parseOverrides(json: string | null | undefined): Overrides | null {
-  if (!json) return null;
+// One stored override: the effect plus who granted it, why, and until when (expired entries are ignored).
+export type OverrideDetail = { allow: boolean; reason?: string; by?: string; at?: string; until?: string };
+export type OverrideDetails = Partial<Record<PermissionKey, OverrideDetail>>;
+
+export function parseOverrideDetails(json: string | null | undefined): OverrideDetails {
+  if (!json) return {};
   try {
     const raw = JSON.parse(json) as Record<string, unknown>;
-    const out: Overrides = {};
-    for (const [k, v] of Object.entries(raw)) if (k in PERMISSIONS && typeof v === "boolean") out[k as PermissionKey] = v;
-    return Object.keys(out).length ? out : null;
+    const out: OverrideDetails = {};
+    const today = new Date().toISOString().slice(0, 10);
+    for (const [k, v] of Object.entries(raw)) {
+      if (!(k in PERMISSIONS)) continue;
+      const d: OverrideDetail | null = typeof v === "boolean" ? { allow: v } : v && typeof v === "object" && typeof (v as OverrideDetail).allow === "boolean" ? (v as OverrideDetail) : null;
+      if (!d) continue;
+      if (d.until && d.until < today) continue;
+      out[k as PermissionKey] = d;
+    }
+    return out;
   } catch {
-    return null;
+    return {};
   }
 }
 
+export function parseOverrides(json: string | null | undefined): Overrides | null {
+  const details = parseOverrideDetails(json);
+  const out: Overrides = {};
+  for (const [k, d] of Object.entries(details)) if (d) out[k as PermissionKey] = d.allow;
+  return Object.keys(out).length ? out : null;
+}
+
 // Only the entries that change the role's default are kept; an override equal to the default is dropped.
-export function serializeOverrides(role: string, overrides: Overrides): string | null {
-  const kept: Overrides = {};
-  for (const [k, v] of Object.entries(overrides)) {
+export function serializeOverrides(role: string, overrides: OverrideDetails): string | null {
+  const kept: OverrideDetails = {};
+  for (const [k, d] of Object.entries(overrides)) {
     const key = k as PermissionKey;
-    if (v !== undefined && v !== can(role, key)) kept[key] = v;
+    if (d && d.allow !== can(role, key)) kept[key] = d;
   }
   return Object.keys(kept).length ? JSON.stringify(kept) : null;
 }

@@ -148,12 +148,12 @@ export async function filteredClaims(practiceId: string, f: ClaimFilters) {
     ...(f.location ? { serviceLocationId: f.location } : {}),
     ...(f.provider ? { renderingProviderId: f.provider } : {}),
     ...(f.referrer ? { referringProviderId: f.referrer } : {}),
-    ...(f.cpt?.trim() ? { lines: { some: { cptCode: { startsWith: f.cpt.trim().toUpperCase() } } } } : {}),
+    ...(f.cpt?.trim() ? { lines: { some: { cptCode: { startsWith: f.cpt.trim().toUpperCase(), mode: "insensitive" } } } } : {}),
     ...(f.patient?.trim() || f.mrn?.trim()
       ? {
           patient: {
-            ...(f.mrn?.trim() ? { mrn: { startsWith: f.mrn.trim() } } : {}),
-            ...(f.patient?.trim() ? { OR: [{ lastName: { contains: f.patient.trim() } }, { firstName: { contains: f.patient.trim() } }] } : {}),
+            ...(f.mrn?.trim() ? { mrn: { startsWith: f.mrn.trim(), mode: "insensitive" } } : {}),
+            ...(f.patient?.trim() ? { OR: [{ lastName: { contains: f.patient.trim(), mode: "insensitive" } }, { firstName: { contains: f.patient.trim(), mode: "insensitive" } }] } : {}),
           },
         }
       : {}),

@@ -25,7 +25,19 @@ export default async function LoginPage({
         </div>
 
         <form className="panel stack" action={login}>
-          {error && <p className="login-error">Incorrect username or password.</p>}
+          {error && (
+            <p className="login-error">
+              {error === "locked"
+                ? "This account is locked after too many failed attempts. Try again later or ask an administrator to unlock it."
+                : error === "ip"
+                  ? "Sign-in from this network is not allowed for your organization."
+                  : error === "terminated"
+                    ? "This client account is closed. Contact your billing company."
+                    : error === "code"
+                      ? "The sign-in code was wrong too many times or expired. Sign in again."
+                      : "Incorrect username or password."}
+            </p>
+          )}
           <label>
             Username or email
             <input name="username" autoComplete="username" required autoFocus />

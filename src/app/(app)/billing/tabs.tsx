@@ -4,10 +4,12 @@ export const BILLING_TABS = [
   { key: "visits", label: "Visits to bill", href: "/billing?tab=visits" },
   { key: "release", label: "Pre-release queue", href: "/billing/claims/release" },
   { key: "claims", label: "Claims", href: "/billing/claims" },
+  { key: "followups", label: "AR follow-up", href: "/billing/followups" },
   { key: "denials", label: "Denials & appeals", href: "/billing/denials" },
   { key: "era", label: "ERA / 835 posting", href: "/billing?tab=era" },
   { key: "deposits", label: "Deposits & payments", href: "/billing?tab=deposits" },
   { key: "ar", label: "AR & write-offs", href: "/billing?tab=ar" },
+  { key: "close", label: "Deposits & month close", href: "/billing/close" },
   { key: "reports", label: "Financial reports", href: "/billing/reports" },
 ];
 
