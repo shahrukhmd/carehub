@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { selfReviewBlock } from "@/lib/separation";
 import { recordFlow } from "@/lib/flow";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -192,6 +193,8 @@ export async function queryProvider(encounterId: string, fd: FormData) {
     const user = await requireUser(CDS_ROLES);
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, CDS_STAGES);
+    const self = await selfReviewBlock(e.id, user.id, "cds");
+    if (self) fail(self);
     const note = text(fd, "note");
     if (!note) fail("Tell the provider what's missing or needs clarification.");
     await transition(user, e, "CDS_QUERY", note, { cdsQueryNote: note });
@@ -204,6 +207,8 @@ export async function sendToCoding(encounterId: string, fd: FormData) {
     const user = await requireUser(CDS_ROLES);
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, CDS_STAGES);
+    const self = await selfReviewBlock(e.id, user.id, "cds");
+    if (self) fail(self);
     const answering = e.status === "CODING_QUERY";
     const note = text(fd, "note");
     if (answering && !note) fail("Say what was corrected or clarified for the coding team.");
@@ -221,6 +226,8 @@ export async function queryCds(encounterId: string, fd: FormData) {
     const user = await requireUser(CODING_ROLES);
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, ["READY_FOR_CODING"]);
+    const self = await selfReviewBlock(e.id, user.id, "coding");
+    if (self) fail(self);
     const note = text(fd, "note");
     if (!note) fail("Tell CDS what needs checking or correcting.");
     await transition(user, e, "CODING_QUERY", `Coding query to CDS: ${note}`, { codingQueryNote: note });
@@ -232,6 +239,8 @@ export async function sendForSignature(encounterId: string) {
     const user = await requireUser(CODING_ROLES);
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, ["READY_FOR_CODING"]);
+    const self = await selfReviewBlock(e.id, user.id, "coding");
+    if (self) fail(self);
     const gaps = gapsFor(checklistFor(e), "cds");
     if (gaps.length) fail(`Finish the superbill first: ${gaps.join(", ")}`);
     if (e.charges.some((c) => parsePointerIds(c.diagnosisPointers).length === 0)) fail("Every charge needs a diagnosis pointer.");

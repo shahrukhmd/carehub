@@ -7,6 +7,7 @@ import { HandoffHeader } from "@/components/HandoffHeader";
 
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { selfReviewBlock } from "@/lib/separation";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 import {
@@ -64,7 +65,8 @@ export default async function SuperbillPage({
     prisma.billingProvider.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
   ]);
 
-  const editable = canEditCoding(encounter.status, user);
+  const selfBlock = canEditCoding(encounter.status, user) ? await selfReviewBlock(encounter.id, user.id, "coding") : null;
+  const editable = canEditCoding(encounter.status, user) && !selfBlock;
   const onVisit = new Set(encounter.diagnoses.map((d) => d.icd10));
   const dxFavorites: CatalogCode[] = practiceCodes
     .filter((c) => c.type === "ICD10")
@@ -143,7 +145,12 @@ export default async function SuperbillPage({
           </p>
         </div>
       </div>
-      {!editable && (
+      {selfBlock && (
+        <p className="gw-error" role="alert">
+          {selfBlock}
+        </p>
+      )}
+      {!editable && !selfBlock && (
         <p className="muted">
           Coding is read-only at this stage ({visitStatusLabel[encounter.status] ?? encounter.status}).
         </p>

@@ -159,9 +159,15 @@ export function daysUntil(d: Date | null | undefined) {
   return d ? Math.round((dayStart(d) - dayStart(new Date())) / DAY) : null;
 }
 
-export function deadlineTone(days: number | null) {
+export function deadlineTone(days: number | null, alertDays = APPEAL_ALERT_DAYS) {
   if (days === null) return "muted";
-  return days < 0 ? "bad" : days <= APPEAL_ALERT_DAYS ? "warn" : "ok";
+  return days < 0 ? "bad" : days <= alertDays ? "warn" : "ok";
+}
+
+// The practice's appeal-alert window (Practice setup → Thresholds & timers).
+export async function appealAlertDays(practiceId: string) {
+  const s = await prisma.practiceSettings.findUnique({ where: { practiceId }, select: { appealAlertDays: true } });
+  return s?.appealAlertDays ?? APPEAL_ALERT_DAYS;
 }
 
 export function deadlineLabel(d: Date | null | undefined) {
@@ -451,10 +457,15 @@ export async function appealLetterPdf(appealId: string, practiceId: string) {
 export async function flagAppealDeadlines(practiceId?: string) {
   const scope = practiceId ? { practiceId } : {};
   let n = 0;
-  const due = await prisma.claimDenial.findMany({
-    where: { ...scope, status: "OPEN", appealDueAt: { lte: new Date(Date.now() + APPEAL_ALERT_DAYS * DAY) } },
-    include: { claim: { include: { patient: true } } },
-  });
+  // Each practice sets its own alert window; fetch the widest window, then keep what falls inside each one.
+  const windows = new Map((await prisma.practiceSettings.findMany({ where: practiceId ? { practiceId } : {}, select: { practiceId: true, appealAlertDays: true } })).map((s) => [s.practiceId, s.appealAlertDays]));
+  const widest = Math.max(APPEAL_ALERT_DAYS, ...windows.values());
+  const due = (
+    await prisma.claimDenial.findMany({
+      where: { ...scope, status: "OPEN", appealDueAt: { lte: new Date(Date.now() + widest * DAY) } },
+      include: { claim: { include: { patient: true } } },
+    })
+  ).filter((d) => (daysUntil(d.appealDueAt) ?? 0) <= (windows.get(d.practiceId) ?? APPEAL_ALERT_DAYS));
   for (const d of due) {
     const days = daysUntil(d.appealDueAt) ?? 0;
     await createTask({

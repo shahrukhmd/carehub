@@ -36,6 +36,13 @@ export async function savePracticeSettings(fd: FormData) {
   const cutoffDay = cutoff ? Number(cutoff) : null;
   if (cutoffDay !== null && !(Number.isInteger(cutoffDay) && cutoffDay >= 1 && cutoffDay <= 28)) errors.push("Cutoff day must be 1–28.");
   const yearEnd = Number(str("yearEndMonth") ?? 12);
+  // Thresholds & timers
+  const smallBalance = Number((str("smallBalance") ?? "5").replace(/[$,\s]/g, ""));
+  if (!Number.isFinite(smallBalance) || smallBalance < 0 || smallBalance > 100) errors.push("Small-balance write-off must be between $0 and $100.");
+  const appealAlertDays = Number(str("appealAlertDays") ?? 14);
+  if (!(Number.isInteger(appealAlertDays) && appealAlertDays >= 1 && appealAlertDays <= 90)) errors.push("Appeal deadline alert must be 1–90 days.");
+  const referralFollowUpDays = Number(str("referralFollowUpDays") ?? 30);
+  if (!(Number.isInteger(referralFollowUpDays) && referralFollowUpDays >= 1 && referralFollowUpDays <= 365)) errors.push("Referral follow-up must be 1–365 days.");
   const clearinghouse = str("clearinghouse") ?? "MOCK";
   const faxRaw = str("faxNumber");
   const faxNumber = faxRaw ? normalizePhone(faxRaw) : null;
@@ -69,6 +76,10 @@ export async function savePracticeSettings(fd: FormData) {
     bookingChecksCredentialing: on("bookingChecksCredentialing"),
     chartRequiresCheckIn: on("chartRequiresCheckIn"),
     enforceVobScope: on("enforceVobScope"),
+    separateDuties: on("separateDuties"),
+    smallBalanceCents: Math.round(smallBalance * 100),
+    appealAlertDays,
+    referralFollowUpDays,
     documentAiEnabled: on("documentAiEnabled"),
     faxNumber: faxNumber,
     faxProvider: str("faxProvider") && str("faxProvider")! in FAX_PROVIDERS ? str("faxProvider")! : "MOCK",

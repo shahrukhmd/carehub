@@ -3,20 +3,7 @@ import { draftAppealLetter } from "../../../ai/actions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { formatDate, formatMoney } from "@/lib/format";
-import {
-  APPEAL_LEVELS,
-  APPEAL_METHODS,
-  APPEAL_STATUS,
-  DENIAL_CATEGORIES,
-  DENIAL_RESOLUTION,
-  DENIAL_ROLES,
-  DENIAL_STATUS,
-  appealEnclosures,
-  daysUntil,
-  deadlineLabel,
-  deadlineTone,
-  ensureDenialRecords,
-} from "@/lib/denials";
+import { APPEAL_LEVELS, APPEAL_METHODS, APPEAL_STATUS, DENIAL_CATEGORIES, DENIAL_RESOLUTION, DENIAL_ROLES, DENIAL_STATUS, appealEnclosures, daysUntil, deadlineLabel, deadlineTone, ensureDenialRecords, appealAlertDays } from "@/lib/denials";
 import {
   discardAppealDraft,
   fileAppeal,
@@ -41,11 +28,12 @@ export async function loadDenialPanel(claimId: string, practiceId: string) {
         orderBy: { user: { name: "asc" } },
       })
     : [];
-  return { denials, staff };
+  const alertDays = await appealAlertDays(practiceId);
+  return { denials, staff, alertDays };
 }
 
 // Denial work area on the claim: reason and suggested fix, owner and follow-up, appeals and their outcomes.
-export function DenialPanel({ denials, staff, payerFax }: Awaited<ReturnType<typeof loadDenialPanel>> & { payerFax: string | null }) {
+export function DenialPanel({ denials, staff, alertDays, payerFax }: Awaited<ReturnType<typeof loadDenialPanel>> & { payerFax: string | null }) {
   if (denials.length === 0) return null;
   const current = denials.find((d) => d.status !== "RESOLVED") ?? denials[0];
   const earlier = denials.filter((d) => d.id !== current.id);
@@ -85,7 +73,7 @@ export function DenialPanel({ denials, staff, payerFax }: Awaited<ReturnType<typ
         {current.status === "OPEN" && (
           <div>
             <span>Appeal by</span>
-            <span className={`gw-tag gw-tag-${deadlineTone(daysUntil(current.appealDueAt))}`}>{deadlineLabel(current.appealDueAt)}</span>
+            <span className={`gw-tag gw-tag-${deadlineTone(daysUntil(current.appealDueAt), alertDays)}`}>{deadlineLabel(current.appealDueAt)}</span>
           </div>
         )}
         {current.resolvedAt && (

@@ -76,6 +76,7 @@ import {
 import { ensureChartSetup, getPracticeSettings, resolveWorkflow, workflowSteps } from "@/lib/chart-setup";
 import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 import { prisma } from "@/lib/prisma";
+import { selfReviewBlock } from "@/lib/separation";
 import { StatusBadge } from "@/components/StatusBadge";
 import { DocumentFields, DocumentSummary } from "@/components/DocumentForm";
 import { PanelToggle } from "@/components/SidebarNav";
@@ -197,6 +198,9 @@ export default async function EncounterPage({
   const reconciledBy = encounter.reconciledById ? (staffMembers.find((m) => m.userId === encounter.reconciledById)?.user.name ?? null) : null;
   const noteEmpty = !encounter.subjective && !encounter.objective && !encounter.assessment && !encounter.plan;
   const codingEditable = canEditCoding(status, user);
+  // No self-review: the step's forms are replaced by a notice when this person documented or reviewed the visit.
+  const cdsSelf = CDS_STAGES.includes(status) && isCdsRole(user) ? await selfReviewBlock(encounter.id, user.id, "cds") : null;
+  const codingSelf = status === "READY_FOR_CODING" && isCoderRole(user) ? await selfReviewBlock(encounter.id, user.id, "coding") : null;
   const assessedWounds = new Set(encounter.woundAssessments.map((w) => w.woundId));
   const woundNo = new Map(encounter.patient.wounds.map((w, i) => [w.id, i + 1]));
   const openWounds = encounter.patient.wounds.filter((w) => w.status !== "HEALED");
@@ -1625,7 +1629,15 @@ export default async function EncounterPage({
         )}
 
         {/* CDS: first review, or a coding query to deal with. Either way the chart goes on (or back) to coding. */}
-        {CDS_STAGES.includes(status) && isCdsRole(user) && (
+        {cdsSelf && (
+          <section className="panel gw-handoff">
+            <div>
+              <strong>CDS review</strong>
+              <p className="gw-error">{cdsSelf}</p>
+            </div>
+          </section>
+        )}
+        {CDS_STAGES.includes(status) && isCdsRole(user) && !cdsSelf && (
           <section className="panel gw-handoff">
             <div>
               <strong>{status === "CODING_QUERY" ? "Answer the coding team" : "CDS review"}</strong>
@@ -1660,7 +1672,15 @@ export default async function EncounterPage({
         )}
 
         {/* Coding: build the superbill, then send the chart for signature; or ask CDS. */}
-        {status === "READY_FOR_CODING" && isCoderRole(user) && (
+        {codingSelf && (
+          <section className="panel gw-handoff">
+            <div>
+              <strong>Coding</strong>
+              <p className="gw-error">{codingSelf}</p>
+            </div>
+          </section>
+        )}
+        {status === "READY_FOR_CODING" && isCoderRole(user) && !codingSelf && (
           <section className="panel gw-handoff">
             <div>
               <strong>Coding</strong>

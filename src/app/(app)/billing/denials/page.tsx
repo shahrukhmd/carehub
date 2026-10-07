@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 import { claimNumber } from "@/lib/claim-format";
 import {
-  APPEAL_ALERT_DAYS,
+  appealAlertDays,
   APPEAL_LEVELS,
   APPEAL_STATUS,
   DEFAULT_APPEAL_DAYS,
@@ -39,7 +39,8 @@ export default async function DenialsPage({ searchParams }: { searchParams: Prom
   await ensureDenialRecords(user.practiceId);
   const view = VIEWS.some(([k]) => k === sp.view) ? sp.view! : "open";
   const q = sp.q?.trim();
-  const soon = new Date(Date.now() + APPEAL_ALERT_DAYS * DAY);
+  const alertDays = await appealAlertDays(user.practiceId);
+  const soon = new Date(Date.now() + alertDays * DAY);
 
   const byView: Record<string, Prisma.ClaimDenialWhereInput> = {
     open: { status: "OPEN" },
@@ -120,7 +121,7 @@ export default async function DenialsPage({ searchParams }: { searchParams: Prom
           </strong>
         </Link>
         <Link className="stat" href="/billing/denials?view=due">
-          <span>Appeal deadline within {APPEAL_ALERT_DAYS} days</span>
+          <span>Appeal deadline within {alertDays} days</span>
           <strong>{due.length}</strong>
         </Link>
         <Link className="stat" href="/billing/denials?view=appealed">
@@ -247,7 +248,7 @@ export default async function DenialsPage({ searchParams }: { searchParams: Prom
                         <div className="muted">{appeal.filedAt ? `filed ${formatDate(appeal.filedAt)}` : "not filed yet"}</div>
                       </>
                     ) : (
-                      <span className={`gw-tag gw-tag-${deadlineTone(daysUntil(d.appealDueAt))}`}>{deadlineLabel(d.appealDueAt)}</span>
+                      <span className={`gw-tag gw-tag-${deadlineTone(daysUntil(d.appealDueAt), alertDays)}`}>{deadlineLabel(d.appealDueAt)}</span>
                     )}
                   </td>
                   <td>

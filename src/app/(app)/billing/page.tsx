@@ -31,6 +31,7 @@ type Search = { tab?: string; imported?: string; q?: string; status?: string; ra
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser(rolesFor("billing.work"));
+  const smallBalanceCents = (await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { smallBalanceCents: true } }))?.smallBalanceCents ?? 500;
   const sp = await searchParams;
   // Old links to the claims tab land on the dashboard.
   if (sp.tab === "claims") redirect(`/billing/claims${sp.status === "UNSENT" ? "?bucket=UNBILLED" : sp.status === "PROBLEM" ? "?bucket=DENIED" : ""}`);
@@ -98,7 +99,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
       {tab === "visits" && <VisitsTab practiceId={user.practiceId} sp={sp} />}
       {tab === "deposits" && <DepositsTab practiceId={user.practiceId} />}
       {tab === "era" && <EraTab practiceId={user.practiceId} imported={sp.imported} />}
-      {tab === "ar" && <ArTab claims={claims} />}
+      {tab === "ar" && <ArTab claims={claims} smallBalanceCents={smallBalanceCents} />}
     </>
   );
 }
@@ -361,7 +362,9 @@ async function DepositsTab({ practiceId }: { practiceId: string }) {
 
 function ArTab({
   claims,
+  smallBalanceCents,
 }: {
+  smallBalanceCents: number;
   claims: { status: string; billedCents: number; paidCents: number; adjustedCents: number; submittedAt: Date | null }[];
 }) {
   const now = Date.now();
@@ -404,7 +407,7 @@ function ArTab({
           </p>
           <form action={writeOffSmallBalances} className="cn-inline">
             <label className="checkbox-inline">
-              Balances up to $<input name="threshold" inputMode="decimal" defaultValue="5.00" style={{ width: "6rem" }} aria-label="Threshold" />
+              Balances up to $<input name="threshold" inputMode="decimal" defaultValue={(smallBalanceCents / 100).toFixed(2)} style={{ width: "6rem" }} aria-label="Threshold" />
             </label>
             <select name="who" defaultValue="INSURANCE" aria-label="Whose balance">
               <option value="INSURANCE">Insurance balances</option>

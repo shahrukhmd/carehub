@@ -143,8 +143,24 @@ export async function createClaimFromVisit(user: { id: string; practiceId: strin
     },
   });
   await logClaimEvent(claim.id, user.id, "CREATED", { note: `${rank.toLowerCase()} claim created from the signed visit` });
+  // A claim that already passes every claim edit goes straight to "ready to bill"; the rest wait in the
+  // pre-release queue as drafts with the problems listed.
+  const ready = await settleClaimStatus(claim.id, user.practiceId, user.id);
   await refreshVisitBillingStatus(e.id);
-  return claim;
+  return ready ?? claim;
+}
+
+// Runs the claim edits on an unsent claim and sets DRAFT (problems) or READY (clean). Returns the claim, or
+// null when it is not in a pre-release status.
+export async function settleClaimStatus(claimId: string, practiceId: string, userId: string) {
+  const fresh = await loadClaimForEdits(claimId, practiceId);
+  if (!fresh || !["DRAFT", "READY"].includes(fresh.status)) return null;
+  const hasErrors = claimEdits(fresh, await claimRuleOptions(practiceId, fresh)).some((e) => e.severity === "error");
+  const next = hasErrors ? "DRAFT" : "READY";
+  if (next === fresh.status) return fresh;
+  const updated = await prisma.claim.update({ where: { id: fresh.id }, data: { status: next } });
+  await logClaimEvent(fresh.id, userId, "STATUS", { field: "status", oldValue: fresh.status, newValue: next, note: next === "READY" ? "Passed claim edits — ready to bill" : "Claim edits found problems" });
+  return { ...fresh, ...updated };
 }
 
 // Billed amount follows the service lines (paid/adjusted are maintained as payments post).

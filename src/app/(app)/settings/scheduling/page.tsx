@@ -48,6 +48,14 @@ const TABS: [string, string][] = [
   ["schedules", "Provider & clinician schedules"],
 ];
 
+// Scheduler admin is three settings entries that share this page: each area shows only its own tabs.
+const AREAS: Record<string, { key: string; title: string; tabs: string[] }> = {
+  types: { key: "scheduling", title: "Visit types & colors", tabs: ["types", "colors", "preview"] },
+  hours: { key: "scheduling-hours", title: "Hours, closures & resources", tabs: ["hours", "holidays", "schedules", "resources"] },
+  options: { key: "scheduling-options", title: "Scheduler options", tabs: ["general", "cancel", "filters"] },
+};
+const areaForTab = (tab: string) => Object.keys(AREAS).find((k) => AREAS[k].tabs.includes(tab)) ?? "types";
+
 function Chip({ c, label }: { c: ColorPair; label: string }) {
   return (
     <span className="sa-chip" style={{ color: c.text, background: c.bg }}>
@@ -59,11 +67,13 @@ function Chip({ c, label }: { c: ColorPair; label: string }) {
 export default async function SchedulingSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; saved?: string; error?: string; location?: string; year?: string }>;
+  searchParams: Promise<{ tab?: string; area?: string; saved?: string; error?: string; location?: string; year?: string }>;
 }) {
   const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
-  const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "types";
+  const areaKey = sp.tab && TABS.some(([k]) => k === sp.tab) ? areaForTab(sp.tab) : sp.area && AREAS[sp.area] ? sp.area : "types";
+  const area = AREAS[areaKey];
+  const tab = sp.tab && area.tabs.includes(sp.tab) ? sp.tab : area.tabs[0];
   const [settings, types, locations, physicians, reasons, filters] = await Promise.all([
     getSchedulerSettings(user.practiceId),
     getVisitTypes(user.practiceId, { includeInactive: true }),
@@ -132,15 +142,15 @@ export default async function SchedulingSettingsPage({
           <p className="muted">
             <Link href="/settings">Settings</Link>
           </p>
-          <h1>Scheduler admin</h1>
+          <h1>{area.title}</h1>
         </div>
         <Link className="btn secondary" href="/schedule">
           Open schedule
         </Link>
       </div>
-      <SettingsNav current="scheduling" />
-      <nav className="view-tabs st-tabs" aria-label="Scheduler admin">
-        {TABS.map(([k, l]) => (
+      <SettingsNav current={area.key} />
+      <nav className="view-tabs st-tabs" aria-label={area.title}>
+        {area.tabs.map((k) => [k, TABS.find(([t]) => t === k)![1]] as const).map(([k, l]) => (
           <Link key={k} href={`/settings/scheduling?tab=${k}`} className={`view-tab${tab === k ? " active" : ""}`}>
             {l}
           </Link>

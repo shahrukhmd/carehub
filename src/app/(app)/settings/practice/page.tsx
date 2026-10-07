@@ -219,10 +219,36 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
               <input type="checkbox" name="enforceVobScope" defaultChecked={s.enforceVobScope} /> Enforce a limited VOB on the claim
               <span className="muted"> — when the VOB approved E&amp;M and debridement only, other services are a claim error</span>
             </label>
+            <label className="checkbox-inline">
+              <input type="checkbox" name="separateDuties" defaultChecked={s.separateDuties} /> No self-review
+              <span className="muted">
+                {" "}
+                — nobody CDS-reviews or codes a visit they documented, and nobody codes a visit they reviewed; applies to administrators too
+              </span>
+            </label>
             <p className="muted">
               Payers that require CDS review before billing are set per insurance plan (Directories → insurance → &ldquo;Requires visit review&rdquo;); that rule is
               always on and also stops billing-only claims to those payers.
             </p>
+          </div>
+        </section>
+
+        <section className="panel" id="thresholds">
+          <h2>Thresholds &amp; timers</h2>
+          <p className="muted">The numbers the automations and the billing screens work from.</p>
+          <div className="form-grid gw-grid-3">
+            <label title="The default on the small-balance write-off (Revenue cycle → A/R). Open claim balances at or under this amount are cleared with a contractual adjustment.">
+              Small-balance write-off, up to $
+              <input name="smallBalance" inputMode="decimal" defaultValue={(s.smallBalanceCents / 100).toFixed(2)} />
+            </label>
+            <label title="An open denial whose appeal deadline falls within this many days is flagged on the denials screen and raised as an urgent task.">
+              Appeal deadline alert (days ahead)
+              <input name="appealAlertDays" type="number" min={1} max={90} defaultValue={s.appealAlertDays} />
+            </label>
+            <label title="How long after an outgoing referral is sent the follow-up task is raised when no report has come back.">
+              Referral follow-up (days)
+              <input name="referralFollowUpDays" type="number" min={1} max={365} defaultValue={s.referralFollowUpDays} />
+            </label>
           </div>
         </section>
 

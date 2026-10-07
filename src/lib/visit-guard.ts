@@ -1,12 +1,13 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { canEditClinical, canEditCoding, visitStatusLabel } from "@/lib/visit-workflow";
+import { selfReviewBlock } from "@/lib/separation";
 
 // Enforces the visit workflow on every chart edit: clinical content belongs to the provider and clinical
 // team until the chart goes to CDS; the superbill belongs to CDS during review; signed charts are locked.
 export async function assertChartEditable(
   encounterId: string,
-  user: { practiceId: string; role: string },
+  user: { id: string; practiceId: string; role: string },
   area: "clinical" | "coding"
 ) {
   const encounter = await prisma.encounter.findFirst({
@@ -19,6 +20,10 @@ export async function assertChartEditable(
     throw new Error(
       `This chart is "${visitStatusLabel[encounter.status] ?? encounter.status}" — ${area === "clinical" ? "documentation" : "coding"} can't be changed by your role at this stage.`
     );
+  }
+  if (area === "coding") {
+    const self = await selfReviewBlock(encounterId, user.id, "coding");
+    if (self) throw new Error(self);
   }
 }
 

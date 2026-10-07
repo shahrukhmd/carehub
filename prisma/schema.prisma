@@ -1693,6 +1693,8 @@ model PracticeSettings {
   chartRequiresCheckIn       Boolean @default(false)
   // A VOB decision limited to E&M and debridement blocks other services on the claim.
   enforceVobScope            Boolean @default(false)
+  // No self-review: nobody CDS-reviews or codes a visit they documented, or codes one they reviewed.
+  separateDuties             Boolean @default(true)
   clearinghouse    String   @default("MOCK")
   // Accounting period close: no deposit may be posted dated on or before this day.
   closedThrough    DateTime?
@@ -1706,6 +1708,9 @@ model PracticeSettings {
   eligibilityAuto Boolean @default(false)
   // Days without a consult note before an outgoing referral needs follow-up.
   referralFollowUpDays Int @default(30)
+  // Thresholds & timers (Practice setup): small-balance write-off default, and how far ahead an appeal deadline is flagged.
+  smallBalanceCents    Int @default(500)
+  appealAlertDays      Int @default(14)
 }
 
 // Patient documents uploaded by the data entry team (referrals, face sheets, insurance cards...).

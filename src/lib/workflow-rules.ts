@@ -8,9 +8,9 @@ import { networkStatusForPayer } from "@/lib/credentialing";
 export async function workflowRules(practiceId: string) {
   const s = await prisma.practiceSettings.findUnique({
     where: { practiceId },
-    select: { bookingRequiresGateway: true, bookingChecksCredentialing: true, chartRequiresCheckIn: true, enforceVobScope: true },
+    select: { bookingRequiresGateway: true, bookingChecksCredentialing: true, chartRequiresCheckIn: true, enforceVobScope: true, separateDuties: true },
   });
-  return { bookingRequiresGateway: false, bookingChecksCredentialing: false, chartRequiresCheckIn: false, enforceVobScope: false, ...s };
+  return { bookingRequiresGateway: false, bookingChecksCredentialing: false, chartRequiresCheckIn: false, enforceVobScope: false, separateDuties: true, ...s };
 }
 
 // Stages where the Gateway has not cleared the patient for booking.
