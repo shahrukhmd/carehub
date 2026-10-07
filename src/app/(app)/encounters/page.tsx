@@ -17,6 +17,7 @@ import {
   visitStatusTone,
 } from "@/lib/visit-workflow";
 import { setAppointmentStatus } from "./workflow-actions";
+import { can } from "@/lib/permissions";
 
 type Search = { queue?: string; q?: string; provider?: string; from?: string; to?: string; status?: string };
 
@@ -120,7 +121,7 @@ export default async function VisitWorklistPage({ searchParams }: { searchParams
     ...encounters.map((enc) => ({ kind: "enc" as const, at: enc.appointment?.startsAt ?? enc.date, enc })),
   ].sort((a, b) => b.at.getTime() - a.at.getTime());
 
-  const canStart = ["ADMIN", "FRONT_DESK", "CLINICIAN"].includes(user.role);
+  const canStart = can(user, "chart.start");
   const canSetPreVisit = ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN"].includes(user.role);
   const counts = await prisma.encounter.groupBy({
     by: ["status"],

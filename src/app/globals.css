@@ -7949,3 +7949,38 @@ td.num {
     grid-template-columns: 1fr;
   }
 }
+
+/* Per-user permission overrides (Settings -> Users & roles) */
+.pm-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+.pm-columns .pm-edit {
+  width: 100%;
+}
+.pm-columns .pm-edit th:first-child {
+  text-align: left;
+}
+.pm-columns .pm-edit td:first-child {
+  white-space: normal;
+}
+.pm-columns .pm-edit .pm-cell {
+  white-space: nowrap;
+}
+.pm-columns .pm-edit .pm-cell label {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  cursor: pointer;
+}
+.pm-columns .pm-edit .pm-changed td {
+  background: var(--amber-soft);
+}
+.pm-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}

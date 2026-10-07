@@ -1,10 +1,11 @@
+import { rolesFor } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { addAvailability, removeAvailability } from "@/app/(app)/schedule/actions";
 import { DAY_NAMES, formatTimeLabel } from "@/lib/schedule";
 
 export default async function AvailabilityPage() {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
 
   const [providers, locations, availability] = await Promise.all([
     prisma.user.findMany({

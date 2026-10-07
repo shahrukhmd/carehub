@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -47,7 +48,7 @@ async function editableEncounter(encounterId: string, user: { practiceId: string
     include: { patient: { include: { wounds: { where: { status: { not: "HEALED" } }, select: { id: true } } } } },
   });
   if (!e) fail("Visit not found.");
-  if (!canEditClinical(e.status, user.role)) {
+  if (!canEditClinical(e.status, user)) {
     fail(`Documents can't be changed while the visit is "${visitStatusLabel[e.status] ?? e.status}".`);
   }
   return e;
@@ -56,7 +57,7 @@ async function editableEncounter(encounterId: string, user: { practiceId: string
 export async function saveDocument(encounterId: string, templateId: string, woundKey: string, fd: FormData) {
   const back = String(fd.get("back") ?? "");
   return guarded(encounterId, back, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await editableEncounter(encounterId, user);
     const template = await prisma.documentTemplate.findFirst({ where: { id: templateId, practiceId: user.practiceId, kind: "FORM" } });
     if (!template) fail("Document template not found.");
@@ -93,7 +94,7 @@ export async function saveDocument(encounterId: string, templateId: string, woun
 export async function signDocument(encounterId: string, documentId: string, fd: FormData) {
   const back = String(fd.get("back") ?? "");
   return guarded(encounterId, back, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.sign"));
     await editableEncounter(encounterId, user);
     const doc = await prisma.encounterDocument.findFirst({ where: { id: documentId, encounterId }, include: { template: true } });
     if (!doc) fail("Document not found.");
@@ -114,7 +115,7 @@ export async function signDocument(encounterId: string, documentId: string, fd: 
 export async function unsignDocument(encounterId: string, documentId: string, fd: FormData) {
   const back = String(fd.get("back") ?? "");
   return guarded(encounterId, back, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.sign"));
     await editableEncounter(encounterId, user);
     const doc = await prisma.encounterDocument.findFirst({ where: { id: documentId, encounterId }, include: { template: true } });
     if (!doc?.signedAt) fail("Document isn't signed.");
@@ -129,7 +130,7 @@ export async function unsignDocument(encounterId: string, documentId: string, fd
 
 export async function setEncounterWorkflow(encounterId: string, fd: FormData) {
   return guarded(encounterId, "", async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await editableEncounter(encounterId, user);
     const workflowId = String(fd.get("workflowId") ?? "");
     const wf = await prisma.chartWorkflow.findFirst({ where: { id: workflowId, practiceId: user.practiceId, active: true } });
@@ -141,7 +142,7 @@ export async function setEncounterWorkflow(encounterId: string, fd: FormData) {
   });
 }
 
-const ATTACHMENT_ROLES = ["ADMIN", "CLINICIAN", "CDS", "CODER", "BILLER"];
+const ATTACHMENT_ROLES = rolesFor("chart.attach");
 
 export async function uploadAttachment(encounterId: string, fd: FormData) {
   const back = String(fd.get("back") ?? "scans");
@@ -185,7 +186,7 @@ const PROBLEM_VERIFICATION = ["CONFIRMED", "PROVISIONAL", "DIFFERENTIAL", "UNCON
 
 export async function addProblem(encounterId: string, fd: FormData) {
   return guarded(encounterId, "problems", async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await editableEncounter(encounterId, user);
     const icd10 = String(fd.get("icd10") ?? "").trim().toUpperCase();
     const description = String(fd.get("description") ?? "").trim();
@@ -206,7 +207,7 @@ export async function addProblem(encounterId: string, fd: FormData) {
 
 export async function setProblemStatus(encounterId: string, problemId: string, fd: FormData) {
   return guarded(encounterId, "problems", async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await editableEncounter(encounterId, user);
     const status = String(fd.get("status") ?? "");
     if (!["ACTIVE", "RESOLVED", "INACTIVE"].includes(status)) fail("Invalid problem status.");

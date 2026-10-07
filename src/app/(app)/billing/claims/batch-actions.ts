@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -11,7 +12,7 @@ import { DX_LETTERS, PAYER_RANKS, normalizePointers } from "@/lib/claim-format";
 import { scheduleFor } from "@/lib/charge-schedules";
 import { placeOfServiceLabel } from "@/lib/superbill";
 
-const BILLING_ROLES = ["ADMIN", "BILLER"];
+const BILLING_ROLES = rolesFor("billing.work");
 const MAX_BULK_RELEASE = 200;
 const MAX_PAPER_CLAIMS = 75;
 const MANUAL_DIAGNOSES = 4;

@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -13,7 +14,7 @@ export default async function DocumentationViewEditor({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const { id } = await params;
   const sp = await searchParams;
   const view = id === "new" ? null : await prisma.documentationView.findFirst({ where: { id, practiceId: user.practiceId } });

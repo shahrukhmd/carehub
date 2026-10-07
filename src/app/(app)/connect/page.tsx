@@ -30,6 +30,7 @@ import {
 import { PAYMENT_PROVIDERS, PAYMENT_ROLES, patientBalance } from "@/lib/connect/payments";
 import { testPaymentsAllowed } from "@/lib/connect/pay-session";
 import { formatMoney } from "@/lib/format";
+import { allowed, roleOf, type Subject } from "@/lib/permissions";
 
 type Search = { payLink?: string; tab?: string; error?: string; saved?: string; sent?: string; ran?: string; reminded?: string; resent?: string; edit?: string; status?: string; patientId?: string; appointmentId?: string };
 
@@ -121,7 +122,7 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
       {tab === "kiosk" && <Kiosk practiceId={user.practiceId} />}
       {tab === "settings" && <Branding s={settings} />}
       {tab === "booking" && <Booking practiceId={user.practiceId} admin={admin} s={settings} />}
-      {tab === "payments" && <Payments practiceId={user.practiceId} role={user.role} s={settings} payLink={sp.payLink} />}
+      {tab === "payments" && <Payments practiceId={user.practiceId} role={user} s={settings} payLink={sp.payLink} />}
     </div>
   );
 }
@@ -1185,8 +1186,8 @@ async function Booking({ practiceId, admin, s }: { practiceId: string; admin: bo
 
 const PAY_STATUS: Record<string, string> = { SENT: "Sent", PAID: "Paid", CANCELLED: "Replaced / cancelled", EXPIRED: "Expired" };
 
-async function Payments({ practiceId, role, s, payLink }: { practiceId: string; role: string; s: Settings; payLink?: string }) {
-  const canSend = PAYMENT_ROLES.includes(role);
+async function Payments({ practiceId, role, s, payLink }: { practiceId: string; role: Subject; s: Settings; payLink?: string }) {
+  const canSend = allowed(role, PAYMENT_ROLES);
   const [links, owing, url] = await Promise.all([
     prisma.patientPayment.findMany({ where: { practiceId }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 100 }),
     prisma.patient.findMany({
@@ -1318,7 +1319,7 @@ async function Payments({ practiceId, role, s, payLink }: { practiceId: string; 
           </table>
         )}
       </section>
-      {role === "ADMIN" && (
+      {roleOf(role) === "ADMIN" && (
         <section className="panel">
           <h2>Payment settings</h2>
           <form action={savePaymentSettings} className="form-grid gw-grid-3">

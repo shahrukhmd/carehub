@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { codeSetLabel, fetchHcpcs, fetchIcd10, readCodeFile, replaceCodeSet, searchMasterCodes, type CodeHit, type CodeSet } from "@/lib/master-codes";
 
 const ADMIN = ["ADMIN"];
-const LOOKUP_ROLES = ["ADMIN", "BILLER", "CDS", "CODER", "CLINICIAN", "FRONT_DESK"];
+const LOOKUP_ROLES = rolesFor("codes.lookup");
 
 function back(key: "ok" | "error", message: string): never {
   redirect(`/settings/code-library?${key}=${encodeURIComponent(message.slice(0, 300))}`);
@@ -61,7 +62,7 @@ export async function lookupCodes(q: string, sets: CodeSet[]): Promise<CodeHit[]
 
 // Adds the ticked billing codes to a charge schedule. They go on with no fee; the fee is entered on the schedule.
 export async function addCodesToSchedule(fd: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const q = String(fd.get("q") ?? "");
   const set = String(fd.get("set") ?? "");
   function here(key: "ok" | "error", message: string, scheduleId?: string): never {

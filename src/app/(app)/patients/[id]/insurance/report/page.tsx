@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,13 +7,13 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { PrintButton } from "@/components/PrintButton";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
-import { PATIENT_VIEW_ROLES } from "@/lib/gateway";
+
 import { payerRankLabel } from "@/lib/claim-format";
 import { yesNoUnknownLabel } from "@/lib/patient-fields";
 
 // Printable summary of the patient's active coverages and every authorization on file.
 export default async function InsuranceAuthorizationReport({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser([...PATIENT_VIEW_ROLES, "BILLER"]);
+  const user = await requireUser(rolesFor("patients.view"));
   const { id } = await params;
   await requireChartAccess(user, id, `/patients/${id}/insurance/report`);
   const patient = await prisma.patient.findFirst({

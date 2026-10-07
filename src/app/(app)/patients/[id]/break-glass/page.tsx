@@ -1,9 +1,10 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { patientName } from "@/lib/format";
-import { PATIENT_VIEW_ROLES } from "@/lib/gateway";
+
 import { EMERGENCY_ACCESS_HOURS, chartAccess, emergencyReasonLabel } from "@/lib/privacy";
 import { breakGlass } from "../privacy/actions";
 
@@ -11,7 +12,7 @@ type Search = { next?: string; error?: string };
 
 // Shown instead of a restricted chart to someone outside the patient's care team.
 export default async function BreakGlassPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser([...new Set([...PATIENT_VIEW_ROLES, "BILLER", "CDS", "CODER"])]);
+  const user = await requireUser(rolesFor("patients.view"));
   const { id } = await params;
   const sp = await searchParams;
   const next = sp.next && sp.next.startsWith("/") && !sp.next.startsWith("//") ? sp.next : `/patients/${id}`;

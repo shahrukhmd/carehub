@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import path from "node:path";
 import { unlink } from "node:fs/promises";
 import { revalidatePath } from "next/cache";
@@ -8,10 +9,10 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { ScanError, saveScanFiles, uploadedFiles } from "@/lib/scans";
-import { GATEWAY_ROLES } from "@/lib/gateway";
+
 import { SCAN_GROUPS } from "@/lib/patient-docs";
 
-const SCAN_ROLES = [...GATEWAY_ROLES, "BILLER"];
+const SCAN_ROLES = rolesFor("patients.scans");
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 function back(patientId: string, msg?: { error?: string; ok?: string }): never {

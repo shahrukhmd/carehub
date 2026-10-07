@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -6,7 +7,7 @@ import { buildVxuBatch } from "@/lib/immunizations";
 
 // Immunization registry (IIS) file: HL7 v2.5.1 VXU batch. ?mark=1 records the doses as reported.
 export async function GET(req: NextRequest) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const q = req.nextUrl.searchParams;
   const from = /^\d{4}-\d{2}-\d{2}$/.test(q.get("from") ?? "") ? new Date(`${q.get("from")}T00:00:00`) : new Date(Date.now() - 30 * 86_400_000);
   const to = /^\d{4}-\d{2}-\d{2}$/.test(q.get("to") ?? "") ? new Date(`${q.get("to")}T23:59:59`) : new Date();

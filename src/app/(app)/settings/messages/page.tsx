@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -15,7 +16,7 @@ export default async function SystemMessagesPage({
 }: {
   searchParams: Promise<{ edit?: string; saved?: string; error?: string; inactive?: string }>;
 }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const messages = await prisma.systemMessage.findMany({
     where: { practiceId: user.practiceId, ...(sp.inactive ? {} : { active: true }) },

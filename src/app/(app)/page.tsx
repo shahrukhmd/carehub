@@ -14,6 +14,7 @@ import {
   type GatewayTeam,
 } from "@/lib/gateway";
 import { BoardTab, RegistryTab, TeamQueueTab, TodayTab, VobLearningTab, type GatewaySearch } from "./gateway/views";
+import { allowed } from "@/lib/permissions";
 
 const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
   { key: "data-entry", team: "DATA_ENTRY" },
@@ -24,7 +25,7 @@ const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
 export default async function PatientGatewayPage({ searchParams }: { searchParams: Promise<GatewaySearch> }) {
   const user = await requireUser();
   // Billing and credentialing staff work outside the gateway; send them to their own home.
-  if (!GATEWAY_ROLES.includes(user.role)) redirect(user.role === "CREDENTIALING" ? "/credentialing" : ["CDS", "CODER"].includes(user.role) ? "/encounters" : "/billing");
+  if (!allowed(user, GATEWAY_ROLES)) redirect(user.role === "CREDENTIALING" ? "/credentialing" : ["CDS", "CODER"].includes(user.role) ? "/encounters" : "/billing");
 
   const sp = await searchParams;
   const ownTeam = defaultTeamForRole(user.role);

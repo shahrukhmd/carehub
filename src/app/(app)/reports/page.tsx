@@ -3,15 +3,15 @@ import { requireUser } from "@/lib/auth";
 import { reportRange } from "@/lib/financial-reports";
 import { OPS_REPORTS, runOpsReport } from "@/lib/ops-reports";
 import { REPORTS as FINANCIAL_REPORTS } from "@/lib/financial-reports";
-import { can } from "@/lib/permissions";
+import { can, type Subject } from "@/lib/permissions";
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ r?: string; from?: string; to?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  if (!sp.r) return <ReportsHome role={user.role} />;
-  if (!can(user.role, "reports.ops") && !can(user.role, "reports.clinical")) return <ReportsHome role={user.role} />;
+  if (!sp.r) return <ReportsHome role={user} />;
+  if (!can(user, "reports.ops") && !can(user, "reports.clinical")) return <ReportsHome role={user} />;
   const key = OPS_REPORTS.some(([k]) => k === sp.r) ? sp.r! : "daily";
   const { from, to } = reportRange(sp);
   const table = await runOpsReport(user.practiceId, key, from, to);
@@ -36,7 +36,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <a className="btn secondary" href={`/api/reports/ops?${qs}`}>
             Export CSV
           </a>
-          {["ADMIN", "BILLER"].includes(user.role) && (
+          {can(user, "billing.work") && (
             <Link className="btn ghost" href="/billing/reports">
               Financial reports
             </Link>
@@ -114,7 +114,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
 
 const CLINICAL_OPS = new Set(["wound_outcomes", "wound_provider", "hbo"]);
 
-function ReportsHome({ role }: { role: string }) {
+function ReportsHome({ role }: { role: Subject }) {
   const ops = OPS_REPORTS.filter(([k]) => !CLINICAL_OPS.has(k));
   const clinical = OPS_REPORTS.filter(([k]) => CLINICAL_OPS.has(k));
   const groups: { title: string; about: string; show: boolean; items: { href: string; label: string; about: string }[] }[] = [

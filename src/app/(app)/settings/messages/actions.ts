@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,7 @@ function when(fd: FormData, dateKey: string, timeKey: string, endOfDay: boolean)
 }
 
 export async function saveSystemMessage(id: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const title = str(fd, "title");
   const message = str(fd, "message");
   const back = id === "new" ? "/settings/messages" : `/settings/messages?edit=${id}`;
@@ -48,7 +49,7 @@ export async function saveSystemMessage(id: string, fd: FormData) {
 }
 
 export async function deleteSystemMessage(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await prisma.systemMessage.deleteMany({ where: { id, practiceId: user.practiceId } });
   await logAudit(user.practiceId, user.id, "DELETE_SYSTEM_MESSAGE", "SystemMessage", id);
   revalidatePath("/", "layout");

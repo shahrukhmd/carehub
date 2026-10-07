@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { TeamWaiting } from "@/components/TeamWaiting";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -29,7 +30,7 @@ const LOCAL_TABS = ["visits", "deposits", "era", "ar"];
 type Search = { tab?: string; imported?: string; q?: string; status?: string; rank?: string; billing?: string; error?: string; ok?: string };
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   // Old links to the claims tab land on the dashboard.
   if (sp.tab === "claims") redirect(`/billing/claims${sp.status === "UNSENT" ? "?bucket=UNBILLED" : sp.status === "PROBLEM" ? "?bucket=DENIED" : ""}`);

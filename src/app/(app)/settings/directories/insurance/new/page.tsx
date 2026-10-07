@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { saveInsurance } from "../../actions";
 import { InsuranceForm } from "../insurance-form";
 
 export default async function NewInsurancePage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER", "CREDENTIALING"]);
+  const user = await requireUser(rolesFor("settings.insurance"));
   const fromCredentialing = (await searchParams).from === "credentialing";
   const otherPayers = await prisma.payer.findMany({
     where: { practiceId: user.practiceId },

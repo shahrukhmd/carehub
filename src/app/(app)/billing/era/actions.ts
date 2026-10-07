@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { claimNumber } from "@/lib/claim-format";
 import { buildTest835, importEra, matchEraClaim, postEra, skipEraClaim } from "@/lib/era";
 
-const BILLING_ROLES = ["ADMIN", "BILLER"];
+const BILLING_ROLES = rolesFor("billing.work");
 
 async function run(back: string, work: (user: Awaited<ReturnType<typeof requireUser>>) => Promise<string | void>) {
   const user = await requireUser(BILLING_ROLES);

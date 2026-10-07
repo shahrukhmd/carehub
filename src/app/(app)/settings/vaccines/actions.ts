@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { MANUFACTURERS, VACCINES } from "@/lib/immunizations";
 
-const STOCK_ROLES = ["ADMIN", "CLINICIAN"];
+const STOCK_ROLES = rolesFor("immunizations.stock");
 const FUNDING = ["PRIVATE", "VFC", "STATE"];
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 

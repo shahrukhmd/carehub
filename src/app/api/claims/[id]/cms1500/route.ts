@@ -4,11 +4,12 @@ import { logAudit } from "@/lib/audit";
 import { renderCms1500 } from "@/lib/cms1500-pdf";
 import { cms1500ForClaims } from "@/lib/cms1500-data";
 import { claimNumber } from "@/lib/claim-format";
+import { can } from "@/lib/permissions";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return new Response("Not signed in", { status: 401 });
-  if (!["ADMIN", "BILLER"].includes(user.role)) return new Response("Forbidden", { status: 403 });
+  if (!can(user, "billing.work")) return new Response("Forbidden", { status: 403 });
   const { id } = await params;
   const formImage = new URL(request.url).searchParams.get("form") !== "0";
 

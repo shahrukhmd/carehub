@@ -5,10 +5,10 @@ import { sdohDomainLabel } from "@/lib/care-plan";
 import { formatDate, patientAccountStatusLabel } from "@/lib/format";
 import { REGISTRY_KEYS, REGISTRY_LIMIT, ageOf, hasCriteria, runRegistry, type RegistryCriteria } from "@/lib/registry";
 import { etiologyLabel } from "@/lib/wound";
-import { rolesFor } from "@/lib/permissions";
+import { rolesFor, allowed } from "@/lib/permissions";
 
 const SHOWN = 500;
-const EXPORT_ROLES = ["ADMIN", "CLINICIAN", "CDS"];
+const EXPORT_ROLES = rolesFor("reports.export");
 type Search = RegistryCriteria & { run?: string };
 
 // Build a list of patients from clinical and demographic criteria, then export it.
@@ -36,7 +36,7 @@ export default async function PatientRegistryPage({ searchParams }: { searchPara
             Find every patient who matches a set of criteria — for outreach, recalls, audits or a payer request.
           </p>
         </div>
-        {result && result.rows.length > 0 && EXPORT_ROLES.includes(user.role) && (
+        {result && result.rows.length > 0 && allowed(user, EXPORT_ROLES) && (
           <a className="btn secondary" href={`/api/reports/registry?${qs}`}>
             Export CSV ({result.rows.length})
           </a>

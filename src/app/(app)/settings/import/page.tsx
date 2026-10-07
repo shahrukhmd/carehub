@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -11,7 +12,7 @@ type Search = { batch?: string; error?: string; imported?: string; undone?: stri
 const STATUS: Record<string, [string, string]> = { READY: ["Will import", "ok"], DUPLICATE: ["Skip — duplicate", "warn"], ERROR: ["Can't import", "bad"], IMPORTED: ["Imported", "ok"] };
 
 export default async function PatientImportPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const [batch, history] = await Promise.all([
     sp.batch ? prisma.importBatch.findFirst({ where: { id: sp.batch, practiceId: user.practiceId } }) : null,

@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +13,7 @@ type Search = { user?: string; action?: string; entity?: string; from?: string; 
 const isDate = (v?: string) => Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
 
 export default async function AuditLogPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
 

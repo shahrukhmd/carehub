@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +22,7 @@ type Search = { patient?: string; status?: string; payer?: string; claim?: strin
 // Paper claims: CMS-1500 forms for the payers that can't be reached through the clearinghouse. Preview prints
 // without changing anything; Create marks the claims as sent and keeps the batch for reprinting.
 export default async function PaperClaimsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const view = sp.status && sp.status in VIEWS ? sp.status : "AWAITING";
   const claimQuery = sp.claim?.trim().toUpperCase().replace(/^CLM-?/, "") ?? "";

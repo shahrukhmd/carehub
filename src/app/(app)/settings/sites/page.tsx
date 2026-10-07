@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import type { Location } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -121,7 +122,7 @@ function SiteForm({ site, types, action, cancel }: { site?: Location; types: { i
 
 // Sites of service (facilities the practice visits, and its own clinics) and the kinds of site.
 export default async function SitesPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const tab = sp.tab === "types" ? "types" : "sites";
   const [sites, types] = await Promise.all([

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +19,7 @@ function fail(message: string): never {
 }
 
 async function guarded(back: string, work: (user: Awaited<ReturnType<typeof requireUser>>) => Promise<string | void>) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await ensureSchedulerSetup(user.practiceId);
   let target = back;
   try {
@@ -185,6 +186,14 @@ export async function removeCancellationReason(id: string) {
   });
 }
 
+// A site of service picked on a form: this practice's, or none. Anything else is refused.
+async function ownLocationId(practiceId: string, id: string) {
+  if (!id) return null;
+  const loc = await prisma.location.findFirst({ where: { id, practiceId }, select: { id: true } });
+  if (!loc) fail("Pick a site of service from this practice.");
+  return loc.id;
+}
+
 // ---- Calendar filter sets ----
 
 export async function saveFilterSet(fd: FormData) {
@@ -192,12 +201,13 @@ export async function saveFilterSet(fd: FormData) {
     const name = str(fd, "name");
     if (!name) fail("Name the filter set.");
     const view = ["day", "week", "list"].includes(str(fd, "view")) ? str(fd, "view") : "day";
+    const filterLocationId = await ownLocationId(user.practiceId, str(fd, "locationId"));
     await prisma.calendarFilterSet.create({
       data: {
         practiceId: user.practiceId,
         name: name.slice(0, 80),
         description: str(fd, "description") || null,
-        locationId: str(fd, "locationId") || null,
+        locationId: filterLocationId,
         providerIds: fd.getAll("providerIds").map(String).join(",") || null,
         visitTypes: fd.getAll("visitTypes").map(String).join(",") || null,
         view,
@@ -275,7 +285,7 @@ export async function importHolidays(fd: FormData) {
     if (!Number.isInteger(year) || year < 2020 || year > 2100) fail("Pick a year.");
     const picked = new Set(fd.getAll("holiday").map(String).filter((h) => FEDERAL_HOLIDAYS.includes(h)));
     if (picked.size === 0) fail("Tick the holidays the practice closes for.");
-    const locationId = String(fd.get("locationId") ?? "") || null;
+    const locationId = await ownLocationId(user.practiceId, String(fd.get("locationId") ?? ""));
     const existing = await prisma.clinicClosure.findMany({ where: { practiceId: user.practiceId, date: { gte: new Date(year, 0, 1), lt: new Date(year + 1, 0, 1) } } });
     const have = new Set(existing.map((c) => `${dayKey(c.date)}|${c.locationId ?? ""}`));
     const rows = holidaysFor(year)
@@ -297,7 +307,7 @@ export async function addClosure(fd: FormData) {
     const start = new Date(`${from}T12:00:00`);
     const end = new Date(`${to}T12:00:00`);
     if (end < start || end.getTime() - start.getTime() > 60 * 86_400_000) fail("A closure can span up to 60 days.");
-    const locationId = String(fd.get("locationId") ?? "") || null;
+    const locationId = await ownLocationId(user.practiceId, String(fd.get("locationId") ?? ""));
     const rows = [];
     for (let d = new Date(start); d <= end; d = new Date(d.getTime() + 86_400_000)) rows.push({ practiceId: user.practiceId, locationId, date: new Date(d), name, kind: "CLOSURE", allowBooking: fd.get("allowBooking") === "on" });
     await prisma.clinicClosure.createMany({ data: rows });

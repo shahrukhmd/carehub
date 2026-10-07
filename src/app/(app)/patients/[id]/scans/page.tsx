@@ -1,8 +1,9 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatTime } from "@/lib/format";
-import { GATEWAY_ROLES } from "@/lib/gateway";
+
 import { SCAN_GROUPS } from "@/lib/patient-docs";
 import { PatientShell, loadPatientShell } from "../patient-shell";
 import { addScans, deleteScan, updateScan } from "./actions";
@@ -10,7 +11,7 @@ import { addScans, deleteScan, updateScan } from "./actions";
 type Search = { q?: string; add?: string; edit?: string; error?: string; ok?: string };
 
 export default async function PatientScansPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser([...GATEWAY_ROLES, "BILLER"]);
+  const user = await requireUser(rolesFor("patients.scans"));
   const { id } = await params;
   const sp = await searchParams;
   const shell = await loadPatientShell(id, user);

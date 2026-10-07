@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -6,7 +7,7 @@ import { REGISTRY_KEYS, registryTable, runRegistry, type RegistryCriteria } from
 
 // The registry list as a spreadsheet. It carries patient details, so every export is written to the audit log.
 export async function GET(req: NextRequest) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CDS"]);
+  const user = await requireUser(rolesFor("reports.export"));
   const q = req.nextUrl.searchParams;
   const criteria: RegistryCriteria = {};
   for (const k of REGISTRY_KEYS) if (q.get(k)) criteria[k] = q.get(k)!;

@@ -5,9 +5,10 @@ import { PrintButton } from "@/components/PrintButton";
 import { claimNumber, claimStatusLabel } from "@/lib/claim-format";
 import { ageFromDob, formatDate, formatMoney, formatTime, patientName } from "@/lib/format";
 import { PatientShell, loadPatientShell } from "../patient-shell";
+import { allowed, rolesFor } from "@/lib/permissions";
 
 // Billing staff open a claim; the front desk sees the account (for patient questions) without the claim editor.
-const CLAIM_OPEN_ROLES = ["ADMIN", "BILLER"];
+const CLAIM_OPEN_ROLES = rolesFor("billing.work");
 const CLOSED = ["PAID", "VOID", "WRITTEN_OFF"];
 const WITH_PAYER = ["DENIED", "EDI_REJECTED", "APPEAL"];
 const METHODS: Record<string, string> = { CHECK: "Check", EFT: "EFT / ACH", CARD: "Card", CASH: "Cash", NON: "No payment", OTHER: "Other" };
@@ -25,11 +26,11 @@ function day(value: string | undefined, fallback: Date, end = false) {
 // The patient's account: balances, then one row per claim with what was charged, paid by insurance and by the
 // patient, adjusted and still owed, and who owes it. Opened from Quick actions → Claims.
 export default async function PatientAccountPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("payments.take"));
   const { id } = await params;
   const sp = await searchParams;
   const shell = await loadPatientShell(id, user);
-  const canOpen = CLAIM_OPEN_ROLES.includes(user.role);
+  const canOpen = allowed(user, CLAIM_OPEN_ROLES);
 
   const now = new Date();
   const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());

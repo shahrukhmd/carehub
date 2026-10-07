@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -16,7 +17,7 @@ const PATIENT_REPORTS: [string, string, string][] = [
 ];
 
 export default async function VisitReportsPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER", "FRONT_DESK", "CDS", "CODER"]);
+  const user = await requireUser(rolesFor("chart.view"));
   const { id } = await params;
   await requireEncounterAccess(user, id);
   await ensureChartSetup(user.practiceId);

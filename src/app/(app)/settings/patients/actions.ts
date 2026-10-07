@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { mergePatients, pairKey } from "@/lib/patient-merge";
 
 export async function mergeCharts(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const keep = String(fd.get("keep") ?? "");
   const a = String(fd.get("a") ?? "");
   const b = String(fd.get("b") ?? "");
@@ -26,7 +27,7 @@ export async function mergeCharts(fd: FormData) {
 }
 
 export async function dismissPair(a: string, b: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const found = await prisma.patient.count({ where: { id: { in: [a, b] }, practiceId: user.practiceId } });
   if (found === 2) {
     await prisma.duplicateDismissal.upsert({

@@ -6,19 +6,20 @@ import { readUpload } from "@/lib/storage";
 import { logAudit } from "@/lib/audit";
 import { ENCOUNTER_VIEW_ROLES } from "@/lib/visit-workflow";
 import { GATEWAY_ROLES } from "@/lib/gateway";
+import { allowed } from "@/lib/permissions";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ kind: string; id: string }> }) {
   const user = await getCurrentUser();
   if (!user) return new Response("Not signed in", { status: 401 });
   const { kind, id } = await params;
   // Visit attachments follow chart access; credentialing files follow credentialing access.
-  const allowed =
+  const permitted =
     kind === "attachment"
-      ? ENCOUNTER_VIEW_ROLES.includes(user.role)
+      ? allowed(user, ENCOUNTER_VIEW_ROLES)
       : kind === "patientdoc" || kind === "patientphoto"
-        ? GATEWAY_ROLES.includes(user.role) || ENCOUNTER_VIEW_ROLES.includes(user.role)
-        : CREDENTIALING_ROLES.includes(user.role);
-  if (!allowed) return new Response("Forbidden", { status: 403 });
+        ? allowed(user, GATEWAY_ROLES) || allowed(user, ENCOUNTER_VIEW_ROLES)
+        : allowed(user, CREDENTIALING_ROLES);
+  if (!permitted) return new Response("Forbidden", { status: 403 });
 
   let file: { path: string; name: string; mimeType: string } | null = null;
   // Restricted charts: a file of a patient the user may not open is not served either.

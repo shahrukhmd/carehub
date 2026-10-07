@@ -208,6 +208,7 @@ export async function saveKiosk(fd: FormData) {
     const packet = await prisma.intakePacket.findFirst({ where: { id: str(fd, "packetId"), practiceId: user.practiceId } });
     if (!packet) fail("Pick the packet walk-ins fill in.");
     const locationId = str(fd, "locationId") || null;
+    if (locationId && !(await prisma.location.findFirst({ where: { id: locationId, practiceId: user.practiceId }, select: { id: true } }))) fail("Pick a site of service from this practice.");
     await prisma.kioskLink.create({
       data: { practiceId: user.practiceId, name: str(fd, "name").slice(0, 80) || `Check-in — ${packet.name}`, token: newToken(), packetId: packet.id, locationId },
     });

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -10,7 +11,7 @@ import { getConnectSettings } from "@/lib/connect/core";
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 
 export async function reviewEmergencyAccess(accessId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const row = await prisma.emergencyAccess.findFirst({ where: { id: accessId, practiceId: user.practiceId } });
   if (!row) redirect("/settings/privacy");
   // Someone else reviews an administrator's own access.
@@ -23,7 +24,7 @@ export async function reviewEmergencyAccess(accessId: string, fd: FormData) {
 }
 
 export async function saveConsentRule(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const settings = await getConnectSettings(user.practiceId);
   const requireTextConsent = fd.get("requireTextConsent") === "on";
   await prisma.connectSettings.update({ where: { id: settings.id }, data: { requireTextConsent } });

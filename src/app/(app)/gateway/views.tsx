@@ -28,6 +28,7 @@ import {
 } from "@/lib/gateway";
 import { VOB_HISTORY_DAYS, VOB_MIN_CASES, suggestionsForCases, vobInsights, type RouteSuggestion } from "@/lib/vob";
 import { startIntake, takeCase } from "./actions";
+import { can } from "@/lib/permissions";
 
 type User = Awaited<ReturnType<typeof requireUser>>;
 
@@ -607,7 +608,7 @@ export async function RegistryTab({ user, sp }: { user: User; sp: GatewaySearch 
       orderBy: { name: "asc" },
     }),
   ]);
-  const canEdit = ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION"].includes(user.role);
+  const canEdit = can(user, "patients.edit");
   const canIntake = canWorkTeam(user.role, "DATA_ENTRY");
 
   return (

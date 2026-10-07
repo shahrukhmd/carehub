@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { ProviderForm } from "@/components/ProviderForm";
@@ -5,7 +6,7 @@ import { lookupNpi, saveProvider } from "../../actions";
 import { providerFormOptions } from "../provider-form-data";
 
 export default async function NewProviderPage({ searchParams }: { searchParams: Promise<{ from?: string }> }) {
-  const user = await requireUser(["ADMIN", "CREDENTIALING", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("settings.providers"));
   const fromCredentialing = (await searchParams).from === "credentialing";
   const options = await providerFormOptions(user.practiceId);
 

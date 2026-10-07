@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import path from "node:path";
 import { unlink } from "node:fs/promises";
 import { redirect } from "next/navigation";
@@ -10,7 +11,7 @@ import { saveUpload } from "@/lib/storage";
 import { processDocument } from "@/lib/document-reader";
 import { MAX_SCANS_PER_UPLOAD, uploadedFiles } from "@/lib/scans";
 
-const REGISTER_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE"];
+const REGISTER_ROLES = rolesFor("patients.edit");
 
 // Ids of documents already read for this registration, as carried in the form / URL.
 function docIds(raw: string) {

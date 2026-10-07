@@ -4,12 +4,13 @@ import { requireUser } from "@/lib/auth";
 import { PrintButton } from "@/components/PrintButton";
 import { SDOH_QUESTIONS, careTeamRoleLabel, concernCategoryLabel, goalKindLabel, goalStatusLabel, goalStatusTone, parseSdohAnswers, sdohDomainLabel } from "@/lib/care-plan";
 import { formatDate } from "@/lib/format";
-import { PATIENT_VIEW_ROLES } from "@/lib/gateway";
+
 import { PatientShell, loadPatientShell } from "../patient-shell";
 import { addConcern, addDevice, addGoal, addTeamMember, endTeamMember, removeDevice, saveSdohScreening, setConcernStatus, updateGoal } from "./actions";
+import { allowed, rolesFor } from "@/lib/permissions";
 
-const TEAM_ROLES = ["ADMIN", "CLINICIAN", "CDS", "FRONT_DESK", "INTAKE"];
-const CLINICAL_ROLES = ["ADMIN", "CLINICIAN", "CDS"];
+const TEAM_ROLES = rolesFor("careplan.team");
+const CLINICAL_ROLES = rolesFor("careplan.edit");
 type Search = { error?: string; ok?: string; screen?: string };
 
 const today = () => {
@@ -20,12 +21,12 @@ const today = () => {
 // The patient-level care plan: who is involved in the patient's care, what the team is worried about, what they
 // are working towards, devices the patient carries, and social needs that get in the way of healing.
 export default async function CarePlanPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser([...new Set([...PATIENT_VIEW_ROLES, "CDS"])]);
+  const user = await requireUser(rolesFor("patients.view"));
   const { id } = await params;
   const sp = await searchParams;
   const shell = await loadPatientShell(id, user);
-  const canTeam = TEAM_ROLES.includes(user.role);
-  const canClinical = CLINICAL_ROLES.includes(user.role);
+  const canTeam = allowed(user, TEAM_ROLES);
+  const canClinical = allowed(user, CLINICAL_ROLES);
 
   const [team, concerns, goals, devices, screenings, staff, visits] = await Promise.all([
     prisma.careTeamMember.findMany({ where: { patientId: id, practiceId: user.practiceId }, orderBy: [{ active: "desc" }, { createdAt: "asc" }] }),

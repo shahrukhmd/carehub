@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,7 +8,6 @@ import { logAudit } from "@/lib/audit";
 import { PrintButton } from "@/components/PrintButton";
 import { compareBenefits, loadBenefitContext, parseBenefits } from "@/lib/eligibility-apply";
 import { formatDate, formatMoney, formatTime, patientName, planSegmentLabel } from "@/lib/format";
-import { PATIENT_VIEW_ROLES } from "@/lib/gateway";
 
 const money = (cents: number | null | undefined) => (cents === null || cents === undefined ? "—" : formatMoney(cents));
 const day = (isoDate: string | undefined) => (isoDate ? formatDate(new Date(`${isoDate}T12:00:00`)) : "—");
@@ -23,7 +23,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 
 // The payer's full eligibility and benefits response for one check: on screen, and laid out to print.
 export default async function BenefitsPage({ params, searchParams }: { params: Promise<{ id: string; checkId: string }>; searchParams: Promise<{ case?: string }> }) {
-  const user = await requireUser([...PATIENT_VIEW_ROLES, "BILLER"]);
+  const user = await requireUser(rolesFor("patients.view"));
   const { id, checkId } = await params;
   await requireChartAccess(user, id, `/patients/${id}/insurance`);
   const { case: caseId } = await searchParams;

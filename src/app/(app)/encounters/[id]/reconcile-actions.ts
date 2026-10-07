@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +18,7 @@ function done(encounterId: string, step: string): never {
 
 // Confirms the clinician went over the list with the patient at this visit. Clicking again clears it.
 export async function toggleReconciled(encounterId: string, what: keyof typeof FIELD) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const field = FIELD[what];
   if (!field) redirect(`/encounters/${encounterId}`);
@@ -29,7 +30,7 @@ export async function toggleReconciled(encounterId: string, what: keyof typeof F
 }
 
 export async function setTransferOfCare(encounterId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const encounter = await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
   await prisma.encounter.update({ where: { id: encounter.id }, data: { transferOfCare: fd.get("transferOfCare") === "on" } });
@@ -40,7 +41,7 @@ export async function setTransferOfCare(encounterId: string, fd: FormData) {
 // diagnoses from the patient's previous visit. Nothing already written is overwritten, and the note says where
 // it came from so the clinician reviews every section.
 export async function copyForward(encounterId: string, fromId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const encounter = await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId }, include: { diagnoses: true } });
   const from = await prisma.encounter.findFirst({

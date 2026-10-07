@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -21,7 +22,7 @@ const today = () => {
 // Create new claim: pick the patient, then either turn one of their signed visits into a claim (everything is
 // copied from the chart) or key a claim by hand for a service that has no chart visit here.
 export default async function NewClaimPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
 

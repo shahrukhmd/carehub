@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 type Search = { rule?: string };
 
 export default async function CareGapReportPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "SCHEDULER"]);
+  const user = await requireUser(rolesFor("caregaps.view"));
   const sp = await searchParams;
   await ensureCareRules(user.practiceId);
   const packs = parseSpecialties((await prisma.practiceSettings.findUnique({ where: { practiceId: user.practiceId }, select: { specialties: true } }))?.specialties);

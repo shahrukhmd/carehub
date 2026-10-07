@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -44,7 +45,7 @@ async function photoToDataUrl(formData: FormData): Promise<string | null> {
 }
 
 export async function createWound(patientId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, patientId, practiceId: user.practiceId },
@@ -74,7 +75,7 @@ export async function createWound(patientId: string, encounterId: string, formDa
 }
 
 export async function updateWoundStatus(woundId: string, encounterId: string, status: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const wound = await prisma.wound.findFirstOrThrow({
     where: { id: woundId, practiceId: user.practiceId },
@@ -92,7 +93,7 @@ export async function updateWoundStatus(woundId: string, encounterId: string, st
 }
 
 export async function saveWoundAssessment(woundId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const wound = await prisma.wound.findFirstOrThrow({
     where: { id: woundId, practiceId: user.practiceId },
@@ -204,7 +205,7 @@ const MAX_TREATMENT_LINES = 12;
 
 // Saves the treatment note for this wound at this visit: one product per step row, in order.
 export async function saveTreatment(woundId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const wound = await prisma.wound.findFirstOrThrow({ where: { id: woundId, practiceId: user.practiceId } });
   const [steps, products] = await Promise.all([
@@ -247,7 +248,7 @@ export async function saveTreatment(woundId: string, encounterId: string, formDa
 
 // Copies the wound's most recent treatment note (from an earlier visit) into this visit, to be edited and saved.
 export async function copyLastTreatment(woundId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   const last = await prisma.woundTreatment.findFirst({
     where: { woundId, practiceId: user.practiceId, encounterId: { not: encounterId } },
@@ -271,11 +272,11 @@ export async function copyLastTreatment(woundId: string, encounterId: string) {
 
 // Pushes the billable products (those with an HCPCS code) of this visit's treatment to the superbill as charges.
 export async function billTreatmentSupplies(woundId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "CODER"]);
+  const user = await requireUser();
   const t = await prisma.woundTreatment.findUnique({ where: { encounterId_woundId: { encounterId, woundId } }, include: { lines: { include: { product: true } }, encounter: { select: { placeOfService: true, practiceId: true, status: true } } } });
   if (!t || t.encounter.practiceId !== user.practiceId) redirect(`/encounters/${encounterId}/wounds/${woundId}#treatment`);
   // Charges follow the chart lock: the clinical team while the chart is theirs, the coder while it is in coding.
-  if (!(canEditClinical(t.encounter.status, user.role) || canEditCoding(t.encounter.status, user.role))) {
+  if (!(canEditClinical(t.encounter.status, user) || canEditCoding(t.encounter.status, user))) {
     redirect(`/encounters/${encounterId}/wounds/${woundId}?error=${encodeURIComponent("The chart is locked at this stage — supplies can't be added to the superbill by your role now.")}#treatment`);
   }
   const billable = t.lines.filter((l) => l.product?.hcpcsCode);

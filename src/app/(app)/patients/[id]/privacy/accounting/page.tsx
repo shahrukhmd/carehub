@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -5,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { PrintButton } from "@/components/PrintButton";
 import { formatDate, patientName } from "@/lib/format";
-import { PATIENT_EDIT_ROLES } from "@/lib/gateway";
+
 import { disclosureMethodLabel, disclosurePurposeLabel, requireChartAccess } from "@/lib/privacy";
 
 const YEARS = 6;
@@ -19,7 +20,7 @@ const day = (v: string | undefined, fallback: Date, end = false) => {
 
 // The accounting a patient is entitled to ask for: every disclosure in the period, to print or save as PDF.
 export default async function DisclosureAccountingPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser([...new Set([...PATIENT_EDIT_ROLES, "CLINICIAN", "BILLER"])]);
+  const user = await requireUser(rolesFor("patients.privacy"));
   const { id } = await params;
   const sp = await searchParams;
   await requireChartAccess(user, id, `/patients/${id}/privacy/accounting`);

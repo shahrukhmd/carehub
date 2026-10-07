@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { MAP_TARGETS } from "@/lib/connect/patient-forms";
 import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
@@ -33,7 +34,7 @@ async function guarded(back: string, work: () => Promise<string | void>) {
   redirect(target);
 }
 
-const admin = () => requireUser(["ADMIN"]);
+const admin = () => requireUser(rolesFor("settings.admin"));
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const on = (fd: FormData, k: string) => fd.get(k) === "on";
 

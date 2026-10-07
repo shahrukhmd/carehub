@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -11,7 +12,7 @@ type Search = { error?: string; ok?: string };
 
 // The privacy officer's view across the practice: what is waiting for a decision or a review.
 export default async function PrivacySettingsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const practiceId = user.practiceId;
   const patient = { select: { id: true, firstName: true, lastName: true, mrn: true } };

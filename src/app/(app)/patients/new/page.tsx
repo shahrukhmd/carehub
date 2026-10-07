@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { createPatient } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { buildRegistrationDraft } from "@/lib/registration-prefill";
 import { PatientForm, type ReadDocument } from "@/components/PatientForm";
 
 export default async function NewPatientPage({ searchParams }: { searchParams: Promise<{ error?: string; docs?: string }> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE"]);
+  const user = await requireUser(rolesFor("patients.edit"));
   const { error, docs } = await searchParams;
   const ids = (docs ?? "").split(",").filter((s) => /^[a-z0-9]{10,40}$/.test(s)).slice(0, 40);
 

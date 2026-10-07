@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -8,7 +9,7 @@ import { logAudit } from "@/lib/audit";
 const MAX_BYTES = 300_000;
 
 export async function saveMySignature(formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.sign"));
   const value = String(formData.get("signature") ?? "");
   if (formData.get("confirm") !== "on") redirect("/settings/signature?error=" + encodeURIComponent("Confirm that you adopt the signature."));
   if (!value) redirect("/settings/signature?error=" + encodeURIComponent("Draw or upload a signature first."));

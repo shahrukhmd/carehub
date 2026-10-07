@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -34,7 +35,7 @@ function readField(fd: FormData) {
 }
 
 export async function addCustomField(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const data = readField(fd);
   if ((await prisma.customField.count({ where: { practiceId: user.practiceId } })) >= MAX_FIELDS) back({ error: `A practice can have up to ${MAX_FIELDS} custom fields.` });
   // The key never changes once answers are stored under it, so a relabelled field keeps its answers.
@@ -47,7 +48,7 @@ export async function addCustomField(fd: FormData) {
 }
 
 export async function updateCustomField(fieldId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const row = await prisma.customField.findFirst({ where: { id: fieldId, practiceId: user.practiceId } });
   if (!row) back({ error: "Field not found." });
   const data = readField(fd);
@@ -59,7 +60,7 @@ export async function updateCustomField(fieldId: string, fd: FormData) {
 }
 
 export async function toggleCustomField(fieldId: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const row = await prisma.customField.findFirst({ where: { id: fieldId, practiceId: user.practiceId } });
   if (!row) back({ error: "Field not found." });
   await prisma.customField.update({ where: { id: row!.id }, data: { active: !row!.active } });

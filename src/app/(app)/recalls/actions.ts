@@ -25,14 +25,23 @@ export async function createRecall(fd: FormData) {
   if (!due && Number.isInteger(weeks) && weeks > 0) due = new Date(Date.now() + weeks * 7 * 86_400_000);
   if (!due || Number.isNaN(due.getTime())) redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent("Pick when the patient is due back.")}`);
   const reason = str(fd, "reason").slice(0, 120) || "Follow-up visit";
+  // A provider or site from the form must belong to this practice.
+  const providerId = str(fd, "providerId") || null;
+  if (providerId && !(await prisma.user.findFirst({ where: { id: providerId, memberships: { some: { practiceId: user.practiceId } } }, select: { id: true } }))) {
+    redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent("Pick a provider from this practice.")}`);
+  }
+  const locationId = str(fd, "locationId") || null;
+  if (locationId && !(await prisma.location.findFirst({ where: { id: locationId, practiceId: user.practiceId }, select: { id: true } }))) {
+    redirect(`${back}${back.includes("?") ? "&" : "?"}error=${encodeURIComponent("Pick a site of service from this practice.")}`);
+  }
   const r = await prisma.recall.create({
     data: {
       practiceId: user.practiceId,
       patientId: patient.id,
       dueDate: due,
       reason,
-      providerId: str(fd, "providerId") || null,
-      locationId: str(fd, "locationId") || null,
+      providerId,
+      locationId,
       visitType: str(fd, "visitType") || null,
       notes: str(fd, "notes").slice(0, 500) || null,
       createdById: user.id,

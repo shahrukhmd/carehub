@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -8,7 +9,7 @@ import { claimNumber } from "@/lib/claim-format";
 // "Go to claim #": accepts the claim number shown on screens and PDFs (CLM-26ABC123), the clearinghouse claim ID,
 // or the internal id.
 export async function goToClaim(fd: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const raw = String(fd.get("claim") ?? "").trim();
   const back = (message: string): never => redirect(`/billing/claims?error=${encodeURIComponent(message)}`);
   if (!raw) back("Enter a claim number.");

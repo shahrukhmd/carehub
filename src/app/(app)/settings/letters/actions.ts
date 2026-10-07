@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 
 export async function saveLetterTemplate(id: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const name = String(fd.get("name") ?? "").trim().slice(0, 80);
   const body = String(fd.get("body") ?? "").replace(/\r\n?/g, "\n").trim().slice(0, 20000);
   if (!name || !body) redirect(`/settings/letters?edit=${id}&error=${encodeURIComponent("Name and letter text are required.")}`);
@@ -24,7 +25,7 @@ export async function saveLetterTemplate(id: string, fd: FormData) {
 }
 
 export async function deleteLetterTemplate(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await prisma.letterTemplate.deleteMany({ where: { id, practiceId: user.practiceId, standard: false } });
   revalidatePath("/settings/letters");
   redirect("/settings/letters");

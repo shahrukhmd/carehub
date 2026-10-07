@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -10,7 +11,7 @@ import { saveGroupNumbers, uploadGroupDocument } from "../../actions";
 
 // The group's own credentialing file: its documents and the number each payer assigned to the group.
 export default async function GroupFilePage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "CREDENTIALING"]);
+  const user = await requireUser(rolesFor("credentialing.work"));
   const { id } = await params;
   const group = await prisma.billingProvider.findFirst({
     where: { id, practiceId: { in: credentialingPracticeIds(user) } },

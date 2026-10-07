@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -22,7 +23,7 @@ import {
 } from "../../actions";
 
 export default async function ProviderFilePage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "CREDENTIALING"]);
+  const user = await requireUser(rolesFor("credentialing.work"));
   const { id } = await params;
 
   const provider = await prisma.renderingProvider.findFirst({

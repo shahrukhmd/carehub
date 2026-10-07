@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -53,7 +54,7 @@ function FieldInputs({ field }: { field?: { label: string; type: string; options
 
 // Extra fields on the patient registration form, defined by the practice.
 export default async function CustomFieldsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const [fields, patients] = await Promise.all([
     prisma.customField.findMany({ where: { practiceId: user.practiceId }, orderBy: [{ active: "desc" }, { order: "asc" }, { createdAt: "asc" }] }),

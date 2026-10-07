@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { PRODUCT_TYPES, UNITS } from "@/lib/wound-products";
 
-const ROLES = ["ADMIN"];
+const ROLES = rolesFor("settings.admin");
 const HERE = "/settings/wound-products";
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const back = (kind: "ok" | "error", message: string, tab = ""): never => redirect(`${HERE}?${tab ? `tab=${tab}&` : ""}${kind}=${encodeURIComponent(message.slice(0, 300))}`);

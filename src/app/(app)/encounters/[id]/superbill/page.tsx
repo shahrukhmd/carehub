@@ -64,7 +64,7 @@ export default async function SuperbillPage({
     prisma.billingProvider.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
   ]);
 
-  const editable = canEditCoding(encounter.status, user.role);
+  const editable = canEditCoding(encounter.status, user);
   const onVisit = new Set(encounter.diagnoses.map((d) => d.icd10));
   const dxFavorites: CatalogCode[] = practiceCodes
     .filter((c) => c.type === "ICD10")

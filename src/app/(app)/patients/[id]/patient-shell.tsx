@@ -8,11 +8,11 @@ import { PATIENT_EDIT_ROLES } from "@/lib/gateway";
 import { addressLine, parseAddress, phoneTypeLabel } from "@/lib/patient-fields";
 import { QuickActions } from "@/components/QuickActions";
 import { PatientTabs } from "@/components/PatientTabs";
-import { can } from "@/lib/permissions";
+import { can, allowed, roleOf, type Overrides, type Subject, rolesFor } from "@/lib/permissions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { setPatientStatus, startEncounter } from "@/app/actions";
 
-const START_ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN"];
+const START_ROLES = rolesFor("chart.start");
 const FORM_STATUS: Record<string, string> = {
   SENT: "Forms sent — not opened",
   OPENED: "Forms opened",
@@ -23,7 +23,7 @@ const FORM_STATUS: Record<string, string> = {
 };
 
 // Everything the patient summary column needs. Loaded by each patient page so the page renders in one pass.
-export async function loadPatientShell(patientId: string, user: { id: string; practiceId: string; role: string }) {
+export async function loadPatientShell(patientId: string, user: { id: string; practiceId: string; role: string; overrides?: Overrides | null }) {
   const patient = await prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId }, include: { referringPhysician: true } });
   if (!patient) notFound();
   // A restricted chart stops here for anyone outside the care team until they give a reason.
@@ -52,7 +52,7 @@ export async function loadPatientShell(patientId: string, user: { id: string; pr
     latestEncounterId: latestEncounter?.id ?? null,
     caseId: intake?.id ?? null,
     formRequest,
-    role: user.role,
+    role: { role: user.role, overrides: user.overrides ?? null } as Subject,
     access,
     // The practice's custom fields this patient has an answer for.
     custom: customFields.map((f) => ({ label: f.label, value: showCustomValue(f, parseCustomValues(patient.customFields)[f.key]) })).filter((c) => c.value),
@@ -82,7 +82,7 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
   const current = p.currentAddress === "SECONDARY" && addressLine(secondary) ? secondary : { line1: p.addressLine1 ?? undefined, line2: p.addressLine2 ?? undefined, city: p.city ?? undefined, state: p.state ?? undefined, zip: p.zip ?? undefined };
   const street = [current.line1, current.line2].filter(Boolean).join(", ");
   const cityLine = [current.city, [current.state, current.zip].filter(Boolean).join(" ")].filter(Boolean).join(", ");
-  const canStart = START_ROLES.includes(role);
+  const canStart = allowed(role, START_ROLES);
 
   return (
     <div className="pd-shell">
@@ -112,9 +112,9 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
               patientId={p.id}
               caseId={data.caseId}
               latestEncounterId={data.latestEncounterId}
-              canEdit={PATIENT_EDIT_ROLES.includes(role)}
-              canSchedule={["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"].includes(role)}
-              canBill={["ADMIN", "BILLER", "FRONT_DESK"].includes(role)}
+              canEdit={allowed(role, PATIENT_EDIT_ROLES)}
+              canSchedule={can(role, "schedule.view")}
+              canBill={can(role, "payments.take")}
             />
           </div>
         </div>
@@ -254,9 +254,9 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
           tabs={[
             { href: `/patients/${p.id}`, label: "Dashboard" },
             ...(can(role, "patients.scans") ? [{ href: `/patients/${p.id}/insurance`, label: "Insurance & eligibility" }, { href: `/patients/${p.id}/scans`, label: "Documents" }] : []),
-            ...(can(role, "careplan.edit") || role === "CLINICIAN" ? [{ href: `/patients/${p.id}/care-plan`, label: "Care plan" }] : []),
+            ...(can(role, "careplan.edit") || roleOf(role) === "CLINICIAN" ? [{ href: `/patients/${p.id}/care-plan`, label: "Care plan" }] : []),
             ...(ageFromDob(p.dob) < 20 && can(role, "chart.view") ? [{ href: `/patients/${p.id}/growth`, label: "Growth" }] : []),
-            ...(["ADMIN", "BILLER", "FRONT_DESK"].includes(role) ? [{ href: `/patients/${p.id}/claims`, label: "Claims & balance" }] : []),
+            ...(can(role, "payments.take") ? [{ href: `/patients/${p.id}/claims`, label: "Claims & balance" }] : []),
             { href: `/patients/${p.id}/thread`, label: "Communication" },
             { href: `/patients/${p.id}/privacy`, label: "Privacy" },
           ]}

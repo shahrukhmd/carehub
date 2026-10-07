@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { CodeLookup } from "@/components/CodeLookup";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,7 +15,7 @@ const iso = (d: Date | null) => (d ? `${d.getFullYear()}-${String(d.getMonth() +
 
 // One charge schedule: when it applies, who it applies to, and the fee for each billing code.
 export default async function ChargeScheduleDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const { id } = await params;
   const sp = await searchParams;
   const schedule = await prisma.chargeSchedule.findFirst({ where: { id, practiceId: user.practiceId }, include: { items: { orderBy: { code: "asc" } } } });

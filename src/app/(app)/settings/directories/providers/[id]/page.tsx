@@ -2,13 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { can, rolesFor } from "@/lib/permissions";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ProviderForm } from "@/components/ProviderForm";
 import { lookupNpi, saveProvider, toggleProviderActive } from "../../actions";
 import { providerFormOptions, splitDisplayName } from "../provider-form-data";
 
 export default async function EditProviderPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "CREDENTIALING", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("settings.providers"));
   const { id } = await params;
 
   const provider = await prisma.renderingProvider.findFirst({ where: { id, practiceId: user.practiceId } });
@@ -32,7 +33,7 @@ export default async function EditProviderPage({ params }: { params: Promise<{ i
           </h1>
         </div>
         <div className="stack" style={{ gridAutoFlow: "column", gap: "0.5rem" }}>
-          {provider.isRendering && ["ADMIN", "CREDENTIALING"].includes(user.role) && (
+          {provider.isRendering && can(user, "credentialing.work") && (
             <Link className="btn secondary" href={`/credentialing/providers/${provider.id}`}>
               Credentialing file
             </Link>

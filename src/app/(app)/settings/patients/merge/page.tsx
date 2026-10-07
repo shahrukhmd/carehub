@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
@@ -23,7 +24,7 @@ const FIELDS: [string, string][] = [
 ];
 
 export default async function MergePage({ searchParams }: { searchParams: Promise<{ a?: string; b?: string; error?: string }> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const include = {
     _count: { select: { appointments: true, encounters: true, claims: true, insurances: true, documents: true, wounds: true, medications: true, allergies: true, problems: true } },

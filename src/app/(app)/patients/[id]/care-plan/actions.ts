@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -9,8 +10,8 @@ import { SDOH_QUESTIONS, careTeamRoleLabel, concernCategoryLabel, goalKindLabel,
 import { requireChartAccess } from "@/lib/privacy";
 
 // The care team list and the social needs screen are also kept by the front office; clinical items by clinicians.
-const TEAM_ROLES = ["ADMIN", "CLINICIAN", "CDS", "FRONT_DESK", "INTAKE"];
-const CLINICAL_ROLES = ["ADMIN", "CLINICIAN", "CDS"];
+const TEAM_ROLES = rolesFor("careplan.team");
+const CLINICAL_ROLES = rolesFor("careplan.edit");
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const day = (fd: FormData, k: string) => {

@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { formatDate } from "@/lib/format";
@@ -5,7 +6,7 @@ import { SignaturePad } from "@/components/SignaturePad";
 import { saveMySignature } from "./actions";
 
 export default async function MySignaturePage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string }> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.sign"));
   const sp = await searchParams;
   const me = await prisma.user.findUniqueOrThrow({ where: { id: user.id }, select: { name: true, signatureImage: true, signatureUpdatedAt: true } });
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
@@ -30,7 +31,7 @@ import {
   normalizePointers,
 } from "@/lib/claim-format";
 
-const BILLING_ROLES = ["ADMIN", "BILLER"];
+const BILLING_ROLES = rolesFor("billing.work");
 type User = Awaited<ReturnType<typeof requireUser>>;
 
 function fail(message: string): never {

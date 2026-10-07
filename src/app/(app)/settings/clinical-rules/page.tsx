@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -10,7 +11,7 @@ import { deleteCareRule, saveCareRule, toggleCareRule } from "../../care-gaps/ac
 type Rule = Awaited<ReturnType<typeof prisma.careRule.findMany>>[number];
 
 export default async function ClinicalRulesPage({ searchParams }: { searchParams: Promise<{ edit?: string; saved?: string; error?: string }> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   await ensureCareRules(user.practiceId);
   const [rules, forms] = await Promise.all([

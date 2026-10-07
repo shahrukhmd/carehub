@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -29,7 +30,7 @@ function Box({ n, label, children }: { n: string; label: string; children: React
 const date = (v: Date | null | undefined) => (v ? formatDate(v) : "");
 
 export default async function ClaimPrintPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const { id } = await params;
 
   const claim = await prisma.claim.findFirst({

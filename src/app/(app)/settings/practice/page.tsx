@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireUser } from "@/lib/auth";
 import { getPracticeSettings } from "@/lib/chart-setup";
 import { CLEARINGHOUSES, MONTHS } from "@/lib/practice-settings";
@@ -59,7 +60,7 @@ function AddressBlock({ s, block }: { s: S; block: (typeof BLOCKS)[number] }) {
 }
 
 export default async function PracticeSettingsPage({ searchParams }: { searchParams: Promise<{ saved?: string; error?: string; listOk?: string; listError?: string }> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const s = await getPracticeSettings(user.practiceId);
   // The payer list held for the practice's clearinghouse (shared by every practice on that clearinghouse).

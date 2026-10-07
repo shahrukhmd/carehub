@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -9,7 +10,7 @@ import { logAudit } from "@/lib/audit";
 import { hashApiToken, newApiToken } from "@/lib/fhir";
 
 export async function createApiClient(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const name = String(fd.get("name") ?? "").trim().slice(0, 80);
   if (!name) redirect(`/settings/interop?error=${encodeURIComponent("Name the connected system.")}`);
   const token = newApiToken();
@@ -22,7 +23,7 @@ export async function createApiClient(fd: FormData) {
 }
 
 export async function revokeApiClient(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await prisma.apiClient.updateMany({ where: { id, practiceId: user.practiceId }, data: { active: false } });
   await logAudit(user.practiceId, user.id, "REVOKE_API_CLIENT", "ApiClient", id, "revoked");
   revalidatePath("/settings/interop");

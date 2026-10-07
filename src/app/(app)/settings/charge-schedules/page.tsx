@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -19,7 +20,7 @@ const scope = (ids: string, noun: string) => {
 
 // Charge schedules: what the practice charges per billing code, by site, provider and insurance.
 export default async function ChargeSchedulesPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const schedules = await prisma.chargeSchedule.findMany({
     where: { practiceId: user.practiceId },

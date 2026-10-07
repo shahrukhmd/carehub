@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -15,7 +16,7 @@ type Search = { patient?: string; from?: string; to?: string; status?: string; l
 // The pre-release queue: every generated claim that has not been billed yet, with what would stop it. Billing
 // reviews a claim here (or opens it), ticks the clean ones and bills them to insurance in one step.
 export default async function PreReleaseQueuePage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const status = sp.status && RELEASABLE_STATUSES.includes(sp.status) ? sp.status : "";
 

@@ -3,13 +3,14 @@ import type { EligibilityCheck, Insurance, InsuranceAuthorization, Payer } from 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { US_STATES, eligibilityStatusLabel, formatDate, formatMoney, formatTime } from "@/lib/format";
-import { PATIENT_EDIT_ROLES, PATIENT_VIEW_ROLES } from "@/lib/gateway";
+import { PATIENT_EDIT_ROLES } from "@/lib/gateway";
 import { PAYER_RANKS, payerRankLabel, relationshipToInsuredLabel } from "@/lib/claim-format";
 import { sexLabel, splitName, yesNoUnknownLabel } from "@/lib/patient-fields";
 import { DOC_TYPES } from "@/lib/patient-docs";
 import { PatientShell, loadPatientShell } from "../patient-shell";
 import { checkCoverageEligibility, deleteAuthorization, deletePatientInsurance, saveAuthorization, savePatientInsurance, setInsuranceActive } from "./actions";
 import { AddressValidator } from "@/components/AddressValidator";
+import { allowed, rolesFor } from "@/lib/permissions";
 
 const day = (v: Date | null | undefined) => (v ? v.toISOString().slice(0, 10) : "");
 const dollars = (c: number | null | undefined) => (c === null || c === undefined ? "" : (c / 100).toFixed(2));
@@ -470,11 +471,11 @@ function Eligibility({ patientId, ins, checks, nameOf }: { patientId: string; in
 }
 
 export default async function PatientInsurancePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
-  const user = await requireUser([...PATIENT_VIEW_ROLES, "BILLER"]);
+  const user = await requireUser(rolesFor("patients.view"));
   const { id } = await params;
   const sp = await searchParams;
   const shell = await loadPatientShell(id, user);
-  const canEdit = [...PATIENT_EDIT_ROLES, "BILLER"].includes(user.role);
+  const canEdit = allowed(user, PATIENT_EDIT_ROLES) || user.role === "BILLER";
   const tab = sp.tab === "inactive" ? "inactive" : "active";
 
   const [coverages, payers, checks, members, scans, appts] = await Promise.all([

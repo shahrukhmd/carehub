@@ -43,7 +43,7 @@ export default async function WoundPage({
   // Encounter types can switch the photo analyzer off (Scheduler admin -> Encounter types).
   const visitType = encounter.appointment ? await prisma.visitType.findFirst({ where: { practiceId: user.practiceId, code: encounter.appointment.visitType }, select: { woundAnalytics: true } }) : null;
   const photoAnalysis = visitType?.woundAnalytics ?? true;
-  const editable = canEditClinical(encounter.status, user.role);
+  const editable = canEditClinical(encounter.status, user);
 
   const wound = await prisma.wound.findFirst({
     where: { id: woundId, practiceId: user.practiceId, patientId: encounter.patientId },

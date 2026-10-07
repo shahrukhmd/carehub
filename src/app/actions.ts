@@ -36,7 +36,7 @@ function registrationFailed(back: string, err: unknown): never {
 }
 
 export async function createPatient(formData: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE"]);
+  const user = await requireUser(rolesFor("patients.edit"));
   const readIds = [...new Set(String(formData.get("docs") ?? "").split(",").filter((id) => /^[a-z0-9]{10,40}$/.test(id)))].slice(0, 40);
   let patientId: string;
   try {
@@ -131,7 +131,7 @@ export async function setPatientStatus(patientId: string, formData: FormData) {
 }
 
 export async function setGuarantorAccount(patientId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER"]);
+  const user = await requireUser(rolesFor("payments.take"));
   await prisma.patient.findFirstOrThrow({ where: { id: patientId, practiceId: user.practiceId } });
 
   const guarantorPatientId = String(formData.get("guarantorPatientId") ?? "") || null;
@@ -147,7 +147,7 @@ export async function setGuarantorAccount(patientId: string, formData: FormData)
 }
 
 export async function addChargeFromTemplate(encounterId: string, templateItemId: string) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -174,7 +174,7 @@ export async function addChargeFromTemplate(encounterId: string, templateItemId:
 }
 
 export async function createAppointment(formData: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
+  const user = await requireUser(rolesFor("schedule.view"));
   const patientId = String(formData.get("patientId") ?? "").trim();
   if (!patientId) redirect(`/schedule?conflicts=${encodeURIComponent("Not booked — choose the patient from the search results first.")}&blocked=1#book`);
   const providerId = required(formData, "providerId");
@@ -318,7 +318,7 @@ export async function createAppointment(formData: FormData) {
 
 // Cancel with a reason from Scheduler admin -> Cancellation reasons.
 export async function cancelAppointment(id: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
+  const user = await requireUser(rolesFor("schedule.view"));
   const reason = String(formData.get("cancelReason") ?? "").trim();
   const known = await prisma.cancellationReason.findFirst({ where: { practiceId: user.practiceId, name: reason } });
   if (!known) throw new Error("Pick a cancellation reason");
@@ -343,7 +343,7 @@ export async function cancelAppointment(id: string, formData: FormData) {
 }
 
 export async function updateAppointmentStatus(id: string, status: string) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
+  const user = await requireUser(rolesFor("schedule.view"));
   const { count } = await prisma.appointment.updateMany({ where: { id, practiceId: user.practiceId }, data: { status } });
   if (count) await recordFlow(id, status, user.id);
   revalidatePath("/schedule");
@@ -408,7 +408,7 @@ function nextStepRedirect(encounterId: string, formData: FormData) {
 }
 
 export async function saveEncounter(id: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(id, user, "clinical");
   const encounter = await prisma.encounter.findFirstOrThrow({ where: { id, practiceId: user.practiceId } });
 
@@ -425,7 +425,7 @@ export async function saveEncounter(id: string, formData: FormData) {
 }
 
 export async function addCharge(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -470,7 +470,7 @@ export async function addCharge(encounterId: string, formData: FormData) {
 const MAX_VISIT_DX = 12;
 
 export async function addDiagnosesBulk(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -524,7 +524,7 @@ function modifiersFrom(values: FormDataEntryValue[]) {
 }
 
 export async function addChargesBulk(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
   const encounter = await prisma.encounter.findUniqueOrThrow({ where: { id: encounterId } });
@@ -553,7 +553,7 @@ export async function addChargesBulk(encounterId: string, formData: FormData) {
 }
 
 export async function updateCharge(chargeId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const charge = await prisma.charge.findFirst({
     where: { id: chargeId, encounterId, practiceId: user.practiceId },
@@ -578,7 +578,7 @@ export async function updateCharge(chargeId: string, encounterId: string, formDa
 }
 
 export async function removeCharge(chargeId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   // Charges already on a claim stay; correct them on the claim instead.
   await prisma.charge.deleteMany({ where: { id: chargeId, encounterId, practiceId: user.practiceId, claimLines: { none: {} } } });
@@ -587,7 +587,7 @@ export async function removeCharge(chargeId: string, encounterId: string) {
 }
 
 export async function addDiagnosis(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -608,7 +608,7 @@ export async function addDiagnosis(encounterId: string, formData: FormData) {
 // Brings the provider's problem list onto the superbill: active, confirmed problems marked "send to superbill"
 // that are not on it yet, in problem-list order after the diagnoses already there.
 export async function importProblemDiagnoses(encounterId: string) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -624,7 +624,7 @@ export async function importProblemDiagnoses(encounterId: string) {
 }
 
 export async function removeDiagnosis(diagnosisId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
   await prisma.encounterDiagnosis.deleteMany({ where: { id: diagnosisId, encounterId } });
@@ -632,7 +632,7 @@ export async function removeDiagnosis(diagnosisId: string, encounterId: string) 
 }
 
 export async function moveDiagnosis(diagnosisId: string, encounterId: string, direction: "up" | "down") {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
 
@@ -656,7 +656,7 @@ export async function moveDiagnosis(diagnosisId: string, encounterId: string, di
 }
 
 export async function updateEncounterBilling(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CODER"]);
+  const user = await requireUser(rolesFor("chart.code"));
   await assertChartEditable(encounterId, user, "coding");
   const encounter = await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, practiceId: user.practiceId },
@@ -683,7 +683,7 @@ export async function updateEncounterBilling(encounterId: string, formData: Form
 }
 
 export async function createDeposit(formData: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const payerType = String(formData.get("payerType") ?? "INSURANCE") === "PATIENT" ? "PATIENT" : "INSURANCE";
   const payerName = required(formData, "payerName");
   const paymentMethod = required(formData, "paymentMethod");
@@ -731,7 +731,7 @@ function optionalNumber(formData: FormData, key: string) {
 }
 
 export async function saveVitals(encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.edit"));
   await assertChartEditable(encounterId, user, "clinical");
   await prisma.encounter.findFirstOrThrow({ where: { id: encounterId, practiceId: user.practiceId } });
 
@@ -758,7 +758,7 @@ export async function saveVitals(encounterId: string, formData: FormData) {
 }
 
 export async function prescribeMedication(patientId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("rx.write"));
   await assertChartEditable(encounterId, user, "clinical");
   await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, patientId, practiceId: user.practiceId },
@@ -785,7 +785,7 @@ export async function prescribeMedication(patientId: string, encounterId: string
 }
 
 export async function discontinueMedication(medicationId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("rx.write"));
   await assertChartEditable(encounterId, user, "clinical");
   const medication = await prisma.medication.findFirstOrThrow({
     where: { id: medicationId, patient: { practiceId: user.practiceId } },
@@ -803,7 +803,7 @@ export async function discontinueMedication(medicationId: string, encounterId: s
 }
 
 export async function orderLab(patientId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("orders.write"));
   await assertChartEditable(encounterId, user, "clinical");
   await prisma.encounter.findFirstOrThrow({
     where: { id: encounterId, patientId, practiceId: user.practiceId },
@@ -825,7 +825,7 @@ export async function orderLab(patientId: string, encounterId: string, formData:
 }
 
 export async function resultLab(labOrderId: string, encounterId: string, formData: FormData) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("results.enter"));
   await assertChartEditable(encounterId, user, "clinical");
   const labOrder = await prisma.labOrder.findFirstOrThrow({
     where: { id: labOrderId, patient: { practiceId: user.practiceId } },
@@ -849,7 +849,7 @@ export async function resultLab(labOrderId: string, encounterId: string, formDat
 }
 
 export async function cancelLabOrder(labOrderId: string, encounterId: string) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("orders.write"));
   await assertChartEditable(encounterId, user, "clinical");
   const labOrder = await prisma.labOrder.findFirstOrThrow({
     where: { id: labOrderId, patient: { practiceId: user.practiceId } },
@@ -863,7 +863,7 @@ export async function cancelLabOrder(labOrderId: string, encounterId: string) {
 }
 
 export async function generateStatements(formData: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const minBalanceCents = Math.round(Number(formData.get("minBalance") ?? 0) * 100) || 0;
 
   const claims = await prisma.claim.findMany({

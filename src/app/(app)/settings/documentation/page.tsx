@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { visitTypeNames } from "@/lib/scheduler-setup";
 import { requireUser } from "@/lib/auth";
@@ -31,7 +32,7 @@ export default async function DocumentationSettingsPage({
 }: {
   searchParams: Promise<{ tab?: string; saved?: string; error?: string }>;
 }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const vtNames = await visitTypeNames(user.practiceId);
   const sp = await searchParams;
   const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "templates";

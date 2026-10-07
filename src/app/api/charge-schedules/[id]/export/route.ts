@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -8,7 +9,7 @@ const BOM = String.fromCharCode(0xfeff);
 
 // The schedule's fees as a spreadsheet, in the layout Import reads back.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const { id } = await params;
   const schedule = await prisma.chargeSchedule.findFirst({ where: { id, practiceId: user.practiceId }, include: { items: { orderBy: { code: "asc" } } } });
   if (!schedule) return new NextResponse("Not found", { status: 404 });

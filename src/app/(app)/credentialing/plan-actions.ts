@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -92,7 +93,7 @@ export async function setPayerSegment(payerId: string, fd: FormData) {
 // Adds the practice's standard payer names (one per line of business) that are not in the payer list yet, and
 // fills in the plan type on the ones that are.
 export async function loadStandardPayers() {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const existing = await prisma.payer.findMany({ where: { practiceId: user.practiceId } });
   const byName = new Map(existing.map((p) => [p.name.trim().toLowerCase(), p]));
   let added = 0;

@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -60,7 +61,7 @@ export default async function SchedulingSettingsPage({
 }: {
   searchParams: Promise<{ tab?: string; saved?: string; error?: string; location?: string; year?: string }>;
 }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const tab = TABS.some(([k]) => k === sp.tab) ? sp.tab! : "types";
   const [settings, types, locations, physicians, reasons, filters] = await Promise.all([

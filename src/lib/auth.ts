@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { allowed, parseOverrides, type RoleList } from "@/lib/permissions";
 
 const SESSION_COOKIE = "session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
@@ -73,15 +74,19 @@ export async function getCurrentUser() {
     ...session.user,
     practiceId: activePracticeId,
     role: membership?.role ?? session.user.role,
+    // This person's permission overrides in the active practice (Settings → Users & roles).
+    overrides: parseOverrides(membership?.permissions),
     practice,
     memberships,
   };
 }
 
-export async function requireUser(allowedRoles?: string[]) {
+// Gate a page or action. A list from rolesFor(key) also honours the user's permission overrides; a hand-written
+// role list is checked against the role alone.
+export async function requireUser(allowedRoles?: RoleList | string[]) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (allowedRoles && !allowedRoles.includes(user.role)) redirect("/");
+  if (allowedRoles && !allowed(user, allowedRoles)) redirect("/");
   return user;
 }
 

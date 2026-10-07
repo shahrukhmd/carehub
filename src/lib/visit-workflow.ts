@@ -1,4 +1,4 @@
-import { rolesFor } from "@/lib/permissions";
+import { rolesFor, allowed, type Subject } from "@/lib/permissions";
 // Visit workflow after scheduling: the provider and clinical team document the visit, CDS reviews the
 // documentation, the coding team builds the superbill (asking CDS when something needs correcting), the provider
 // (and supervising physician) sign, then billing.
@@ -45,35 +45,35 @@ export function visitStatusTone(status: string): VisitTone {
 // Who works each stage.
 export const VISIT_VIEW_ROLES = rolesFor("chart.worklist");
 export const ENCOUNTER_VIEW_ROLES = rolesFor("chart.view");
-const CLINICAL_ROLES = ["ADMIN", "CLINICIAN"];
+const CLINICAL_ROLES = rolesFor("chart.edit");
 // CDS reviews the documentation; the coding team owns the superbill. They are separate teams.
 export const CDS_ROLES = rolesFor("chart.cds");
 export const CODING_ROLES = rolesFor("chart.code");
-const HOLD_ROLES = ["ADMIN", "CDS", "CODER", "BILLER"];
+const HOLD_ROLES = rolesFor("chart.hold");
 // The stages with CDS: a first review, and a coding query to answer.
 export const CDS_STAGES = ["READY_FOR_CDS", "CODING_QUERY"];
 
 // The provider and clinical team own the chart until it goes to CDS, and again if CDS queries it.
-export function canEditClinical(status: string, role: string) {
-  return CLINICAL_ROLES.includes(role) && ["IN_PROGRESS", "CDS_QUERY"].includes(status);
+export function canEditClinical(status: string, role: Subject) {
+  return allowed(role, CLINICAL_ROLES) && ["IN_PROGRESS", "CDS_QUERY"].includes(status);
 }
 
 // The superbill belongs to the coding team alone, and only while the chart is with them: after CDS has reviewed
 // the documentation and before the provider signs.
-export function canEditCoding(status: string, role: string) {
-  return status === "READY_FOR_CODING" && CODING_ROLES.includes(role);
+export function canEditCoding(status: string, role: Subject) {
+  return status === "READY_FOR_CODING" && allowed(role, CODING_ROLES);
 }
 
-export function canHold(role: string) {
-  return HOLD_ROLES.includes(role);
+export function canHold(role: Subject) {
+  return allowed(role, HOLD_ROLES);
 }
 
-export function isCdsRole(role: string) {
-  return CDS_ROLES.includes(role);
+export function isCdsRole(role: Subject) {
+  return allowed(role, CDS_ROLES);
 }
 
-export function isCoderRole(role: string) {
-  return CODING_ROLES.includes(role);
+export function isCoderRole(role: Subject) {
+  return allowed(role, CODING_ROLES);
 }
 
 type ChartParts = {

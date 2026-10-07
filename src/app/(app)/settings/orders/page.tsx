@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { SettingsNav } from "../settings-nav";
 import { addCatalogItem, saveOrderProvider, toggleCatalogItem } from "../../orders/actions";
 
 export default async function OrderSettingsPage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   await ensureOrderCatalog(user.practiceId);
   const [providers, catalog] = await Promise.all([

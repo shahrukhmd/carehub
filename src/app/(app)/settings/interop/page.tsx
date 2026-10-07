@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { cookies, headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
@@ -9,7 +10,7 @@ import { SettingsNav } from "../settings-nav";
 import { createApiClient, revokeApiClient } from "./actions";
 
 export default async function InteropPage({ searchParams }: { searchParams: Promise<{ created?: string; error?: string }> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const token = sp.created ? (await cookies()).get("ch_new_token")?.value : undefined;
   const h = await headers();

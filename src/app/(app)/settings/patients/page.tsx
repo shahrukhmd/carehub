@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { formatDate, patientName } from "@/lib/format";
@@ -6,7 +7,7 @@ import { SettingsNav } from "../settings-nav";
 import { dismissPair } from "./actions";
 
 export default async function DuplicatePatientsPage() {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const pairs = await findDuplicates(user.practiceId);
   return (
     <div className="stack">

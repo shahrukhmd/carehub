@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { agingBucket } from "@/lib/format";
 import { OPEN_AR_STATUSES, PRE_RELEASE_STATUSES } from "@/lib/claim-format";
-import { can, type PermissionKey } from "@/lib/permissions";
+import { can, type PermissionKey, type Subject } from "@/lib/permissions";
 import { getCredentialingAlerts } from "@/lib/credentialing";
 import { loadWaitingForTeam } from "@/lib/patient-thread";
 import { careGapsFor } from "@/lib/care-rules";
@@ -58,7 +58,7 @@ export function parseTiles(json: string | null | undefined): string[] {
   }
 }
 
-export const tilesFor = (role: string) => TILES.filter((t) => can(role, t.permission));
+export const tilesFor = (viewer: Subject) => TILES.filter((t) => can(viewer, t.permission));
 
 export async function loadTile(key: string, user: User): Promise<TileData | null> {
   const p = user.practiceId;

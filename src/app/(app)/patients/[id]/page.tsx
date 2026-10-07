@@ -4,6 +4,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { WoundTrendChart } from "@/components/WoundTrendChart";
 import { calcBmi, formatDate, formatMoney, formatTime, patientAccountStatusLabel, patientName } from "@/lib/format";
 import { requireUser } from "@/lib/auth";
+import { can } from "@/lib/permissions";
 import { etiologyLabel } from "@/lib/wound";
 import { setGuarantorAccount } from "@/app/actions";
 import { PatientFormsPanel } from "@/app/(app)/connect/patient-forms-panel";
@@ -173,7 +174,7 @@ export default async function PatientDashboardPage({ params, searchParams }: { p
       </Widget>
     ),
     admissions: () => (
-      <Widget k="admissions" count={patient.admissionDate ? "1 of 1" : undefined} more={`${back}/edit`}>
+      <Widget k="admissions" count={patient.admissionDate ? "1 of 1" : undefined} more={can(user, "patients.edit") ? `${back}/edit` : undefined}>
         <table className="pd-table">
           <tbody>
             <tr>
@@ -259,7 +260,7 @@ export default async function PatientDashboardPage({ params, searchParams }: { p
     ),
     orders: () => (
       <Slot k="orders">
-        <OrdersPanel patientId={id} role={user.role} />
+        <OrdersPanel patientId={id} role={user} />
       </Slot>
     ),
     medications: () => (
@@ -515,17 +516,17 @@ export default async function PatientDashboardPage({ params, searchParams }: { p
     ),
     forms: () => (
       <Slot k="forms">
-        <PatientFormsPanel practiceId={user.practiceId} patientId={id} role={user.role} back={back} />
+        <PatientFormsPanel practiceId={user.practiceId} patientId={id} role={user} back={back} />
       </Slot>
     ),
     prescriptions: () => (
       <Slot k="prescriptions">
-        <PrescriptionsPanel patientId={id} role={user.role} back={back} />
+        <PrescriptionsPanel patientId={id} role={user} back={back} />
       </Slot>
     ),
     immunizations: () => (
       <Slot k="immunizations">
-        <ImmunizationsPanel patientId={id} role={user.role} back={back} />
+        <ImmunizationsPanel patientId={id} role={user} back={back} />
       </Slot>
     ),
     growth: () => (
@@ -535,22 +536,22 @@ export default async function PatientDashboardPage({ params, searchParams }: { p
     ),
     referrals: () => (
       <Slot k="referrals">
-        <ReferralsPanel patientId={id} role={user.role} />
+        <ReferralsPanel patientId={id} role={user} />
       </Slot>
     ),
     recalls: () => (
       <Slot k="recalls">
-        <RecallsPanel patientId={id} role={user.role} back={back} />
+        <RecallsPanel patientId={id} role={user} back={back} />
       </Slot>
     ),
     balance: () => (
       <Slot k="balance">
-        <BalancePanel patientId={id} role={user.role} />
+        <BalancePanel patientId={id} role={user} />
       </Slot>
     ),
     records: () => (
       <Slot k="records">
-        <RecordsPanel patientId={id} role={user.role} sp={sp} />
+        <RecordsPanel patientId={id} role={user} sp={sp} />
       </Slot>
     ),
     account: () => (

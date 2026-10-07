@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireEncounterAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { visitTypeNames } from "@/lib/scheduler-setup";
@@ -32,7 +33,7 @@ export default async function EncounterPrintPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ view?: string }>;
 }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN", "BILLER", "FRONT_DESK", "CDS", "CODER"]);
+  const user = await requireUser(rolesFor("chart.view"));
   const vtNames = await visitTypeNames(user.practiceId);
   const { id } = await params;
   await requireEncounterAccess(user, id);

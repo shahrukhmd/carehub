@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -16,7 +17,7 @@ const MATCH: Record<string, [string, string]> = {
 const METHOD: Record<string, string> = { ACH: "EFT (ACH)", CHK: "Check", NON: "No payment", FWT: "Wire", BOP: "Financial institution option" };
 
 export default async function EraPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; posted?: string; skipped?: string }> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const { id } = await params;
   const sp = await searchParams;
   const file = await prisma.eraFile.findFirst({ where: { id, practiceId: user.practiceId }, include: { claims: true } });

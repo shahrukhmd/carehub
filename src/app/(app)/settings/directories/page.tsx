@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatMoney, insuranceTypeLabel, providerRoleLabel } from "@/lib/format";
 import { AddressValidator } from "@/components/AddressValidator";
+import { can } from "@/lib/permissions";
 import {
   addSuperbillTemplateItem,
   createBillingProvider,
@@ -30,11 +31,11 @@ const ROLE_FILTERS = [["", "All types"], ...Object.entries(providerRoleLabel)] a
 const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 export default async function DirectoriesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"]);
+  const user = await requireUser();
   const sp = await searchParams;
   const section = SECTIONS.some((x) => x.key === sp.section) ? sp.section! : "providers";
-  const canEditProviders = ["ADMIN", "CREDENTIALING", "FRONT_DESK"].includes(user.role);
-  const canEditInsurance = ["ADMIN", "FRONT_DESK", "BILLER", "CREDENTIALING"].includes(user.role);
+  const canEditProviders = can(user, "settings.providers");
+  const canEditInsurance = can(user, "settings.insurance");
   const q = (sp.q ?? "").trim();
   const role = sp.type && sp.type in providerRoleLabel ? (sp.type as keyof typeof providerRoleLabel) : null;
   const letter = sp.letter && LETTERS.includes(sp.letter) ? sp.letter : null;
@@ -78,7 +79,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
           orderBy: [{ type: "asc" }, { active: "desc" }, { code: "asc" }],
         })
       : [];
-  const canEditCodes = ["ADMIN", "BILLER", "CDS", "CODER"].includes(user.role);
+  const canEditCodes = can(user, "codes.library");
 
   return (
     <>

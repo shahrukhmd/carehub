@@ -48,6 +48,7 @@ import {
 } from "../actions";
 import { NetworkTag, SexMark, Tag, authTone, eligibilityTone } from "../views";
 import { DataEntrySteps, EligibilityBlock, VobDecisionPanel, type ConsentRequestInfo } from "./workflow";
+import { allowed, can } from "@/lib/permissions";
 
 function d(value: Date | null | undefined) {
   return value ? value.toISOString().slice(0, 10) : "";
@@ -189,9 +190,9 @@ export default async function IntakeCasePage({
             patientId={patient.id}
             caseId={c.id}
             latestEncounterId={patient.encounters[0]?.id}
-            canEdit={PATIENT_EDIT_ROLES.includes(user.role)}
-            canSchedule={["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"].includes(user.role)}
-            canBill={["ADMIN", "BILLER", "FRONT_DESK"].includes(user.role)}
+            canEdit={allowed(user, PATIENT_EDIT_ROLES)}
+            canSchedule={can(user, "schedule.view")}
+            canBill={can(user, "payments.take")}
           />
         </div>
         <h2 className="gw-side-name">
@@ -388,13 +389,13 @@ export default async function IntakeCasePage({
           )}
         </section>
 
-        <PatientFormsPanel practiceId={user.practiceId} patientId={patient.id} role={user.role} back={`/gateway/${c.id}`} />
+        <PatientFormsPanel practiceId={user.practiceId} patientId={patient.id} role={user} back={`/gateway/${c.id}`} />
 
         {/* ---------------- Team 1 ---------------- */}
         <section className="panel">
           <div className="gw-section-head">
             <h2>1 · Registration &amp; referral source</h2>
-            {PATIENT_EDIT_ROLES.includes(user.role) && (
+            {allowed(user, PATIENT_EDIT_ROLES) && (
               <Link className="btn secondary gw-mini" href={`/patients/${patient.id}/edit`}>
                 Edit demographics &amp; insurance
               </Link>

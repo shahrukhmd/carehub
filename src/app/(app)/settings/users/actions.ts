@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
 import { ensureRenderingProviderForUser } from "@/lib/credentialing";
+import { PERMISSIONS, parseOverrides, serializeOverrides, type Overrides, type PermissionKey, rolesFor } from "@/lib/permissions";
 
 const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
 
@@ -16,7 +18,7 @@ function required(formData: FormData, key: string) {
 }
 
 export async function createStaff(formData: FormData) {
-  const actor = await requireUser(["ADMIN"]);
+  const actor = await requireUser(rolesFor("settings.admin"));
 
   const name = required(formData, "name");
   const email = required(formData, "email").toLowerCase();
@@ -51,7 +53,7 @@ export async function createStaff(formData: FormData) {
 }
 
 export async function updateStaffRole(userId: string, formData: FormData) {
-  const actor = await requireUser(["ADMIN"]);
+  const actor = await requireUser(rolesFor("settings.admin"));
   const role = required(formData, "role");
   if (!ROLES.includes(role)) throw new Error("Invalid role");
 
@@ -81,7 +83,7 @@ export async function updateStaffRole(userId: string, formData: FormData) {
 }
 
 export async function toggleStaffActive(userId: string) {
-  const actor = await requireUser(["ADMIN"]);
+  const actor = await requireUser(rolesFor("settings.admin"));
   if (userId === actor.id) {
     throw new Error("You cannot deactivate your own account");
   }
@@ -106,7 +108,7 @@ export async function toggleStaffActive(userId: string) {
 }
 
 export async function resetStaffPassword(userId: string, formData: FormData) {
-  const actor = await requireUser(["ADMIN"]);
+  const actor = await requireUser(rolesFor("settings.admin"));
   const password = required(formData, "password");
 
   const target = await prisma.user.findFirstOrThrow({ where: { id: userId, practiceId: actor.practiceId } });
@@ -122,7 +124,7 @@ export async function resetStaffPassword(userId: string, formData: FormData) {
 }
 
 export async function addPracticeMember(formData: FormData) {
-  const actor = await requireUser(["ADMIN"]);
+  const actor = await requireUser(rolesFor("settings.admin"));
   const email = required(formData, "email").toLowerCase();
   const role = required(formData, "role");
   if (!ROLES.includes(role)) throw new Error("Invalid role");
@@ -151,7 +153,7 @@ export async function addPracticeMember(formData: FormData) {
 }
 
 export async function removeMembership(membershipId: string) {
-  const actor = await requireUser(["ADMIN"]);
+  const actor = await requireUser(rolesFor("settings.admin"));
 
   const membership = await prisma.membership.findFirstOrThrow({
     where: { id: membershipId, practiceId: actor.practiceId },
@@ -169,4 +171,38 @@ export async function removeMembership(membershipId: string) {
   await logAudit(actor.practiceId, actor.id, "REVOKE_PRACTICE_ACCESS", "User", membership.userId, membership.user.email);
 
   revalidatePath("/settings/users");
+}
+
+// Per-user permission overrides for this practice. Each permission is "default" (the role decides), "allow" or
+// "deny"; only entries that differ from the role's default are stored. Admins cannot change their own access.
+export async function savePermissionOverrides(membershipId: string, formData: FormData) {
+  const actor = await requireUser(rolesFor("settings.admin"));
+  const membership = await prisma.membership.findFirstOrThrow({
+    where: { id: membershipId, practiceId: actor.practiceId },
+    include: { user: true },
+  });
+  if (membership.userId === actor.id) throw new Error("You cannot change your own permissions");
+
+  const overrides: Overrides = {};
+  if (formData.get("intent") !== "reset") {
+    for (const key of Object.keys(PERMISSIONS) as PermissionKey[]) {
+      const v = formData.get(`perm:${key}`);
+      if (v === "allow") overrides[key] = true;
+      else if (v === "deny") overrides[key] = false;
+    }
+  }
+  const json = serializeOverrides(membership.role, overrides);
+  await prisma.membership.update({ where: { id: membership.id }, data: { permissions: json } });
+
+  const before = parseOverrides(membership.permissions) ?? {};
+  const after = parseOverrides(json) ?? {};
+  const changes = (Object.keys(PERMISSIONS) as PermissionKey[])
+    .filter((k) => before[k] !== after[k])
+    .map((k) => `${k}: ${after[k] === undefined ? "default" : after[k] ? "allow" : "deny"}`);
+  if (changes.length) {
+    await logAudit(actor.practiceId, actor.id, "SET_PERMISSION_OVERRIDES", "User", membership.userId, `${membership.user.email}: ${changes.join(", ")}`);
+  }
+
+  revalidatePath("/settings/users");
+  redirect(`/settings/users?perms=${membership.id}&saved=1#permissions-editor`);
 }

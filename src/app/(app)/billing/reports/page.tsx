@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -10,7 +11,7 @@ const iso = (d: Date) => d.toISOString().slice(0, 10);
 const RANGED = ["collections", "cpt", "provider", "denials", "denial_rate", "denial_categories", "denial_providers", "appeals", "payer_mix", "em_levels"];
 
 export default async function FinancialReportsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const key = REPORTS.some(([k]) => k === sp.r) ? sp.r! : "collections";
   const { from, to } = reportRange(sp);

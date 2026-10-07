@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { Prisma } from "@prisma/client";
@@ -131,9 +132,9 @@ function requireStatus(e: { status: string }, allowed: string[]) {
 
 export async function updateCareTeam(encounterId: string, fd: FormData) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await loadEncounter(user, encounterId);
-    if (!canEditClinical(e.status, user.role)) fail("The care team can only be changed while the visit is being documented.");
+    if (!canEditClinical(e.status, user)) fail("The care team can only be changed while the visit is being documented.");
 
     const clinicalStaffId = text(fd, "clinicalStaffId");
     if (clinicalStaffId) {
@@ -159,7 +160,7 @@ export async function updateCareTeam(encounterId: string, fd: FormData) {
 
 export async function submitToCds(encounterId: string) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, ["IN_PROGRESS", "CDS_QUERY"]);
     // The chart workflow decides which documents must be complete (Finalize visit admin).
@@ -246,7 +247,7 @@ export async function sendForSignature(encounterId: string) {
 
 export async function returnToCds(encounterId: string, fd: FormData) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.edit"));
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, ["READY_FOR_SIGNATURE"]);
     if (!(await isSigner(user, e))) fail("Only the visit's provider or supervising physician can return it.");
@@ -265,7 +266,7 @@ async function isSigner(user: User, e: Loaded) {
 
 export async function signEncounter(encounterId: string, fd: FormData) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CLINICIAN"]);
+    const user = await requireUser(rolesFor("chart.sign"));
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, ["READY_FOR_SIGNATURE"]);
 
@@ -309,8 +310,8 @@ export async function signEncounter(encounterId: string, fd: FormData) {
 
 export async function placeHold(encounterId: string, fd: FormData) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CDS", "CODER", "BILLER"]);
-    if (!canHold(user.role)) fail("Your role can't place holds.");
+    const user = await requireUser(rolesFor("chart.hold"));
+    if (!canHold(user)) fail("Your role can't place holds.");
     const e = await loadEncounter(user, encounterId);
     if (HOLD_STATUSES.includes(e.status)) fail("Release the current hold first.");
     if (e.status === "BILLED") fail("This visit has already been billed.");
@@ -324,10 +325,10 @@ export async function placeHold(encounterId: string, fd: FormData) {
 
 export async function releaseHold(encounterId: string) {
   return guarded(encounterId, async () => {
-    const user = await requireUser(["ADMIN", "CDS", "CODER", "BILLER"]);
+    const user = await requireUser(rolesFor("chart.hold"));
     const e = await loadEncounter(user, encounterId);
     requireStatus(e, HOLD_STATUSES);
-    const back = e.holdFromStatus ?? (isCoderRole(user.role) && user.role !== "ADMIN" ? "READY_FOR_CODING" : isCdsRole(user.role) && user.role !== "ADMIN" ? "READY_FOR_CDS" : "READY_FOR_BILLING");
+    const back = e.holdFromStatus ?? (isCoderRole(user) && user.role !== "ADMIN" ? "READY_FOR_CODING" : isCdsRole(user) && user.role !== "ADMIN" ? "READY_FOR_CDS" : "READY_FOR_BILLING");
     await transition(user, e, back, "Hold released", { holdReason: null, holdFromStatus: null });
   });
 }
@@ -337,7 +338,7 @@ export async function releaseHold(encounterId: string) {
 const PRE_VISIT_STATUSES = ["SCHEDULED", "CONFIRMED", "CHECKED_IN", "IN_HOSPITAL", "NO_SHOW", "CANCELLED"];
 
 export async function setAppointmentStatus(appointmentId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("schedule.view"));
   const status = text(fd, "status");
   if (!status || !PRE_VISIT_STATUSES.includes(status)) throw new Error("Invalid visit status");
   const appt = await prisma.appointment.findFirst({

@@ -2,12 +2,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PATIENT_VIEW_ROLES } from "@/lib/gateway";
 import type { Prisma } from "@prisma/client";
+import { allowed } from "@/lib/permissions";
 
 // Global patient search (left menu magnifier): last/first name, DOB, MRN, phone, member ID or account number.
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return Response.json({ error: "Not signed in" }, { status: 401 });
-  if (!PATIENT_VIEW_ROLES.includes(user.role)) return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (!allowed(user, PATIENT_VIEW_ROLES)) return Response.json({ error: "Forbidden" }, { status: 403 });
 
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") ?? "").trim().slice(0, 60);

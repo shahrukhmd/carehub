@@ -14,7 +14,7 @@ export async function assertChartEditable(
     select: { status: true },
   });
   if (!encounter) throw new Error("Encounter not found");
-  const allowed = area === "clinical" ? canEditClinical(encounter.status, user.role) : canEditCoding(encounter.status, user.role);
+  const allowed = area === "clinical" ? canEditClinical(encounter.status, user) : canEditCoding(encounter.status, user);
   if (!allowed) {
     throw new Error(
       `This chart is "${visitStatusLabel[encounter.status] ?? encounter.status}" — ${area === "clinical" ? "documentation" : "coding"} can't be changed by your role at this stage.`

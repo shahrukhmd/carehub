@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { PatientThread } from "@/components/PatientThread";
 import { HandoffHeader } from "@/components/HandoffHeader";
 
@@ -63,7 +64,7 @@ export default async function ClaimPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ error?: string; ok?: string; threadOk?: string; threadError?: string; view?: string }>;
 }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const { id } = await params;
   const { error, ok, threadOk, threadError, view: viewParam } = await searchParams;
   const claim = await prisma.claim.findFirst({

@@ -1,17 +1,18 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { PATIENT_EDIT_ROLES, PATIENT_VIEW_ROLES } from "@/lib/gateway";
+
 import { PAYER_RANKS, payerRankLabel } from "@/lib/claim-format";
 import { US_STATES } from "@/lib/format";
 import { runEligibilityCheck } from "@/lib/clearinghouse/service";
 import { sexLabel, yesNoUnknownLabel } from "@/lib/patient-fields";
 
-const EDIT_ROLES = [...PATIENT_EDIT_ROLES, "BILLER"];
+const EDIT_ROLES = rolesFor("patients.insurance");
 
 function text(fd: FormData, key: string, max = 200) {
   return String(fd.get(key) ?? "").trim().slice(0, max) || null;
@@ -192,7 +193,7 @@ export async function deleteAuthorization(patientId: string, authId: string) {
 // ---- Eligibility ----
 
 export async function checkCoverageEligibility(patientId: string, insuranceId: string, returnTo: "insurance" | "dashboard") {
-  const user = await requireUser([...PATIENT_VIEW_ROLES, "BILLER"]);
+  const user = await requireUser(rolesFor("patients.view"));
   const ins = await prisma.insurance.findFirst({ where: { id: insuranceId, patientId, patient: { practiceId: user.practiceId } } });
   if (!ins) redirect("/patients");
   const check = await runEligibilityCheck({ practiceId: user.practiceId, patientId, insuranceId: ins.id, checkedById: user.id });

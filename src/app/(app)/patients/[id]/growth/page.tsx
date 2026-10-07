@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { GrowthChart } from "@/components/GrowthChart";
 import { MEASURES, ageInMonths, chartsFor, percentile, percentileText, type GrowthMeasure } from "@/lib/growth-charts";
 import { PatientShell, loadPatientShell } from "../patient-shell";
 
-const CHART_ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "CODER", "SCHEDULER"];
+const CHART_ROLES = rolesFor("chart.view");
 
 // The patient's growth measurements against the CDC curves (under 20), with percentiles per visit.
 export default async function GrowthPage({ params }: { params: Promise<{ id: string }> }) {

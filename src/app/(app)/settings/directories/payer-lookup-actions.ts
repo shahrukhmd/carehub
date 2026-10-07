@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { getClearinghouseAdapter } from "@/lib/clearinghouse";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -11,7 +12,7 @@ import { CLEARINGHOUSES } from "@/lib/practice-settings";
 import { STARTER_PAYERS, guessInsuranceType, mergePayerRows, parsePayerList, parsePayerTable, type CatalogRow, type PayerMatch } from "@/lib/payer-catalog";
 import { readXlsxRows } from "@/lib/xlsx-read";
 
-const LOOKUP_ROLES = ["ADMIN", "FRONT_DESK", "BILLER", "CREDENTIALING"];
+const LOOKUP_ROLES = rolesFor("settings.insurance");
 
 // The built-in test clearinghouse has no published list; it gets a few well-known payers so the lookup can be tried.
 async function ensureStarterList(clearinghouse: string) {
@@ -107,7 +108,7 @@ export async function searchPayerList(query: string): Promise<PayerLookupResult>
 // Loads a payer list file downloaded from the practice's clearinghouse. A file is joined onto the list already
 // held (a claims list and an eligibility list make one entry per payer); "replace" starts the list again.
 export async function importPayerList(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const settings = await getPracticeSettings(user.practiceId);
   const clearinghouse = settings.clearinghouse;
   const back = (key: "listError" | "listOk", message: string): never => redirect(`/settings/practice?${key}=${encodeURIComponent(message.slice(0, 300))}#payer-list`);

@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -6,7 +7,7 @@ import { SettingsNav } from "../settings-nav";
 import { deleteLetterTemplate, saveLetterTemplate } from "./actions";
 
 export default async function LetterTemplatesPage({ searchParams }: { searchParams: Promise<{ edit?: string; saved?: string; error?: string }> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   await ensureLetters(user.practiceId);
   const templates = await prisma.letterTemplate.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" } });

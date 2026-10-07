@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -12,7 +13,7 @@ type Search = { batch?: string; result?: string; date?: string; kind?: string };
 
 // What happened to each claim in a bulk release (or paper) batch: sent, rejected, or left behind and why.
 export default async function BulkReleaseStatusPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const result = sp.result && sp.result in releaseOutcomeLabel ? sp.result : "";
   const batch = sp.batch && /^(RB|PB)-\d{6}-[0-9A-F]{4}$/.test(sp.batch) ? sp.batch : "";

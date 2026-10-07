@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -20,7 +21,7 @@ function query(f: ClaimFilters, extra: Record<string, string | undefined> = {}) 
 }
 
 export default async function ClaimsDashboardPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const [d, payers, providers, locations] = await Promise.all([
     claimsDashboard(user.practiceId, sp),

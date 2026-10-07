@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { generateStatements } from "@/app/actions";
 import { prisma } from "@/lib/prisma";
@@ -5,7 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { formatDate, formatMoney, patientName } from "@/lib/format";
 
 export default async function StatementsPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const user = await requireUser(["ADMIN", "BILLER"]);
+  const user = await requireUser(rolesFor("billing.work"));
   const sp = await searchParams;
   const q = sp.q?.trim();
 

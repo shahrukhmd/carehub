@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
@@ -16,7 +17,7 @@ const MAX_PHOTO_CHARS = 8_000_000;
 // reviews the result, and it reaches the chart only if they fill the assessment form with it and save.
 // The patient's name, MRN and date of birth are not sent; the photos, wound type and location are.
 export async function analyzeWoundPhoto(woundId: string, encounterId: string, photo: string): Promise<WoundAnalysisResult> {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("chart.ai"));
   const wound = await prisma.wound.findFirst({
     where: { id: woundId, practiceId: user.practiceId },
     include: { assessments: { orderBy: { assessedAt: "desc" }, take: 12 } },

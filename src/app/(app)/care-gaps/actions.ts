@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -65,7 +66,7 @@ function readRule(fd: FormData) {
 }
 
 export async function saveCareRule(id: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const data = readRule(fd);
   if (!data) redirect(`/settings/clinical-rules?error=${encodeURIComponent("Give the rule a name and say what satisfies it.")}${id !== "new" ? `&edit=${id}` : ""}`);
   if (id === "new") {
@@ -80,7 +81,7 @@ export async function saveCareRule(id: string, fd: FormData) {
 }
 
 export async function toggleCareRule(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const r = await prisma.careRule.findFirst({ where: { id, practiceId: user.practiceId } });
   if (r) await prisma.careRule.update({ where: { id }, data: { active: !r.active } });
   revalidatePath("/settings/clinical-rules");
@@ -88,7 +89,7 @@ export async function toggleCareRule(id: string) {
 }
 
 export async function deleteCareRule(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await prisma.careRule.deleteMany({ where: { id, practiceId: user.practiceId, standard: false } });
   revalidatePath("/settings/clinical-rules");
   redirect("/settings/clinical-rules");

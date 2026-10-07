@@ -23,6 +23,7 @@ export async function createReservedTime(formData: FormData) {
 
   const provider = await prisma.user.findFirst({ where: { id: providerId, practiceId: user.practiceId } });
   if (!provider) throw new Error("Not found");
+  if (locationId && !(await prisma.location.findFirst({ where: { id: locationId, practiceId: user.practiceId }, select: { id: true } }))) throw new Error("Not found");
 
   await prisma.reservedTime.create({
     data: { practiceId: user.practiceId, providerId, locationId, title, startsAt, endsAt },
@@ -53,7 +54,7 @@ export async function checkEligibility(appointmentId: string) {
 }
 
 export async function addAvailability(formData: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const providerId = required(formData, "providerId");
   const locationId = required(formData, "locationId");
   const dayOfWeek = Number(required(formData, "dayOfWeek"));
@@ -83,7 +84,7 @@ export async function addAvailability(formData: FormData) {
 }
 
 export async function removeAvailability(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await prisma.providerAvailability.deleteMany({ where: { id, practiceId: user.practiceId } });
   revalidatePath("/schedule/availability");
 }

@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/format";
 import { CONNECT_ROLES, ensureConnectSetup, publicBase } from "@/lib/connect/core";
 import { CopyButton } from "@/components/CopyButton";
 import { sendPacket } from "./actions";
+import { allowed, type Subject } from "@/lib/permissions";
 
 const STATUS: Record<string, [string, string]> = {
   SENT: ["Sent", "info"],
@@ -16,7 +17,7 @@ const STATUS: Record<string, [string, string]> = {
 };
 
 // "Send intake forms" box for the Gateway case and the patient chart.
-export async function PatientFormsPanel({ practiceId, patientId, role, back }: { practiceId: string; patientId: string; role: string; back: string }) {
+export async function PatientFormsPanel({ practiceId, patientId, role, back }: { practiceId: string; patientId: string; role: Subject; back: string }) {
   await ensureConnectSetup(practiceId);
   const [packets, requests, upcoming] = await Promise.all([
     prisma.intakePacket.findMany({ where: { practiceId, active: true }, orderBy: { name: "asc" } }),
@@ -26,7 +27,7 @@ export async function PatientFormsPanel({ practiceId, patientId, role, back }: {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
   const link = publicBase(host ? `${h.get("x-forwarded-proto") ?? "http"}://${host}` : null);
-  const canSend = CONNECT_ROLES.includes(role);
+  const canSend = allowed(role, CONNECT_ROLES);
 
   return (
     <section className="panel">

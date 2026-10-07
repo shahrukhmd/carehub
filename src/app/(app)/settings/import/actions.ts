@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -9,7 +10,7 @@ import { IMPORT_FIELDS, autoMap, commitImport, parseCsv, undoImport, validateImp
 const fail = (msg: string, id?: string) => redirect(`/settings/import?${id ? `batch=${id}&` : ""}error=${encodeURIComponent(msg)}`);
 
 export async function uploadImport(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const file = fd.get("file");
   if (!(file instanceof File) || file.size === 0) fail("Choose a CSV file.");
   const f = file as File;
@@ -27,7 +28,7 @@ export async function uploadImport(fd: FormData) {
 }
 
 export async function remapImport(batchId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const batch = await prisma.importBatch.findFirst({ where: { id: batchId, practiceId: user.practiceId, status: "PREVIEW" } });
   if (!batch) fail("That import is no longer open.");
   const saved = JSON.parse(batch!.mapping) as { headers: string[]; table: string[][] };
@@ -44,7 +45,7 @@ export async function remapImport(batchId: string, fd: FormData) {
 }
 
 export async function runImport(batchId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   if (fd.get("confirm") !== "on") fail("Tick the box to confirm.", batchId);
   let n = 0;
   try {
@@ -57,14 +58,14 @@ export async function runImport(batchId: string, fd: FormData) {
 }
 
 export async function undoImportBatch(batchId: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const r = await undoImport(batchId, user.practiceId, user.id);
   revalidatePath("/patients");
   redirect(`/settings/import?undone=${r.removed}&kept=${r.kept}`);
 }
 
 export async function discardImport(batchId: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   await prisma.importBatch.deleteMany({ where: { id: batchId, practiceId: user.practiceId, status: "PREVIEW" } });
   redirect("/settings/import");
 }

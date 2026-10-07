@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import { requireChartAccess } from "@/lib/privacy";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -9,7 +10,7 @@ import { getPracticeSettings } from "@/lib/chart-setup";
 import { addressLines, settingsAddress } from "@/lib/practice-settings";
 
 export default async function PatientStatementPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "BILLER", "FRONT_DESK"]);
+  const user = await requireUser(rolesFor("payments.take"));
   const { id } = await params;
   await requireChartAccess(user, id, `/patients/${id}/statement`);
 

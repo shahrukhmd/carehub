@@ -18,6 +18,7 @@ import { ORDER_ROLES, ORDER_STATUS, ORDER_WRITE_ROLES, RESULT_FLAGS } from "@/li
 import { REFERRAL_ROLES, REFERRAL_STATUS } from "@/lib/referrals";
 import { TASK_TYPES } from "@/lib/tasks";
 import { CHECKOUT_ROLES } from "@/lib/checkout";
+import { allowed, roleOf, type Subject } from "@/lib/permissions";
 
 const RX_STATUS: Record<string, [string, string]> = {
   DRAFT: ["Draft — not signed", "warn"],
@@ -27,12 +28,12 @@ const RX_STATUS: Record<string, [string, string]> = {
   CANCELLED: ["Cancelled", "bad"],
 };
 
-export async function PrescriptionsPanel({ patientId, role, back, encounterId }: { patientId: string; role: string; back: string; encounterId?: string }) {
+export async function PrescriptionsPanel({ patientId, role, back, encounterId }: { patientId: string; role: Subject; back: string; encounterId?: string }) {
   const [rxs, allergies] = await Promise.all([
     prisma.prescription.findMany({ where: { patientId }, orderBy: { createdAt: "desc" }, take: 20 }),
     prisma.allergy.findMany({ where: { patientId } }),
   ]);
-  const canWrite = RX_WRITE_ROLES.includes(role);
+  const canWrite = allowed(role, RX_WRITE_ROLES);
   return (
     <section className="panel" id="rx">
       <div className="gw-section-head">
@@ -208,12 +209,12 @@ export async function PrescriptionsPanel({ patientId, role, back, encounterId }:
   );
 }
 
-export async function ImmunizationsPanel({ patientId, role, back }: { patientId: string; role: string; back: string }) {
+export async function ImmunizationsPanel({ patientId, role, back }: { patientId: string; role: Subject; back: string }) {
   const [imms, patient] = await Promise.all([
     prisma.immunization.findMany({ where: { patientId }, orderBy: { administeredAt: "desc" } }),
     prisma.patient.findUniqueOrThrow({ where: { id: patientId }, select: { dob: true, sex: true } }),
   ]);
-  const can = IMMUNIZATION_ROLES.includes(role);
+  const can = allowed(role, IMMUNIZATION_ROLES);
   // What the routine schedule says is due, from the record above.
   const forecast = immunizationForecast(patient.dob, patient.sex, imms);
   const dueNow = forecast.filter((f) => f.status === "DUE" || f.status === "OVERDUE");
@@ -378,9 +379,9 @@ export async function ImmunizationsPanel({ patientId, role, back }: { patientId:
   );
 }
 
-export async function RecallsPanel({ patientId, role, back }: { patientId: string; role: string; back: string }) {
+export async function RecallsPanel({ patientId, role, back }: { patientId: string; role: Subject; back: string }) {
   const recalls = await prisma.recall.findMany({ where: { patientId, status: { not: "CLOSED" } }, include: { appointment: true }, orderBy: { dueDate: "asc" } });
-  const can = RECALL_ROLES.includes(role);
+  const can = allowed(role, RECALL_ROLES);
   return (
     <section className="panel">
       <div className="gw-section-head">
@@ -436,8 +437,8 @@ export async function RecallsPanel({ patientId, role, back }: { patientId: strin
   );
 }
 
-export function RecordsPanel({ patientId, role, sp }: { patientId: string; role: string; sp: { ccdaError?: string; ccdaApplied?: string } }) {
-  const letters = LETTER_ROLES.includes(role);
+export function RecordsPanel({ patientId, role, sp }: { patientId: string; role: Subject; sp: { ccdaError?: string; ccdaApplied?: string } }) {
+  const letters = allowed(role, LETTER_ROLES);
   return (
     <section className="panel" id="records">
       <h2>Letters, labels &amp; records</h2>
@@ -458,7 +459,7 @@ export function RecordsPanel({ patientId, role, sp }: { patientId: string; role:
         <a className="btn ghost gw-mini" href={`/api/ccda/${patientId}`}>
           Export C-CDA
         </a>
-        {role === "ADMIN" && (
+        {roleOf(role) === "ADMIN" && (
           <Link className="btn ghost gw-mini" href={`/settings/patients/merge?a=${patientId}`}>
             Merge with another chart
           </Link>
@@ -474,8 +475,8 @@ export function RecordsPanel({ patientId, role, sp }: { patientId: string; role:
   );
 }
 
-export async function BalancePanel({ patientId, role }: { patientId: string; role: string }) {
-  if (!PAYMENT_ROLES.includes(role)) return null;
+export async function BalancePanel({ patientId, role }: { patientId: string; role: Subject }) {
+  if (!allowed(role, PAYMENT_ROLES)) return null;
   const [{ items, totalCents }, settings, last] = await Promise.all([
     patientBalance(patientId),
     prisma.patient.findUnique({ where: { id: patientId }, select: { practice: { select: { connectSettings: true } } } }),
@@ -499,7 +500,7 @@ export async function BalancePanel({ patientId, role }: { patientId: string; rol
           ))}
         </ul>
       )}
-      {CHECKOUT_ROLES.includes(role) && (
+      {allowed(role, CHECKOUT_ROLES) && (
         <Link className="btn ghost gw-mini" href={`/checkout?patientId=${patientId}`}>
           Collect at the desk / receipts
         </Link>
@@ -530,14 +531,14 @@ export async function BalancePanel({ patientId, role }: { patientId: string; rol
   );
 }
 
-export async function OrdersPanel({ patientId, role }: { patientId: string; role: string }) {
-  if (!ORDER_ROLES.includes(role)) return null;
+export async function OrdersPanel({ patientId, role }: { patientId: string; role: Subject }) {
+  if (!allowed(role, ORDER_ROLES)) return null;
   const orders = await prisma.clinicalOrder.findMany({ where: { patientId, status: { not: "CANCELLED" } }, include: { items: true, results: true }, orderBy: { createdAt: "desc" }, take: 8 });
   return (
     <section className="panel" id="orders">
       <div className="gw-section-head">
         <h2>Lab &amp; imaging orders</h2>
-        {ORDER_WRITE_ROLES.includes(role) && (
+        {allowed(role, ORDER_WRITE_ROLES) && (
           <span className="cn-actions">
             <Link className="btn ghost gw-mini" href={`/orders/new?kind=LAB&patientId=${patientId}`}>
               + Lab
@@ -595,8 +596,8 @@ export async function PatientTasksPanel({ patientId }: { patientId: string }) {
   );
 }
 
-export async function ReferralsPanel({ patientId, role }: { patientId: string; role: string }) {
-  if (!REFERRAL_ROLES.includes(role)) return null;
+export async function ReferralsPanel({ patientId, role }: { patientId: string; role: Subject }) {
+  if (!allowed(role, REFERRAL_ROLES)) return null;
   const refs = await prisma.outgoingReferral.findMany({ where: { patientId }, orderBy: { createdAt: "desc" }, take: 6 });
   return (
     <section className="panel">

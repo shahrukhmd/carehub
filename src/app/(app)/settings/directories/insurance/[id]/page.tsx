@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { saveInsurance, togglePayerActive } from "../../actions";
 import { InsuranceForm } from "../insurance-form";
 
 export default async function EditInsurancePage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER", "CREDENTIALING"]);
+  const user = await requireUser(rolesFor("settings.insurance"));
   const { id } = await params;
 
   const payer = await prisma.payer.findFirst({ where: { id, practiceId: user.practiceId } });

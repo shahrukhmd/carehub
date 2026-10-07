@@ -2,6 +2,7 @@ import Link from "next/link";
 import { formatDate, formatTime } from "@/lib/format";
 import { THREAD_ROLES, THREAD_TEAMS, loadPatientThread, waitingFor, type ThreadItem } from "@/lib/patient-thread";
 import { markMessageAnswered, postPatientMessage } from "@/app/(app)/patients/[id]/thread/actions";
+import { allowed } from "@/lib/permissions";
 
 const KIND: Record<ThreadItem["kind"], [string, string]> = {
   MESSAGE: ["Message", "info"],
@@ -41,7 +42,7 @@ export async function PatientThread({
   const waiting = waitingFor(all, user.role);
   const open = all.filter((i) => i.message?.needsReply && !i.message.answeredAt);
   const shown = (only === "messages" ? all.filter((i) => i.kind === "MESSAGE") : only === "open" ? open : all).slice(0, limit);
-  const canWrite = THREAD_ROLES.includes(user.role);
+  const canWrite = allowed(user, THREAD_ROLES);
   const byId = new Map(all.filter((i) => i.message).map((i) => [i.message!.id, i]));
 
   return (

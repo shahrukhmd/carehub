@@ -21,7 +21,7 @@ function optional(formData: FormData, key: string) {
   return value || null;
 }
 
-const INSURANCE_ROLES = ["ADMIN", "FRONT_DESK", "BILLER", "CREDENTIALING"];
+const INSURANCE_ROLES = rolesFor("settings.insurance");
 
 function flag(formData: FormData, key: string) {
   return formData.get(key) === "on";
@@ -112,7 +112,7 @@ export async function togglePayerActive(payerId: string) {
 }
 
 export async function createBillingProvider(formData: FormData) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER"]);
+  const user = await requireUser(rolesFor("payments.take"));
   const name = required(formData, "name");
 
   const provider = await prisma.billingProvider.create({
@@ -134,7 +134,7 @@ export async function createBillingProvider(formData: FormData) {
   revalidatePath("/encounters");
 }
 
-const PROVIDER_ROLES = ["ADMIN", "CREDENTIALING", "FRONT_DESK"];
+const PROVIDER_ROLES = rolesFor("settings.providers");
 
 function displayName(last: string, first: string, middle: string | null, suffix: string | null) {
   return `${last}${suffix ? ` ${suffix}` : ""}, ${first}${middle ? ` ${middle}` : ""}`;
@@ -280,7 +280,7 @@ export async function lookupNpi(npi: string) {
 }
 
 export async function toggleBillingProviderActive(providerId: string) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "BILLER"]);
+  const user = await requireUser(rolesFor("payments.take"));
   const provider = await prisma.billingProvider.findFirstOrThrow({
     where: { id: providerId, practiceId: user.practiceId },
   });
@@ -350,7 +350,7 @@ export async function removeSuperbillTemplateItem(itemId: string, templateId: st
 // ---- Practice code lists (superbill favorites & fee schedule) ----
 
 export async function savePracticeCode(formData: FormData) {
-  const user = await requireUser(["ADMIN", "BILLER", "CDS", "CODER"]);
+  const user = await requireUser(rolesFor("codes.library"));
   const type = formData.get("type") === "CPT" ? "CPT" : "ICD10";
   const code = String(formData.get("code") ?? "").trim().toUpperCase();
   const description = String(formData.get("description") ?? "").trim();
@@ -375,7 +375,7 @@ export async function savePracticeCode(formData: FormData) {
 }
 
 export async function togglePracticeCode(codeId: string) {
-  const user = await requireUser(["ADMIN", "BILLER", "CDS", "CODER"]);
+  const user = await requireUser(rolesFor("codes.library"));
   const code = await prisma.practiceCode.findFirst({ where: { id: codeId, practiceId: user.practiceId } });
   if (!code) throw new Error("Code not found");
   await prisma.practiceCode.update({ where: { id: code.id }, data: { active: !code.active } });

@@ -1,11 +1,12 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { PATIENT_EDIT_ROLES, PATIENT_VIEW_ROLES } from "@/lib/gateway";
+
 import {
   AMENDMENT_DAYS,
   EMERGENCY_ACCESS_HOURS,
@@ -19,9 +20,9 @@ import {
 
 // Front office and billing record disclosures and requests; decisions and chart restriction are for administrators
 // and clinicians.
-const PRIVACY_ROLES = [...new Set([...PATIENT_EDIT_ROLES, "CLINICIAN", "BILLER"])];
-const DECIDE_ROLES = ["ADMIN", "CLINICIAN"];
-const CHART_ROLES = [...new Set([...PATIENT_VIEW_ROLES, "BILLER", "CDS", "CODER"])];
+const PRIVACY_ROLES = rolesFor("patients.privacy");
+const DECIDE_ROLES = rolesFor("patients.privacy.decide");
+const CHART_ROLES = rolesFor("patients.view");
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const day = (fd: FormData, k: string) => {

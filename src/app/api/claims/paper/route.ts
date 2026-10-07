@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { cms1500ForClaims, renderCms1500Batch } from "@/lib/cms1500-data";
 import { PAPER_CLAIM_EVENT } from "@/lib/claim-submit";
+import { can } from "@/lib/permissions";
 
 const MAX_PAPER_CLAIMS = 75;
 
@@ -11,7 +12,7 @@ const MAX_PAPER_CLAIMS = 75;
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return new Response("Not signed in", { status: 401 });
-  if (!["ADMIN", "BILLER"].includes(user.role)) return new Response("Forbidden", { status: 403 });
+  if (!can(user, "billing.work")) return new Response("Forbidden", { status: 403 });
   const q = new URL(request.url).searchParams;
   const batch = q.get("batch");
 

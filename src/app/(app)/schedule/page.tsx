@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { HandoffHeader } from "@/components/HandoffHeader";
 import { PatientPicker } from "@/components/PatientPicker";
@@ -56,7 +57,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const localInput = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 export default async function SchedulePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const user = await requireUser(["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"]);
+  const user = await requireUser(rolesFor("schedule.view"));
   const sp = await searchParams;
   const [settings, visitTypes, typeNames, filterSets] = await Promise.all([
     getSchedulerSettings(user.practiceId),

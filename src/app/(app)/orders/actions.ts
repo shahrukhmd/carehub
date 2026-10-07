@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -129,7 +130,7 @@ export async function recordCollection(id: string, fd: FormData) {
 }
 
 // Results are clinical data: entered by the clinical team only (the front office can order and print).
-const RESULT_ROLES = ["ADMIN", "CLINICIAN"];
+const RESULT_ROLES = rolesFor("results.enter");
 
 export async function enterResults(id: string, fd: FormData) {
   const user = await requireUser(RESULT_ROLES);
@@ -208,7 +209,7 @@ export async function importResultsFile(fd: FormData) {
 // ---- Settings: labs, imaging centers & catalog ----
 
 export async function saveOrderProvider(id: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const name = str(fd, "name").slice(0, 120);
   if (!name) go("/settings/orders", { error: "Name the lab or imaging center." });
   const data = {
@@ -226,7 +227,7 @@ export async function saveOrderProvider(id: string, fd: FormData) {
 }
 
 export async function addCatalogItem(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const name = str(fd, "name").slice(0, 120);
   if (!name) go("/settings/orders", { error: "Name the test or study." });
   await prisma.orderCatalogItem.create({
@@ -236,7 +237,7 @@ export async function addCatalogItem(fd: FormData) {
 }
 
 export async function toggleCatalogItem(id: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const it = await prisma.orderCatalogItem.findFirst({ where: { id, practiceId: user.practiceId } });
   if (it) await prisma.orderCatalogItem.update({ where: { id }, data: { active: !it.active } });
   go("/settings/orders");

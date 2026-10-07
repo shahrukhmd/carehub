@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { formatDate, formatTime, patientName } from "@/lib/format";
 import { ORDER_ROLES, ORDER_STATUS, ORDER_WRITE_ROLES, RESULT_FLAGS, SEND_METHODS } from "@/lib/orders";
 import { cancelOrder, enterResults, recordCollection, reviewResults, sendOrder, signOrder } from "../actions";
+import { allowed } from "@/lib/permissions";
 
 export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
   const user = await requireUser(ORDER_ROLES);
@@ -21,7 +22,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   ]);
   const reviewerName = new Map(reviewers.map((r) => [r.id, r.name]));
   const [label, tone] = ORDER_STATUS[o.status] ?? [o.status, "info"];
-  const canWrite = ORDER_WRITE_ROLES.includes(user.role);
+  const canWrite = allowed(user, ORDER_WRITE_ROLES);
   const open = !["CANCELLED", "REVIEWED"].includes(o.status) || o.items.some((i) => i.status === "ORDERED");
   const unreviewed = o.results.filter((r) => !r.reviewedAt);
   const pending = o.items.filter((i) => i.status === "ORDERED");

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -58,7 +59,7 @@ async function readSite(fd: FormData, practiceId: string, stop: (m: string) => n
 }
 
 export async function addSite(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const data = await readSite(fd, user.practiceId, (m) => back("sites", { error: m }, "&add=1"));
   if (await prisma.location.findFirst({ where: { practiceId: user.practiceId, name: data.name } })) back("sites", { error: `A site called “${data.name}” already exists.` }, "&add=1");
   const site = await prisma.location.create({ data: { ...data, practiceId: user.practiceId } });
@@ -67,7 +68,7 @@ export async function addSite(fd: FormData) {
 }
 
 export async function updateSite(siteId: string, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const site = await prisma.location.findFirst({ where: { id: siteId, practiceId: user.practiceId } });
   if (!site) back("sites", { error: "Site not found." });
   const data = await readSite(fd, user.practiceId, (m) => back("sites", { error: m }, `&edit=${siteId}`));
@@ -80,7 +81,7 @@ export async function updateSite(siteId: string, fd: FormData) {
 // ---- Service types ----
 
 export async function saveServiceType(typeId: string | null, fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const name = str(fd, "name").slice(0, 80);
   if (!name) back("types", { error: "Name the service type." });
   if (await prisma.serviceType.findFirst({ where: { practiceId: user.practiceId, name, ...(typeId ? { id: { not: typeId } } : {}) } })) back("types", { error: `“${name}” already exists.` });
@@ -96,7 +97,7 @@ export async function saveServiceType(typeId: string | null, fd: FormData) {
 }
 
 export async function deleteServiceType(typeId: string) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const row = await prisma.serviceType.findFirst({ where: { id: typeId, practiceId: user.practiceId }, include: { _count: { select: { locations: true } } } });
   if (!row) back("types", { error: "Service type not found." });
   if (row!._count.locations > 0) back("types", { error: `${row!.name} is used by ${row!._count.locations} site${row!._count.locations === 1 ? "" : "s"}. Move them to another service type first.` });

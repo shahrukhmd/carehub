@@ -8,10 +8,11 @@ import { prisma } from "@/lib/prisma";
 import { isMessageLive } from "@/lib/system-messages";
 import { teamHome, waitingPatientCount } from "@/lib/patient-thread";
 import { documentAiLabel, documentAiProvider } from "@/lib/document-reader";
+import { allowed } from "@/lib/permissions";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
-  const alertCount = CREDENTIALING_ROLES.includes(user.role)
+  const alertCount = allowed(user, CREDENTIALING_ROLES)
     ? (await getCredentialingAlerts(credentialingPracticeIds(user))).length
     : 0;
   const taskCount = await waitingPatientCount(user);

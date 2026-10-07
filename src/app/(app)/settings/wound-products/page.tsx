@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -9,7 +10,7 @@ type Search = { tab?: string; ok?: string; error?: string; type?: string; edit?:
 
 // Wound products (brand → product → type, with the HCPCS code billed) and the steps a treatment note is built from.
 export default async function WoundProductsPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const sp = await searchParams;
   const tab = sp.tab === "steps" ? "steps" : "products";
   await ensureWoundProducts(user.practiceId);

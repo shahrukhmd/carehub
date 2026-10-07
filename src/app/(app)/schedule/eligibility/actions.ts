@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -31,7 +32,7 @@ export async function checkOne(appointmentId: string, fd: FormData) {
 }
 
 export async function setAutoEligibility(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const on = fd.get("eligibilityAuto") === "on";
   await prisma.practiceSettings.upsert({ where: { practiceId: user.practiceId }, update: { eligibilityAuto: on }, create: { practiceId: user.practiceId, eligibilityAuto: on } });
   await logAudit(user.practiceId, user.id, "UPDATE_SETTINGS", "PracticeSettings", user.practiceId, `nightly eligibility ${on ? "on" : "off"}`);

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { formatDate, formatTime } from "@/lib/format";
-import { PATIENT_EDIT_ROLES } from "@/lib/gateway";
+
 import {
   amendmentDenialLabel,
   amendmentStatusLabel,
@@ -14,9 +14,10 @@ import {
 } from "@/lib/privacy";
 import { PatientShell, loadPatientShell } from "../patient-shell";
 import { addAmendment, addDisclosure, decideAmendment, deleteDisclosure, recordDisagreement, saveConsent, setRestricted } from "./actions";
+import { allowed, rolesFor } from "@/lib/permissions";
 
-const VIEW_ROLES = [...new Set([...PATIENT_EDIT_ROLES, "CLINICIAN", "BILLER"])];
-const DECIDE_ROLES = ["ADMIN", "CLINICIAN"];
+const VIEW_ROLES = rolesFor("patients.privacy");
+const DECIDE_ROLES = rolesFor("patients.privacy.decide");
 const TONE: Record<string, string> = { PENDING: "warn", ACCEPTED: "ok", DENIED: "bad" };
 type Search = { error?: string; ok?: string };
 
@@ -33,7 +34,7 @@ export default async function PatientPrivacyPage({ params, searchParams }: { par
   const sp = await searchParams;
   const shell = await loadPatientShell(id, user);
   const p = shell.patient;
-  const canDecide = DECIDE_ROLES.includes(user.role);
+  const canDecide = allowed(user, DECIDE_ROLES);
 
   const [disclosures, amendments, accesses] = await Promise.all([
     prisma.disclosure.findMany({ where: { patientId: id, practiceId: user.practiceId }, orderBy: { disclosedAt: "desc" } }),

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -8,7 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { saveGenerated } from "@/lib/storage";
 import { parseCcd, type CcdImport } from "@/lib/ccda";
 
-const ROLES = ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS"];
+const ROLES = rolesFor("records.exchange");
 
 export async function uploadCcda(patientId: string, fd: FormData) {
   const user = await requireUser(ROLES);

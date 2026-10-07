@@ -10,7 +10,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { SystemBanner } from "@/components/SystemBanner";
 import { PatientSearchPanel } from "@/components/PatientSearchPanel";
 import { PATIENT_VIEW_ROLES, canWorkTeam } from "@/lib/gateway";
-import { can, type PermissionKey } from "@/lib/permissions";
+import { can, type PermissionKey, allowed, type Overrides } from "@/lib/permissions";
 
 type Tab = { href: string; label: string; permission: PermissionKey };
 type Entry = { label: string; icon: string; tabs: Tab[] };
@@ -120,7 +120,7 @@ export function AppShell({
   systemMessages = [],
 }: {
   children: ReactNode;
-  user: User & { practice: Practice; memberships: (Membership & { practice: Practice })[] };
+  user: User & { practice: Practice; memberships: (Membership & { practice: Practice })[]; overrides?: Overrides | null };
   credentialingAlertCount?: number;
   // Patients with something waiting for the user's team, and the menu item (waitingHome) it is counted on.
   taskCount?: number;
@@ -134,7 +134,7 @@ export function AppShell({
   // Only what this role may open; a menu entry links to the first of its tabs the user can use.
   const menu = MENU.map((g) => ({
     group: g.group,
-    entries: g.entries.map((e) => ({ ...e, tabs: e.tabs.filter((t) => can(user.role, t.permission)) })).filter((e) => e.tabs.length > 0),
+    entries: g.entries.map((e) => ({ ...e, tabs: e.tabs.filter((t) => can(user, t.permission)) })).filter((e) => e.tabs.length > 0),
   })).filter((g) => g.entries.length > 0);
   const items = menu.flatMap((g) =>
     g.entries.map((e, i) => ({
@@ -162,7 +162,7 @@ export function AppShell({
         <SidebarNav
           items={items}
           initialCollapsed={navCollapsed}
-          search={PATIENT_VIEW_ROLES.includes(user.role) ? <PatientSearchPanel canAdd={canWorkTeam(user.role, "DATA_ENTRY")} /> : null}
+          search={allowed(user, PATIENT_VIEW_ROLES) ? <PatientSearchPanel canAdd={canWorkTeam(user.role, "DATA_ENTRY")} /> : null}
         />
         <div className="sidebar-foot">
           <p className="demo-note">Demo clinic. Do not store real PHI.</p>

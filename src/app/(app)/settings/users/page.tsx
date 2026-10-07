@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { PERMISSIONS, PERMISSION_GROUPS, ROLES as ALL_ROLES, can } from "@/lib/permissions";
+import { PERMISSIONS, PERMISSION_GROUPS, ROLES as ALL_ROLES, can, parseOverrides, type PermissionKey, rolesFor } from "@/lib/permissions";
 import { SettingsNav } from "../settings-nav";
 import { prisma } from "@/lib/prisma";
 import { roleLabel } from "@/lib/format";
@@ -11,19 +11,23 @@ import {
   createStaff,
   removeMembership,
   resetStaffPassword,
+  savePermissionOverrides,
   toggleStaffActive,
   updateStaffRole,
 } from "./actions";
 
 const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
 
-export default async function StaffPage() {
-  const me = await requireUser(["ADMIN"]);
+export default async function StaffPage({ searchParams }: { searchParams: Promise<{ perms?: string }> }) {
+  const me = await requireUser(rolesFor("settings.admin"));
+  const sp = await searchParams;
   const memberships = await prisma.membership.findMany({
     where: { practiceId: me.practiceId },
     include: { user: true },
     orderBy: { user: { name: "asc" } },
   });
+  // The member whose permissions are being edited (never the signed-in admin's own).
+  const editing = memberships.find((m) => m.id === sp.perms && m.userId !== me.id) ?? null;
 
   return (
     <>
@@ -44,6 +48,7 @@ export default async function StaffPage() {
               <tr>
                 <th>Name</th>
                 <th>Role here</th>
+                <th>Permissions</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -81,6 +86,14 @@ export default async function StaffPage() {
                             Update role
                           </button>
                         </form>
+                      )}
+                    </td>
+                    <td>
+                      <span className={m.permissions ? undefined : "muted"}>{overrideSummary(m.permissions)}</span>
+                      {u.id !== me.id && (
+                        <div>
+                          <Link href={`/settings/users?perms=${m.id}#permissions-editor`}>{sp.perms === m.id ? "Editing below" : "Edit"}</Link>
+                        </div>
                       )}
                     </td>
                     <td>
@@ -185,10 +198,20 @@ export default async function StaffPage() {
         </div>
       </div>
 
+      {editing && (
+        <section className="panel" id="permissions-editor">
+          <h2>
+            Permissions for {editing.user.name} <span className="muted">· {roleLabel[editing.role] ?? editing.role}</span>
+          </h2>
+          <PermissionEditor membershipId={editing.id} role={editing.role} json={editing.permissions} />
+        </section>
+      )}
+
       <section className="panel" id="permissions">
         <h2>What each role can do</h2>
         <p className="muted">
-          The permission map every screen and the side menu check. Roles are fixed for now; per-practice changes to this table are the next step.
+          The permission map every screen and the side menu check. These are the defaults for each role; the Permissions column above
+          changes them for one person in this practice without changing their role.
         </p>
         <div className="table-scroll">
           <table className="cn-table pm-table">
@@ -230,5 +253,80 @@ export default async function StaffPage() {
         </div>
       </section>
     </>
+  );
+}
+
+// "By role" until the admin allows or denies a single permission for this person in this practice.
+function overrideSummary(json: string | null) {
+  const overrides = parseOverrides(json) ?? {};
+  const keys = Object.keys(overrides) as PermissionKey[];
+  if (keys.length === 0) return "By role";
+  const allows = keys.filter((k) => overrides[k] === true).length;
+  const denies = keys.length - allows;
+  return [allows ? `+${allows} allowed` : "", denies ? `−${denies} denied` : ""].filter(Boolean).join(" · ");
+}
+
+// Every permission with the role's default marked, and a Default / Allow / Deny choice per row. Only the rows
+// that differ from the role are stored.
+function PermissionEditor({ membershipId, role, json }: { membershipId: string; role: string; json: string | null }) {
+  const overrides = parseOverrides(json) ?? {};
+  const changed = Object.keys(overrides).length;
+  return (
+    <form className="stack pm-overrides" action={savePermissionOverrides.bind(null, membershipId)}>
+      <p className="muted">
+        Default follows the {roleLabel[role] ?? role} role (● = allowed by role, — = not). Allow or deny changes only this person, only in this practice.
+      </p>
+      <div className="pm-columns">
+        {PERMISSION_GROUPS.map((g) => (
+          <table key={g} className="cn-table pm-table pm-edit">
+            <thead>
+              <tr>
+                <th>{g}</th>
+                <th>Default</th>
+                <th>Allow</th>
+                <th>Deny</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(Object.entries(PERMISSIONS) as [PermissionKey, { label: string; group: string }][])
+                .filter(([, p]) => p.group === g)
+                .map(([k, p]) => {
+                  const byRole = can(role, k);
+                  const value = overrides[k] === undefined ? "default" : overrides[k] ? "allow" : "deny";
+                  return (
+                    <tr key={k} className={value !== "default" ? "pm-changed" : undefined}>
+                      <td>{p.label}</td>
+                      <td className="pm-cell">
+                        <label title={byRole ? "Allowed by role" : "Not allowed by role"}>
+                          <input type="radio" name={`perm:${k}`} value="default" defaultChecked={value === "default"} /> {byRole ? "●" : "—"}
+                        </label>
+                      </td>
+                      <td className="pm-cell">
+                        <input type="radio" name={`perm:${k}`} value="allow" defaultChecked={value === "allow"} aria-label="Allow" />
+                      </td>
+                      <td className="pm-cell">
+                        <input type="radio" name={`perm:${k}`} value="deny" defaultChecked={value === "deny"} aria-label="Deny" />
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        ))}
+      </div>
+      <div className="pm-actions">
+        <button className="btn" type="submit">
+          Save permissions
+        </button>
+        {changed > 0 && (
+          <button className="btn ghost" type="submit" name="intent" value="reset">
+            Back to role defaults
+          </button>
+        )}
+        <Link className="btn ghost" href="/settings/users">
+          Close
+        </Link>
+      </div>
+    </form>
   );
 }

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -7,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { parseScheduleCsv } from "@/lib/charge-schedules";
 
-const ROLES = ["ADMIN", "BILLER"];
+const ROLES = rolesFor("codes.edit");
 const MAX_IMPORT_BYTES = 2_000_000;
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const day = (v: string) => {

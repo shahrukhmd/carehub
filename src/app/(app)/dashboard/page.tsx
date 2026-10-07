@@ -11,7 +11,7 @@ type Search = { view?: string; customize?: string };
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Search> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const allowed = tilesFor(user.role);
+  const allowed = tilesFor(user);
   const mine = parseTiles(user.dashboardTiles).filter((k) => allowed.some((t) => t.key === k));
   // The first preset that has tiles for this role, unless the user picked one or has a view of their own.
   const presets = VIEWS.map((v) => ({ ...v, tiles: v.key === "custom" ? mine : v.tiles.filter((k) => allowed.some((t) => t.key === k)) })).filter((v) => v.key === "custom" || v.tiles.length > 0);

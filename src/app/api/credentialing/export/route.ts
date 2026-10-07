@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
 import { enrollmentStatusLabel, planSegmentLabel } from "@/lib/format";
 import { CREDENTIALING_ROLES, selectedPracticeIds } from "@/lib/scope";
+import { allowed } from "@/lib/permissions";
 
 function csvCell(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -15,7 +16,7 @@ function csvCell(value: unknown) {
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return new Response("Not signed in", { status: 401 });
-  if (!CREDENTIALING_ROLES.includes(user.role)) return new Response("Forbidden", { status: 403 });
+  if (!allowed(user, CREDENTIALING_ROLES)) return new Response("Forbidden", { status: 403 });
   const params = new URL(request.url).searchParams;
   const practiceIds = selectedPracticeIds(user, params.getAll("p").join(",") || undefined);
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { rolesFor } from "@/lib/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +15,7 @@ const ADDRESS_BLOCKS = ["payTo", "payee", "remit", "physical"] as const;
 const ADDRESS_PARTS = ["Name", "Address1", "Address2", "City", "State", "Zip"] as const;
 
 export async function savePracticeSettings(fd: FormData) {
-  const user = await requireUser(["ADMIN"]);
+  const user = await requireUser(rolesFor("settings.admin"));
   const str = (k: string) => String(fd.get(k) ?? "").trim() || null;
   const on = (k: string) => fd.get(k) === "on";
   const errors: string[] = [];

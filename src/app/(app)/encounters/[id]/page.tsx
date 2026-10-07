@@ -43,6 +43,7 @@ import {
   unsignDocument,
   uploadAttachment,
 } from "../document-actions";
+import { can } from "@/lib/permissions";
 import {
   ENCOUNTER_VIEW_ROLES,
   HOLD_STATUSES,
@@ -189,13 +190,13 @@ export default async function EncounterPage({
   ]);
 
   const status = encounter.status;
-  const clinicalEditable = canEditClinical(status, user.role);
+  const clinicalEditable = canEditClinical(status, user);
   // Copy forward: the visit just before this one, and the visit this note was started from.
   const previousVisit = otherVisits.find((v) => v.date < encounter.date) ?? null;
   const copiedFrom = encounter.copiedFromEncounterId ? (otherVisits.find((v) => v.id === encounter.copiedFromEncounterId) ?? null) : null;
   const reconciledBy = encounter.reconciledById ? (staffMembers.find((m) => m.userId === encounter.reconciledById)?.user.name ?? null) : null;
   const noteEmpty = !encounter.subjective && !encounter.objective && !encounter.assessment && !encounter.plan;
-  const codingEditable = canEditCoding(status, user.role);
+  const codingEditable = canEditCoding(status, user);
   const assessedWounds = new Set(encounter.woundAssessments.map((w) => w.woundId));
   const woundNo = new Map(encounter.patient.wounds.map((w, i) => [w.id, i + 1]));
   const openWounds = encounter.patient.wounds.filter((w) => w.status !== "HEALED");
@@ -993,13 +994,13 @@ export default async function EncounterPage({
                 {encounter.codedAt ? ` on ${formatDate(encounter.codedAt)}` : ""}
               </p>
             )}
-            {(encounter.claims.length > 0 || ["ADMIN", "BILLER"].includes(user.role)) && (
+            {(encounter.claims.length > 0 || can(user, "billing.work")) && (
               <>
                 <h3>Claims · {visitBillingStatusLabel[encounter.billingStatus] ?? encounter.billingStatus}</h3>
                 {encounter.claims.length === 0 ? (
                   <p className="muted">
                     No claims yet.
-                    {SIGNED_STATUSES.includes(status) && ["ADMIN", "BILLER"].includes(user.role) && (
+                    {SIGNED_STATUSES.includes(status) && can(user, "billing.work") && (
                       <>
                         {" "}
                         <Link href="/billing?tab=visits&billing=READY_FOR_CLAIM">Create the claim from Revenue cycle</Link>.
@@ -1010,7 +1011,7 @@ export default async function EncounterPage({
                   <ul>
                     {encounter.claims.map((c) => (
                       <li key={c.id}>
-                        {["ADMIN", "BILLER"].includes(user.role) ? <Link href={`/billing/claims/${c.id}`}>{claimNumber(c)}</Link> : claimNumber(c)} ·{" "}
+                        {can(user, "billing.work") ? <Link href={`/billing/claims/${c.id}`}>{claimNumber(c)}</Link> : claimNumber(c)} ·{" "}
                         {payerRankLabel[c.payerRank]} {c.payerName} ·{" "}
                         <span className={`gw-tag gw-tag-${claimStatusTone(c.status)}`}>{claimStatusLabel[c.status] ?? c.status}</span>
                       </li>
@@ -1369,7 +1370,7 @@ export default async function EncounterPage({
                 <ul>
                   {encounter.claims.map((c) => (
                     <li key={c.id}>
-                      {["ADMIN", "BILLER"].includes(user.role) ? <Link href={`/billing/claims/${c.id}`}>{claimNumber(c)}</Link> : claimNumber(c)} ·{" "}
+                      {can(user, "billing.work") ? <Link href={`/billing/claims/${c.id}`}>{claimNumber(c)}</Link> : claimNumber(c)} ·{" "}
                       {claimStatusLabel[c.status] ?? c.status}
                     </li>
                   ))}
@@ -1624,7 +1625,7 @@ export default async function EncounterPage({
         )}
 
         {/* CDS: first review, or a coding query to deal with. Either way the chart goes on (or back) to coding. */}
-        {CDS_STAGES.includes(status) && isCdsRole(user.role) && (
+        {CDS_STAGES.includes(status) && isCdsRole(user) && (
           <section className="panel gw-handoff">
             <div>
               <strong>{status === "CODING_QUERY" ? "Answer the coding team" : "CDS review"}</strong>
@@ -1659,7 +1660,7 @@ export default async function EncounterPage({
         )}
 
         {/* Coding: build the superbill, then send the chart for signature; or ask CDS. */}
-        {status === "READY_FOR_CODING" && isCoderRole(user.role) && (
+        {status === "READY_FOR_CODING" && isCoderRole(user) && (
           <section className="panel gw-handoff">
             <div>
               <strong>Coding</strong>
@@ -1686,7 +1687,7 @@ export default async function EncounterPage({
             </div>
           </section>
         )}
-        {status === "READY_FOR_CODING" && !isCoderRole(user.role) && <p className="muted">With the coding team — they build the superbill, then send the chart for signature.</p>}
+        {status === "READY_FOR_CODING" && !isCoderRole(user) && <p className="muted">With the coding team — they build the superbill, then send the chart for signature.</p>}
 
         {status === "READY_FOR_SIGNATURE" && (
           <section className="panel gw-handoff vw-sign">
@@ -1748,7 +1749,7 @@ export default async function EncounterPage({
               <strong>Signed — ready for billing</strong>
               <p className="muted">Finalized {encounter.finalizedAt ? formatDate(encounter.finalizedAt) : ""}. Claims are submitted from Revenue cycle.</p>
             </div>
-            {["ADMIN", "BILLER"].includes(user.role) && (
+            {can(user, "billing.work") && (
               <Link className="btn" href="/billing">
                 Go to billing →
               </Link>
@@ -1760,7 +1761,7 @@ export default async function EncounterPage({
           <section className="panel vw-query">
             <strong>{visitStatusLabel[status]}</strong>
             <p>{encounter.holdReason}</p>
-            {canHold(user.role) && (
+            {canHold(user) && (
               <form action={releaseHold.bind(null, encounter.id)}>
                 <button className="btn secondary" type="submit">
                   Release hold
@@ -1770,7 +1771,7 @@ export default async function EncounterPage({
           </section>
         )}
 
-        {!onHold && status !== "BILLED" && canHold(user.role) && (
+        {!onHold && status !== "BILLED" && canHold(user) && (
           <div className="gw-inline-form vw-open">
             <strong className="vw-open-label">Place a hold (billing hold, audit, do not bill)</strong>
             <form action={placeHold.bind(null, encounter.id)}>

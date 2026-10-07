@@ -7,13 +7,14 @@ import Link from "next/link";
 import { SelectAll } from "@/components/SelectAll";
 import { formatMoney } from "@/lib/format";
 import { addCodesToSchedule, importCptFile, refreshCodeSet } from "./actions";
+import { can, rolesFor } from "@/lib/permissions";
 
 type Search = { ok?: string; error?: string; q?: string; set?: string; added?: string };
 
 const SETS: CodeSet[] = ["ICD10", "HCPCS", "CPT"];
 
 export default async function CodeLibraryPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "BILLER", "CDS", "CODER"]);
+  const user = await requireUser(rolesFor("codes.library"));
   const sp = await searchParams;
   const admin = user.role === "ADMIN";
   const stats = await Promise.all(
@@ -35,7 +36,7 @@ export default async function CodeLibraryPage({ searchParams }: { searchParams: 
   const loaded = stats.filter((s) => (only ? s.set === only : true)).reduce((n, s) => n + s.total, 0);
 
   // Charge schedules the ticked codes can go onto, and where each code shown already is (with its fee there).
-  const canAdd = ["ADMIN", "BILLER"].includes(user.role);
+  const canAdd = can(user, "codes.edit");
   const schedules = await prisma.chargeSchedule.findMany({ where: { practiceId: user.practiceId }, orderBy: { name: "asc" }, select: { id: true, name: true } });
   const billingHits = hits.filter((h) => h.codeSet !== "ICD10" && h.billable).map((h) => h.code);
   const placed = billingHits.length

@@ -110,6 +110,8 @@ model Membership {
   practiceId String
   practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   role       String
+  // Per-user changes to the role's permissions in this practice: JSON { "permission.key": true | false }.
+  permissions String?
   createdAt  DateTime @default(now())
 
   @@unique([userId, practiceId])

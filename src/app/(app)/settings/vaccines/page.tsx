@@ -1,3 +1,4 @@
+import { rolesFor } from "@/lib/permissions";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -13,7 +14,7 @@ type Search = { error?: string; ok?: string; all?: string };
 
 // Vaccine stock by lot. Recording a vaccine "given here" with a lot number from this list takes one dose off it.
 export default async function VaccineInventoryPage({ searchParams }: { searchParams: Promise<Search> }) {
-  const user = await requireUser(["ADMIN", "CLINICIAN"]);
+  const user = await requireUser(rolesFor("immunizations.stock"));
   const sp = await searchParams;
   const showAll = sp.all === "1";
   const lots = await prisma.vaccineLot.findMany({
