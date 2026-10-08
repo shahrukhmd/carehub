@@ -8,7 +8,7 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { faxNumberOrNull, getFaxAdapter } from "@/lib/fax";
 import { saveGenerated } from "@/lib/storage";
-import { ORDER_ROLES, ORDER_WRITE_ROLES, RESULT_FLAGS, afterResults, ensureOrderCatalog, importHl7Results, newRequisition, requisitionPdf } from "@/lib/orders";
+import { ORDER_ROLES, ORDER_WRITE_ROLES, RESULT_FLAGS, afterResults, ensureOrderCatalog, newRequisition, requisitionPdf } from "@/lib/orders";
 import { completeSourceTasks, createTask } from "@/lib/tasks";
 import { processInterfaceMessage, receiveInterfaceMessage } from "@/lib/interfaces";
 

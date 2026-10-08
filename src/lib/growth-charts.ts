@@ -32,7 +32,7 @@ function lmsAt(measure: GrowthMeasure, sex: "M" | "F", ageMonths: number): { L: 
   const rows = DATA[measure]?.[sex];
   if (!rows?.length) return null;
   if (ageMonths < rows[0][0] || ageMonths > rows[rows.length - 1][0]) return null;
-  let i = rows.findIndex((r) => r[0] >= ageMonths);
+  const i = rows.findIndex((r) => r[0] >= ageMonths);
   if (i <= 0) return { L: rows[0][1], M: rows[0][2], S: rows[0][3] };
   const a = rows[i - 1];
   const b = rows[i];
