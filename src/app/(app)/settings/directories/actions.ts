@@ -8,7 +8,8 @@ import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { ensureEnrollmentsForProvider, lookupNppes } from "@/lib/credentialing";
 import { OPEN_ENROLLMENT_STATUSES } from "@/lib/format";
-import { rolesFor } from "@/lib/permissions";
+import { allowed, rolesFor } from "@/lib/permissions";
+import { canWorkTeam } from "@/lib/gateway";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -142,10 +143,22 @@ function displayName(last: string, first: string, middle: string | null, suffix:
   return `${last}${suffix ? ` ${suffix}` : ""}, ${first}${middle ? ` ${middle}` : ""}`;
 }
 
+type Actor = { id: string; practiceId: string };
+
 // One "Add Provider" screen: a provider can hold several roles at once, and fields
 // that belong to a role are only kept while that role is selected.
 export async function saveProvider(providerId: string | null, formData: FormData) {
   const user = await requireUser(PROVIDER_ROLES);
+  const provider = await writeProvider(user, providerId, formData);
+  revalidatePath("/settings/directories");
+  revalidatePath("/credentialing", "layout");
+  // Added from credentialing: on to the provider's credentialing file (documents, payer enrollments, numbers).
+  if (formData.get("from") === "credentialing") redirect(provider.isRendering ? `/credentialing/providers/${provider.id}` : "/credentialing");
+  redirect("/settings/directories?section=providers");
+}
+
+// Validates and saves the provider form (the directory page and the referral popup both use it). Problems throw.
+async function writeProvider(user: Actor, providerId: string | null, formData: FormData) {
   const existing = providerId
     ? await prisma.renderingProvider.findFirstOrThrow({ where: { id: providerId, practiceId: user.practiceId } })
     : null;
@@ -175,16 +188,27 @@ export async function saveProvider(providerId: string | null, formData: FormData
       where: { id: supervisingProviderId, practiceId: user.practiceId, isSupervising: true },
     });
   }
+  // The BD rep who owns a referring physician / source: someone with the business development role in this practice.
+  const bdOwnerId = roles.isReferring ? optional(formData, "bdOwnerId") : null;
+  if (bdOwnerId && bdOwnerId !== existing?.bdOwnerId) {
+    const rep = await prisma.membership.findFirst({ where: { practiceId: user.practiceId, userId: bdOwnerId, role: "BD" }, select: { id: true } });
+    if (!rep) throw new Error("Pick a BD owner from this practice's business development team");
+  }
 
-  const firstName = required(formData, "firstName");
-  const lastName = required(formData, "lastName");
-  const middleName = optional(formData, "middleName");
-  const suffix = optional(formData, "suffix");
+  // A referring source can be a company or group (hospital, facility, agency): one name, no personal name parts.
+  const isOrganization = roles.isReferring && formData.get("entityType") === "ORGANIZATION";
+  const firstName = isOrganization ? null : required(formData, "firstName");
+  const lastName = isOrganization ? null : required(formData, "lastName");
+  const middleName = isOrganization ? null : optional(formData, "middleName");
+  const suffix = isOrganization ? null : optional(formData, "suffix");
+  const orgName = isOrganization ? required(formData, "organizationName").replace(/\s+/g, " ") : null;
 
   const data = {
     ...roles,
-    name: displayName(lastName, firstName, middleName, suffix),
-    title: optional(formData, "title"),
+    isOrganization,
+    bdOwnerId,
+    name: orgName ?? displayName(lastName!, firstName!, middleName, suffix),
+    title: isOrganization ? null : optional(formData, "title"),
     firstName,
     middleName,
     lastName,
@@ -246,11 +270,7 @@ export async function saveProvider(providerId: string | null, formData: FormData
     provider.id,
     `${data.name}${opened ? `; ${opened} enrollment row(s) opened` : ""}`
   );
-  revalidatePath("/settings/directories");
-  revalidatePath("/credentialing", "layout");
-  // Added from credentialing: on to the provider's credentialing file (documents, payer enrollments, numbers).
-  if (formData.get("from") === "credentialing") redirect(provider.isRendering ? `/credentialing/providers/${provider.id}` : "/credentialing");
-  redirect("/settings/directories?section=providers");
+  return provider;
 }
 
 export async function toggleProviderActive(providerId: string) {
@@ -272,6 +292,42 @@ export async function toggleProviderActive(providerId: string) {
 // Used by the provider form's "NPI Registry" button; NPPES blocks direct browser calls.
 export async function lookupNpi(npi: string) {
   await requireUser(PROVIDER_ROLES);
+  return nppesLookup(npi);
+}
+
+// Who may add a referring physician / source from a gateway case: provider admins, and the data entry team, who
+// register referrals.
+async function requireReferrerAdder() {
+  const user = await requireUser();
+  return allowed(user, PROVIDER_ROLES) || canWorkTeam(user.role, "DATA_ENTRY") ? user : null;
+}
+
+// "+ Add new" in a gateway case's Referring physician / source list: the provider form in a popup, always as a
+// referring-only provider (person, or company / group). Returns the new entry so the list can select it.
+export async function addReferringProvider(formData: FormData): Promise<{ provider?: { id: string; name: string }; error?: string }> {
+  const user = await requireReferrerAdder();
+  if (!user) return { error: "Your role can't add referring physicians or sources" };
+  const fd = new FormData();
+  for (const [key, value] of formData) if (!["isClinician", "isRendering", "isSupervising"].includes(key)) fd.append(key, value);
+  fd.set("isReferring", "on");
+  try {
+    const provider = await writeProvider(user, null, fd);
+    revalidatePath("/settings/directories");
+    return { provider: { id: provider.id, name: provider.name } };
+  } catch (err) {
+    const label: Record<string, string> = { firstName: "First name", lastName: "Last name", organizationName: "Name" };
+    return {
+      error: err instanceof Error ? err.message.replace(/^(\w+) is required$/, (_, key: string) => `${label[key] ?? key} is required`) : "Could not add the referring physician / source",
+    };
+  }
+}
+
+export async function lookupReferrerNpi(npi: string) {
+  if (!(await requireReferrerAdder())) return { error: "Your role can't look up providers" };
+  return nppesLookup(npi);
+}
+
+async function nppesLookup(npi: string) {
   if (!/^\d{10}$/.test(npi)) return { error: "Enter a 10-digit NPI first" };
   try {
     const [match] = await lookupNppes({ npi });

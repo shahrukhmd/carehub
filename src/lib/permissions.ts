@@ -3,9 +3,10 @@
 // settings screens use it too.)
 //
 // Roles: ADMIN, FRONT_DESK, CLINICIAN, BILLER, CREDENTIALING, INTAKE (Gateway data entry), VERIFICATION (Gateway
-// eligibility / VOB), SCHEDULER (Gateway scheduling), CDS (documentation review), CODER.
+// eligibility / VOB), SCHEDULER (Gateway scheduling), CDS (documentation review), CODER, BD (business development:
+// a login with no access to the practice-wide patient list, patient threads or alerts).
 
-export const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"] as const;
+export const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER", "BD"] as const;
 export type Role = (typeof ROLES)[number];
 
 const ALL = [...ROLES];
@@ -15,7 +16,7 @@ export type Permission = { label: string; group: string; roles: string[]; about?
 
 export const PERMISSIONS = {
   // ---- Patients
-  "patients.view": { label: "Open a patient chart and search patients", group: "Patients", roles: ALL.filter((r) => r !== "CREDENTIALING") },
+  "patients.view": { label: "Open a patient chart and search patients", group: "Patients", roles: ALL.filter((r) => r !== "CREDENTIALING" && r !== "BD") },
   "patients.edit": { label: "Register and edit patient demographics", group: "Patients", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "INTAKE", "VERIFICATION"] },
   "patients.letters": { label: "Letters and labels", group: "Patients", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "INTAKE", "SCHEDULER"] },
   "patients.scans": { label: "View and add scanned documents", group: "Patients", roles: [...FRONT, "CLINICIAN", "BILLER"] },
@@ -23,8 +24,8 @@ export const PERMISSIONS = {
   "patients.insurance": { label: "Edit patient insurance and authorizations", group: "Patients", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "BILLER"] },
   "patients.privacy": { label: "Privacy: consents, restrictions and the disclosure log", group: "Patients", roles: ["ADMIN", "FRONT_DESK", "INTAKE", "VERIFICATION", "CLINICIAN", "BILLER"] },
   "patients.privacy.decide": { label: "Decide restrictions and record requests", group: "Patients", roles: ["ADMIN", "CLINICIAN"] },
-  "patients.thread": { label: "Team communication on a patient", group: "Patients", roles: ALL },
-  "patients.alerts": { label: "Add and resolve patient alerts", group: "Patients", roles: ALL.filter((r) => r !== "CREDENTIALING") },
+  "patients.thread": { label: "Team communication on a patient", group: "Patients", roles: ALL.filter((r) => r !== "BD") },
+  "patients.alerts": { label: "Add and resolve patient alerts", group: "Patients", roles: ALL.filter((r) => r !== "CREDENTIALING" && r !== "BD") },
   "records.exchange": { label: "Care summaries (C-CDA) in and out", group: "Patients", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "CODER", "BILLER"] },
   // ---- Gateway
   "gateway.work": { label: "Patient Gateway (intake, verification, scheduling cases)", group: "Front office", roles: [...FRONT, "CLINICIAN"] },

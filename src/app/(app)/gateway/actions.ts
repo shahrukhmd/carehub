@@ -18,6 +18,7 @@ import {
   GATEWAY_ROLES,
   OPEN_INTAKE_STAGES,
   authStatusLabel,
+  canSeeGatewayCase,
   canWorkTeam,
   careStatusLabel,
   dataEntryGaps,
@@ -108,6 +109,8 @@ async function loadCase(user: User, caseId: string) {
     include: { patient: true },
   });
   if (!c) fail("Case not found");
+  // Team roles act only on cases in their own team's stages (notes and consents included).
+  if (!canSeeGatewayCase(user.role, c.stage)) fail("This case is not in your team's queue");
   return c;
 }
 
@@ -169,12 +172,15 @@ export async function saveReferral(caseId: string, fd: FormData) {
     requireTeam(user, "DATA_ENTRY");
     const c = await loadCase(user, caseId);
 
+    // "Referring physician / source" is one list: the chosen referring physician or company is both the patient's
+    // referring physician and the case's source name. A name typed before the list existed is kept as it was.
     const referringPhysicianId = text(fd, "referringPhysicianId");
-    if (referringPhysicianId) {
-      await prisma.renderingProvider.findFirstOrThrow({
-        where: { id: referringPhysicianId, practiceId: user.practiceId, isReferring: true },
-      });
-    }
+    const referrer = referringPhysicianId
+      ? await prisma.renderingProvider.findFirstOrThrow({
+          where: { id: referringPhysicianId, practiceId: user.practiceId, isReferring: true },
+          select: { name: true },
+        })
+      : null;
 
     await prisma.$transaction([
       prisma.intakeCase.update({
@@ -184,7 +190,7 @@ export async function saveReferral(caseId: string, fd: FormData) {
           referralSourceType: text(fd, "referralSourceType")
             ? oneOf(fd, "referralSourceType", referralSourceTypeLabel, "OTHER")
             : null,
-          referralSourceName: text(fd, "referralSourceName"),
+          referralSourceName: referrer?.name ?? text(fd, "referralSourceName"),
           referralContactName: text(fd, "referralContactName"),
           referralContactPhone: text(fd, "referralContactPhone"),
           referralContactFax: text(fd, "referralContactFax"),

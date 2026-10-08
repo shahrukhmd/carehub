@@ -9,7 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { ensureRenderingProviderForUser } from "@/lib/credentialing";
 import { PERMISSIONS, can, parseOverrideDetails, serializeOverrides, type OverrideDetails, type PermissionKey, rolesFor } from "@/lib/permissions";
 
-const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
+const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER", "BD"];
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();

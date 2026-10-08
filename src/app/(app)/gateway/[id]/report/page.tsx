@@ -9,6 +9,7 @@ import {
   CONSENTS,
   GATEWAY_ROLES,
   authStatusLabel,
+  canSeeGatewayCase,
   careStatusLabel,
   eligibilityStatusLabel,
   intakeStageLabel,
@@ -38,7 +39,8 @@ export default async function AuthorizationReportPage({ params }: { params: Prom
     where: { id, practiceId: user.practiceId },
     include: { patient: { include: { referringPhysician: true } }, payer: true, assignedProvider: true, practice: true },
   });
-  if (!c) notFound();
+  // A team role sees the report only while the case is in its own team's stages.
+  if (!c || !canSeeGatewayCase(user.role, c.stage)) notFound();
   await requireChartAccess(user, c.patientId, `/gateway/${c.id}/report`);
   await logAudit(user.practiceId, user.id, "intake.report_viewed", "IntakeCase", c.id);
 

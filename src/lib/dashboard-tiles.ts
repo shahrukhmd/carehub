@@ -7,6 +7,7 @@ import { getCredentialingAlerts } from "@/lib/credentialing";
 import { loadWaitingForTeam } from "@/lib/patient-thread";
 import { careGapsFor } from "@/lib/care-rules";
 import { myTasksWhere } from "@/lib/tasks";
+import { gatewayTeamScope, intakeStageLabel, teamLabel, teamStages } from "@/lib/gateway";
 
 // The practice dashboard: tiles a user picks (or a preset view picks for them). Each tile is a small query with a
 // headline number, a few rows and a link into the screen where the work is done. Tiles are gated by the same
@@ -120,6 +121,12 @@ export async function loadTile(key: string, user: User): Promise<TileData | null
     case "gateway": {
       const cases = await prisma.intakeCase.groupBy({ by: ["stage"], where: { practiceId: p, stage: { notIn: ["CLOSED", "SCHEDULED"] } }, _count: { _all: true } });
       const c = (s: string[]) => cases.filter((x) => s.includes(x.stage)).reduce((a, x) => a + x._count._all, 0);
+      // A gateway team role sees only its own team's open cases.
+      const ownTeam = gatewayTeamScope(user.role);
+      if (ownTeam) {
+        const stages = teamStages[ownTeam].filter((s) => s !== "SCHEDULED");
+        return { value: c(stages), sub: `open cases · ${teamLabel[ownTeam]}`, href: "/", rows: stages.map((s) => ({ label: intakeStageLabel[s], value: c([s]) })) };
+      }
       return {
         value: cases.reduce((a, x) => a + x._count._all, 0),
         sub: "open cases",

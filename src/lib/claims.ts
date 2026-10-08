@@ -43,6 +43,7 @@ export async function createClaimFromVisit(user: { id: string; practiceId: strin
         include: {
           insurances: { include: { payer: true } },
           intakeCases: { where: { authStatus: "APPROVED" }, orderBy: { authDecisionAt: "desc" } },
+          referringPhysician: { select: { isOrganization: true } },
         },
       },
       diagnoses: { orderBy: [{ priority: "asc" }, { id: "asc" }] },
@@ -132,7 +133,8 @@ export async function createClaimFromVisit(user: { id: string; practiceId: strin
       placeOfService: pos,
       billingProviderId,
       renderingProviderId: rendering?.id ?? null,
-      referringProviderId: e.patient.referringPhysicianId,
+      // Box 17 / loop 2310A is a person: a referring company or group (hospital, facility, agency) is left off the claim.
+      referringProviderId: e.patient.referringPhysician?.isOrganization ? null : e.patient.referringPhysicianId,
       supervisingProviderId: e.supervisingProviderId,
       serviceLocationId: e.appointment?.locationId ?? null,
       priorAuthNumber: auth,

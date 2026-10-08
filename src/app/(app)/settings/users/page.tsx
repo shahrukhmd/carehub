@@ -5,6 +5,7 @@ import { SettingsNav } from "../settings-nav";
 import { prisma } from "@/lib/prisma";
 import { roleLabel } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
+import { FormDialog } from "@/components/FormDialog";
 import { requireUser } from "@/lib/auth";
 import {
   addPracticeMember,
@@ -18,7 +19,7 @@ import {
   updateStaffRole,
 } from "./actions";
 
-const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER"];
+const ROLES = ["ADMIN", "FRONT_DESK", "CLINICIAN", "BILLER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "CDS", "CODER", "BD"];
 
 export default async function StaffPage({ searchParams }: { searchParams: Promise<{ perms?: string; who?: string }> }) {
   const me = await requireUser(rolesFor("settings.admin"));
@@ -40,45 +41,142 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
           </p>
           <h1>Users &amp; roles</h1>
         </div>
+        <div className="page-head-actions">
+          <FormDialog
+            variant="secondary"
+            label="Grant access"
+            title="Grant access to an existing user"
+            subtitle="For staff or consultants who already have a CareHub account at another practice. They'll be able to switch between practices after signing in."
+          >
+            <form className="stack" action={addPracticeMember} autoComplete="off">
+              <label>
+                Their email
+                <input name="email" type="email" autoComplete="off" required />
+              </label>
+              <label>
+                Role here
+                <select name="role" defaultValue="CLINICIAN">
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {roleLabel[r] ?? r}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="form-dialog-actions">
+                <button className="btn ghost" type="button" data-dialog-close>
+                  Cancel
+                </button>
+                <button className="btn" type="submit">
+                  Grant access
+                </button>
+              </div>
+            </form>
+          </FormDialog>
+          <FormDialog label="+ Add staff" title="Add staff" subtitle="They sign in with this email and must choose a new password the first time.">
+            <form className="stack" action={createStaff} autoComplete="off">
+              <div className="form-grid">
+                <label>
+                  Full name
+                  <input name="name" autoComplete="off" required />
+                </label>
+                <label>
+                  Email
+                  <input name="email" type="email" autoComplete="off" placeholder="name@clinic.com" required />
+                </label>
+                <label>
+                  Role
+                  <select name="role" defaultValue="FRONT_DESK">
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {roleLabel[r] ?? r}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Initial password
+                  <input name="password" type="password" autoComplete="new-password" required />
+                </label>
+                <label>
+                  NPI (clinicians)
+                  <input name="npi" inputMode="numeric" autoComplete="off" />
+                </label>
+                <label>
+                  Specialty (clinicians)
+                  <input name="specialty" autoComplete="off" />
+                </label>
+              </div>
+              <div className="form-dialog-actions">
+                <button className="btn ghost" type="button" data-dialog-close>
+                  Cancel
+                </button>
+                <button className="btn" type="submit">
+                  Create account
+                </button>
+              </div>
+            </form>
+          </FormDialog>
+        </div>
       </div>
       <SettingsNav current="users" />
 
-      <div className="two-col">
-        <section className="panel">
-          <table>
+      <section className="panel users-panel">
+        <div className="users-panel-head">
+          <h2>Staff at {me.practice.name}</h2>
+          <p className="muted">Each person has one role in this practice. Change it from the row, adjust single permissions, or manage how they sign in.</p>
+        </div>
+        <div className="table-scroll">
+          <table className="users-table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Role here</th>
                 <th>Permissions</th>
                 <th>Status</th>
-                <th>Security</th>
-                <th></th>
+                <th>Sign-in code</th>
+                <th className="users-actions-col">Actions</th>
               </tr>
             </thead>
             <tbody>
               {memberships.map((m) => {
                 const u = m.user;
                 const isHome = u.practiceId === me.practiceId;
+                const isMe = u.id === me.id;
+                const locked = Boolean(u.lockedUntil && u.lockedUntil > new Date());
                 return (
                   <tr key={m.id}>
                     <td>
-                      {u.name}
-                      <div className="muted">{u.email}</div>
-                      {(u.npi || u.specialty) && (
-                        <div className="muted">
-                          {u.npi ?? "—"}
-                          {u.specialty ? ` · ${u.specialty}` : ""}
+                      <div className="user-cell">
+                        <span className="avatar">{initials(u.name)}</span>
+                        <div>
+                          <strong>
+                            {u.name}
+                            {isMe && <span className="muted"> (you)</span>}
+                          </strong>
+                          <span>{u.email}</span>
+                          {(u.npi || u.specialty) && (
+                            <span>
+                              {u.npi ? `NPI ${u.npi}` : "—"}
+                              {u.specialty ? ` · ${u.specialty}` : ""}
+                            </span>
+                          )}
+                          {(!isHome || u.mustChangePassword || locked) && (
+                            <span className="user-cell-tags">
+                              {!isHome && <span className="gw-tag gw-tag-info">Guest access</span>}
+                              {u.mustChangePassword && <span className="gw-tag gw-tag-muted">Must change password</span>}
+                              {locked && <span className="gw-tag gw-tag-bad">Locked</span>}
+                            </span>
+                          )}
                         </div>
-                      )}
-                      {!isHome && <div className="muted">Guest access (home practice elsewhere)</div>}
+                      </div>
                     </td>
                     <td>
-                      {u.id === me.id ? (
-                        roleLabel[m.role] ?? m.role
+                      {isMe ? (
+                        <span className="badge">{roleLabel[m.role] ?? m.role}</span>
                       ) : (
-                        <form className="stack" action={updateStaffRole.bind(null, u.id)}>
-                          <select name="role" defaultValue={m.role}>
+                        <form className="users-inline" action={updateStaffRole.bind(null, u.id)}>
+                          <select className="users-role" name="role" defaultValue={m.role} aria-label={`Role for ${u.name}`}>
                             {ROLES.map((r) => (
                               <option key={r} value={r}>
                                 {roleLabel[r] ?? r}
@@ -86,63 +184,67 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                             ))}
                           </select>
                           <button className="btn secondary" type="submit">
-                            Update role
+                            Save
                           </button>
                         </form>
                       )}
                     </td>
                     <td>
                       <span className={m.permissions ? undefined : "muted"}>{overrideSummary(m.permissions)}</span>
-                      {u.id !== me.id && (
-                        <div>
-                          <Link href={`/settings/users?perms=${m.id}#permissions-editor`}>{sp.perms === m.id ? "Editing below" : "Edit"}</Link>
-                        </div>
+                      {!isMe && (
+                        <>
+                          {" · "}
+                          <Link className="users-link" href={`/settings/users?perms=${m.id}#permissions-editor`}>
+                            {sp.perms === m.id ? "Editing below" : "Edit"}
+                          </Link>
+                        </>
                       )}
                     </td>
                     <td>
                       <StatusBadge value={u.active ? "ACTIVE" : "INACTIVE"} />
                     </td>
-                    <td className="cn-small">
-                      {u.lockedUntil && u.lockedUntil > new Date() ? (
-                        <form action={unlockStaff.bind(null, u.id)}>
-                          <span className="gw-tag gw-tag-bad">Locked</span>{" "}
-                          <button className="btn ghost" type="submit">
-                            Unlock
-                          </button>
-                        </form>
-                      ) : null}
-                      {u.mustChangePassword && <div className="muted">Must change password</div>}
-                      <form action={setTwoFactor.bind(null, u.id)} className="cn-inline">
-                        <select name="method" defaultValue={u.twoFactorMethod} aria-label="Second factor">
-                          <option value="NONE">No sign-in code</option>
+                    <td>
+                      <form className="users-inline" action={setTwoFactor.bind(null, u.id)}>
+                        <select className="users-method" name="method" defaultValue={u.twoFactorMethod} aria-label={`Sign-in code for ${u.name}`}>
+                          <option value="NONE">None</option>
                           <option value="EMAIL">Code by email</option>
                         </select>
-                        <button className="btn ghost" type="submit">
+                        <button className="btn secondary" type="submit">
                           Set
                         </button>
                       </form>
                     </td>
-                    <td>
-                      <div className="stack">
+                    <td className="users-actions-col">
+                      <div className="users-actions">
+                        {locked && (
+                          <form action={unlockStaff.bind(null, u.id)}>
+                            <button className="btn ghost" type="submit">
+                              Unlock
+                            </button>
+                          </form>
+                        )}
                         {isHome ? (
                           <>
-                            {u.id !== me.id && (
+                            <details className="users-reset">
+                              <summary className="btn ghost">Reset password</summary>
+                              <form className="users-inline" action={resetStaffPassword.bind(null, u.id)}>
+                                <input name="password" type="password" placeholder="New password" autoComplete="new-password" aria-label={`New password for ${u.name}`} required />
+                                <button className="btn" type="submit">
+                                  Save
+                                </button>
+                              </form>
+                            </details>
+                            {!isMe && (
                               <form action={toggleStaffActive.bind(null, u.id)}>
-                                <button className="btn ghost" type="submit">
+                                <button className={`btn ghost${u.active ? " btn-danger" : ""}`} type="submit">
                                   {u.active ? "Deactivate" : "Reactivate"}
                                 </button>
                               </form>
                             )}
-                            <form className="stack" action={resetStaffPassword.bind(null, u.id)}>
-                              <input name="password" type="password" placeholder="New password" required />
-                              <button className="btn ghost" type="submit">
-                                Reset password
-                              </button>
-                            </form>
                           </>
                         ) : (
                           <form action={removeMembership.bind(null, m.id)}>
-                            <button className="btn ghost" type="submit">
+                            <button className="btn ghost btn-danger" type="submit">
                               Revoke access
                             </button>
                           </form>
@@ -154,72 +256,8 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
               })}
             </tbody>
           </table>
-        </section>
-
-        <div className="stack">
-          <form className="panel stack" action={createStaff}>
-            <h2>Add staff</h2>
-            <label>
-              Name
-              <input name="name" required />
-            </label>
-            <label>
-              Email
-              <input name="email" type="email" required />
-            </label>
-            <label>
-              Role
-              <select name="role" defaultValue="FRONT_DESK">
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {roleLabel[r] ?? r}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              NPI (clinicians)
-              <input name="npi" />
-            </label>
-            <label>
-              Specialty (clinicians)
-              <input name="specialty" />
-            </label>
-            <label>
-              Initial password
-              <input name="password" type="password" required />
-            </label>
-            <button className="btn" type="submit">
-              Create account
-            </button>
-          </form>
-
-          <form className="panel stack" action={addPracticeMember}>
-            <h2>Grant access to an existing user</h2>
-            <p className="muted">
-              For staff or consultants who already have a CareHub account at another practice and need
-              access here too. They&apos;ll be able to switch between practices after signing in.
-            </p>
-            <label>
-              Their email
-              <input name="email" type="email" required />
-            </label>
-            <label>
-              Role here
-              <select name="role" defaultValue="CLINICIAN">
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {roleLabel[r] ?? r}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button className="btn secondary" type="submit">
-              Grant access
-            </button>
-          </form>
         </div>
-      </div>
+      </section>
 
       {editing && (
         <section className="panel" id="permissions-editor">
@@ -309,6 +347,15 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
       </section>
     </>
   );
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
 }
 
 // "By role" until the admin allows or denies a single permission for this person in this practice.

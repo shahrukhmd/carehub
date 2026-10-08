@@ -8092,3 +8092,1930 @@ td.num {
 .ct-picker button:hover {
   background: var(--panel-alt);
 }
+
+/* =====================================================================================================
+   Personic layout (Personic EMR Screen Layout Guide): page colors, type, the floating card frame, sidebar,
+   top bar, buttons, fields, dropdowns and the sign-in screens. It sits last so it wins over the older rules
+   above; detail screens keep their own layout and only pick up the new tokens.
+   ===================================================================================================== */
+
+:root {
+  /* Guide tokens */
+  --page: #f0f5f9;
+  --card: #ffffff;
+  --body: #2a3547;
+  --primary: #006fb5;
+  --primary-dark: #005a93;
+  --primary-light: #e5f3fb;
+  --success: #0a7a48;
+  --success-light: #e3f4ec;
+  --warning: #8a5a00;
+  --warning-light: #fdf1d8;
+  --error: #b93a1f;
+  --error-light: #fbe9e4;
+  --line-strong: #d3dbe2;
+  --card-radius: 18px;
+  --card-shadow: 0 1px 2px rgba(17, 28, 45, 0.04), 0 8px 24px rgba(17, 28, 45, 0.06);
+  --pop-shadow: 0 2px 6px rgba(17, 28, 45, 0.06), 0 18px 44px rgba(17, 28, 45, 0.16);
+  --focus-ring: 0 0 0 3px rgba(0, 111, 181, 0.2);
+
+  /* The older tokens, re-pointed at the guide's palette. Green (accent) keeps meaning "done / OK". */
+  --navy: #111c2d;
+  --navy-light: #e5f3fb;
+  --navy-soft: #e5f3fb;
+  --ink: #111c2d;
+  --muted: #5c6770;
+  --bg: var(--page);
+  --panel: var(--card);
+  --panel-alt: #f6f9fb;
+  --line: #e0e6eb;
+  --chrome: var(--primary);
+  --chrome-light: var(--primary-light);
+  --field: #ffffff;
+  --shadow: var(--card-shadow);
+  --accent: var(--success);
+  --accent-dark: #075c36;
+  --accent-soft: var(--success-light);
+  --amber: var(--warning);
+  --amber-soft: var(--warning-light);
+  --info: var(--primary);
+  --info-soft: var(--primary-light);
+  --danger: var(--error);
+  --danger-soft: var(--error-light);
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: var(--card-radius);
+  --shadow-sm: var(--card-shadow);
+  --shadow-md: var(--card-shadow);
+  --shadow-lg: var(--pop-shadow);
+  --font-sans: var(--font-jakarta), "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+}
+
+.app-shell[data-theme="dark"] {
+  --page: #0e1621;
+  --card: #152332;
+  --body: #c9d3de;
+  --primary: #2b9cf0;
+  --primary-dark: #5cb3f4;
+  --primary-light: #10304a;
+  --success: #3fd08e;
+  --success-light: #0f3326;
+  --warning: #f2b64f;
+  --warning-light: #3a2c0e;
+  --error: #fb8f73;
+  --error-light: #3d1d16;
+  --line-strong: #2f425a;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --pop-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  --focus-ring: 0 0 0 3px rgba(43, 156, 240, 0.3);
+  --navy: #eaeff4;
+  --navy-light: #10304a;
+  --navy-soft: #10304a;
+  --ink: #eaeff4;
+  --muted: #8a97a6;
+  --panel-alt: #1a2b3d;
+  --line: #243447;
+  --field: #10202f;
+  --accent-dark: #6bdda8;
+  --chrome: var(--primary);
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  background: var(--page);
+  color: var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+kbd {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+/* ---- The frame: sidebar card + top bar card + content, floating on the page background ---- */
+.app-shell {
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px;
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--body);
+}
+
+.app-shell.nav-collapsed {
+  grid-template-columns: 84px minmax(0, 1fr);
+}
+
+.app-shell .sidebar {
+  position: sticky;
+  top: 16px;
+  height: calc(100vh - 32px);
+  padding: 20px 0 16px;
+  gap: 18px;
+  background: var(--card);
+  color: var(--body);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+
+.app-shell .brand {
+  padding: 0 20px 0 24px;
+  gap: 10px;
+}
+
+.app-shell .brand-mark,
+.auth-logo .brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: #fff;
+}
+
+.brand-mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.app-shell .brand strong {
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-shell .brand p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.app-shell .nav-toggle {
+  position: absolute;
+  top: 22px;
+  right: 14px;
+  margin: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.app-shell .nav-toggle:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.app-shell .sidebar nav {
+  gap: 2px;
+  padding-right: 16px;
+  overflow-y: auto;
+}
+
+.app-shell .nav-group {
+  margin: 16px 0 6px 24px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.app-shell .nav-group:first-of-type {
+  margin-top: 4px;
+}
+
+/* Menu items: 48 px tall, rounded on the right only; the active item is a light blue fill with blue text. */
+.app-shell .sidebar nav a,
+.app-shell .nav-search {
+  min-height: 48px;
+  padding: 0 16px 0 24px;
+  margin: 0;
+  gap: 14px;
+  border: 0;
+  border-radius: 0 999px 999px 0;
+  color: var(--body);
+  font-size: 15px;
+  font-weight: 500;
+  background: transparent;
+}
+
+.app-shell .sidebar nav a:hover,
+.app-shell .nav-search:hover {
+  background: var(--panel-alt);
+  color: var(--ink);
+}
+
+.app-shell .sidebar nav a.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+  border-left: 0;
+  box-shadow: none;
+}
+
+.app-shell .nav-icon,
+.app-shell .nav-search svg {
+  width: 22px;
+  height: 22px;
+}
+
+.app-shell .nav-icon * {
+  stroke-width: 1.6;
+}
+
+.app-shell .nav-badge {
+  background: var(--error);
+  color: #fff;
+  font-weight: 600;
+}
+
+.app-shell .sidebar-foot {
+  margin: auto 16px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--primary-light);
+}
+
+.sidebar-user-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+}
+
+.sidebar-user-text strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sidebar-user-text span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-logout {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.sidebar-logout:hover {
+  background: var(--card);
+}
+
+.sidebar-logout svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.app-shell .sidebar .demo-note {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Icon-only menu */
+.app-shell.nav-collapsed .sidebar {
+  padding: 20px 0 16px;
+  align-items: stretch;
+}
+
+.app-shell.nav-collapsed .brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.app-shell.nav-collapsed .nav-toggle {
+  position: static;
+  align-self: center;
+  margin: -6px 0 -4px;
+}
+
+.app-shell.nav-collapsed .sidebar nav {
+  padding: 0;
+  align-items: center;
+}
+
+.app-shell.nav-collapsed .sidebar nav a,
+.app-shell.nav-collapsed .nav-search {
+  width: 48px;
+  min-height: 48px;
+  height: 48px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 14px;
+}
+
+.app-shell.nav-collapsed .sidebar nav a.active {
+  box-shadow: none;
+}
+
+.app-shell.nav-collapsed .nav-group {
+  width: 28px;
+  margin: 8px 0;
+  background: var(--line);
+}
+
+.app-shell.nav-collapsed .sidebar-foot {
+  margin: auto 0 0;
+  justify-items: center;
+}
+
+.app-shell.nav-collapsed .sidebar-user {
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px;
+}
+
+.app-shell.nav-collapsed .sidebar-user-text,
+.app-shell.nav-collapsed .sidebar .demo-note {
+  display: none;
+}
+
+.app-shell.nav-collapsed .sidebar nav a::after {
+  background: #111c2d;
+  color: #fff;
+  border-radius: 8px;
+}
+
+/* ---- Main column and top bar ---- */
+.app-shell .main {
+  gap: 16px;
+}
+
+.app-shell .topbar {
+  position: sticky;
+  top: 16px;
+  z-index: 25;
+  min-height: 72px;
+  padding: 12px 16px 12px 20px;
+  gap: 16px;
+  border: 0;
+  border-radius: var(--card-radius);
+  background: var(--card);
+  /* The second shadow paints the page color into the 16 px above the bar, so scrolled content hides behind it. */
+  box-shadow: var(--card-shadow), 0 -16px 0 0 var(--page);
+}
+
+.app-shell .topbar-left {
+  gap: 14px;
+}
+
+.app-shell .topbar-right {
+  gap: 10px;
+}
+
+.app-shell .section-tabs {
+  align-self: center;
+  gap: 4px;
+}
+
+.app-shell .section-tabs a {
+  padding: 0 12px;
+  margin: 0;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.app-shell .section-tabs a:hover {
+  background: var(--panel-alt);
+  color: var(--ink);
+}
+
+.app-shell .section-tabs a.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.app-shell .icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--body);
+}
+
+.app-shell .icon-btn:hover {
+  background: var(--panel-alt);
+}
+
+.app-shell .icon-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.app-shell .ai-chip {
+  height: 44px;
+  padding: 0 14px;
+  white-space: nowrap;
+  border-color: var(--line);
+  font-weight: 600;
+  background: var(--card);
+}
+
+.app-shell .ai-chip.on {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+/* Content fills the width beside the sidebar, lined up with the top bar. */
+.app-shell .content {
+  width: 100%;
+  padding: 8px 0 32px;
+}
+
+/* ---- Top-bar panels (facility switcher, profile) ---- */
+.popover {
+  position: relative;
+}
+
+.popover > summary {
+  list-style: none;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.popover > summary::-webkit-details-marker {
+  display: none;
+}
+
+.popover > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.popover-panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  z-index: 45;
+  width: 330px;
+  max-width: calc(100vw - 32px);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  box-shadow: var(--pop-shadow);
+}
+
+.popover-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.popover-head strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.popover-head p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.popover-close {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.popover-close:hover {
+  background: var(--panel-alt);
+  color: var(--ink);
+}
+
+.facility-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 14px;
+  color: var(--body);
+  white-space: nowrap;
+  max-width: 340px;
+}
+
+.facility-pill strong {
+  color: var(--ink);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.facility-pill-label {
+  color: var(--muted);
+}
+
+.facility-pill svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.facility-pill .pin {
+  color: var(--primary);
+}
+
+.facility-pill .chev {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.facility-switch[open] .facility-pill,
+.facility-switch > summary:hover .facility-pill {
+  border-color: var(--primary);
+}
+
+.facility-switch[open] .chev {
+  transform: rotate(180deg);
+}
+
+.facility-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.facility-grid button {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.facility-grid button small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.facility-grid button:hover {
+  border-color: var(--primary);
+}
+
+.facility-grid button.current {
+  border: 1.5px solid var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 14px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+}
+
+.user-menu > summary:hover .profile-chip,
+.user-menu[open] .profile-chip {
+  border-color: var(--primary);
+}
+
+.profile-chip-text {
+  display: grid;
+  line-height: 1.2;
+}
+
+.profile-chip-text strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.profile-chip-text small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.user-menu .popover-panel {
+  left: auto;
+  right: 0;
+  width: 300px;
+}
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-head > div {
+  display: grid;
+  min-width: 0;
+}
+
+.profile-head strong {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.profile-head span {
+  color: var(--muted);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.profile-rows dt {
+  color: var(--muted);
+}
+
+.profile-rows dd {
+  margin: 0;
+  color: var(--ink);
+  text-align: right;
+}
+
+.profile-links {
+  display: grid;
+  gap: 2px;
+}
+
+.profile-links a {
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--body);
+  font-size: 14px;
+}
+
+.profile-links a:hover {
+  background: var(--panel-alt);
+  color: var(--primary);
+}
+
+.profile-logout {
+  width: 100%;
+}
+
+/* Avatars: a circle with initials, tinted. */
+.avatar {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.avatar-lg {
+  width: 48px;
+  height: 48px;
+  font-size: 16px;
+}
+
+.avatar-xl {
+  width: 72px;
+  height: 72px;
+  font-size: 22px;
+  background: #fde8e2;
+  color: #c2410c;
+}
+
+/* ---- Cards and screen titles ---- */
+.card,
+.stat,
+.panel {
+  border: 0;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 20px 22px;
+}
+
+.panel h2 {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.page-head h1 {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.page-head > div > p.muted:first-child::after {
+  background: var(--primary);
+}
+
+.stat strong {
+  color: var(--ink);
+}
+
+/* ---- Buttons: pill shaped, 44 px; primary blue, plus outline (secondary) and ghost ---- */
+.btn,
+button.btn,
+input[type="submit"] {
+  min-height: 44px;
+  padding: 0 20px;
+  gap: 8px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn:hover,
+button.btn:hover,
+input[type="submit"]:hover {
+  background: var(--primary-dark);
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.btn.btn-lg {
+  min-height: 48px;
+  font-size: 15px;
+}
+
+.btn.secondary {
+  background: var(--card);
+  color: var(--primary);
+  border: 1px solid var(--line-strong);
+}
+
+.btn.secondary:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--primary);
+  padding: 0 12px;
+}
+
+.btn.ghost:hover {
+  background: var(--primary-light);
+  text-decoration: none;
+}
+
+.btn:disabled,
+button.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Dense places keep compact buttons. */
+table .btn,
+.board .btn,
+.btn.gw-mini {
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.app-shell[data-theme="dark"] .btn,
+.app-shell[data-theme="dark"] .view-tab.active {
+  color: #04121f;
+}
+
+.app-shell[data-theme="dark"] .btn.secondary,
+.app-shell[data-theme="dark"] .btn.ghost {
+  color: var(--primary);
+}
+
+.view-tabs {
+  border-radius: 999px;
+  padding: 4px;
+  border-color: var(--line);
+}
+
+.view-tab {
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 600;
+}
+
+.view-tab.active {
+  background: var(--primary);
+}
+
+/* ---- Fields: label above, 8 px radius, blue focus ring; selects get a chevron ---- */
+label {
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"])),
+select,
+textarea {
+  padding: 10px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background-color: var(--field);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"])):hover,
+select:hover,
+textarea:hover {
+  border-color: #a9b6c2;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #93a0ab;
+}
+
+select:not([multiple]) {
+  appearance: none;
+  padding-right: 38px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a97a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+  cursor: pointer;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+  width: 16px;
+  height: 16px;
+}
+
+/* Forms (as opposed to dense grids and tables) use the full 48 px field height. */
+:is(.stack, .form-grid, .auth-card) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"])), select:not([multiple])) {
+  min-height: 48px;
+}
+
+.form-grid {
+  gap: 16px;
+}
+
+form.stack,
+.stack {
+  gap: 14px;
+  align-content: start;
+}
+
+/* Fields and buttons inside tables stay compact, whatever form they belong to. */
+.app-shell td :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"])), select:not([multiple]), select, textarea) {
+  min-height: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.app-shell td select:not([multiple]) {
+  padding-right: 28px;
+  background-position: right 8px center;
+  background-size: 14px;
+}
+
+.app-shell td .stack {
+  gap: 6px;
+}
+
+table .btn {
+  white-space: nowrap;
+}
+
+/* Wide tables scroll inside their panel; the page itself never scrolls sideways. */
+.panel:has(> table) {
+  overflow-x: auto;
+}
+
+/* Text-only buttons in tables read as links: they may wrap, like before. */
+table .btn.ghost {
+  min-height: 0;
+  padding: 2px 4px;
+  white-space: normal;
+  text-align: left;
+}
+
+/* ---- Badges: pill, 12 px semibold, pale fill + strong text of one status color ---- */
+.pill,
+.badge {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.nav-badge {
+  background: var(--error);
+}
+
+/* ---- Work board columns ---- */
+.board-col {
+  border: 0;
+  background: var(--panel-alt);
+  border-radius: 14px;
+}
+
+.board-card {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: 10px;
+}
+
+.board-card-alert {
+  border-left-color: var(--error);
+}
+
+/* Blue for "current / selected" elsewhere that used the old accent. */
+.st-nav a.active,
+.wq-cats a.wq-on,
+.provider-type.on,
+.scell:focus-visible {
+  border-color: var(--primary);
+}
+
+/* ---- Before sign-in: one card on the page background, two soft brand shapes behind it ---- */
+.login-shell {
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 72px 24px;
+  background: var(--page);
+}
+
+.auth-blob {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* The brand shape artwork (assets/shap-login.png), peeking out from the card's top-right corner. */
+/* The card and its two shapes are one picture: the stage is the card's box, and the shapes are placed against
+   its corners in fixed proportions (as in the layout guide), so zooming or resizing never pulls them apart. */
+.auth-stage {
+  position: relative;
+  width: min(1150px, 100%);
+}
+
+.auth-blob-blue {
+  width: 300px;
+  height: auto;
+  top: -48px;
+  right: -64px;
+}
+
+.auth-blob-coral {
+  width: 410px;
+  height: 410px;
+  left: -80px;
+  bottom: -185px;
+  background: #f99b7d;
+  border-radius: 50%;
+}
+
+.auth-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  min-height: 540px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  padding: 40px 56px 48px 40px;
+  background: var(--card);
+  border-radius: var(--card-radius);
+  box-shadow: 0 2px 6px rgba(17, 28, 45, 0.05), 0 24px 60px rgba(17, 28, 45, 0.12);
+}
+
+.auth-aside {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.auth-logo .brand-mark {
+  display: grid;
+  place-items: center;
+}
+
+.auth-logo strong {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.auth-aside-body {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px 0 0;
+}
+
+.auth-illustration {
+  width: 100%;
+  max-width: 380px;
+  height: auto;
+}
+
+.auth-main {
+  align-self: center;
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  padding-top: 24px;
+}
+
+.auth-main h1 {
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.auth-subtitle {
+  margin: 0 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.auth-main .stack {
+  gap: 16px;
+}
+
+.auth-main .stack > .btn,
+.auth-main form > .btn:not(.ghost) {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.auth-main .btn.ghost {
+  justify-self: start;
+  padding: 0 12px;
+  margin-top: 8px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.login-hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.login-hint a {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.login-error {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--error-light);
+  color: var(--error);
+  font-size: 13px;
+}
+
+.auth-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.auth-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.auth-person {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.auth-person strong {
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.auth-person span:not(.avatar) {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.facility-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.facility-choices button {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-height: 72px;
+  padding: 12px 16px;
+  text-align: left;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  font: inherit;
+  cursor: pointer;
+}
+
+.facility-choices button strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.facility-choices button small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.facility-choices button:hover,
+.facility-choices button:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.auth-signout {
+  color: var(--body);
+}
+
+/* ---- Narrower screens ---- */
+@media (max-width: 1200px) {
+  .profile-chip-text {
+    display: none;
+  }
+  .profile-chip {
+    padding: 0 4px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-shell,
+  .app-shell.nav-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .app-shell .sidebar,
+  .app-shell.nav-collapsed .sidebar {
+    position: static;
+    height: auto;
+    padding: 14px 16px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .app-shell .nav-toggle,
+  .app-shell .nav-group,
+  .app-shell .sidebar-foot {
+    display: none;
+  }
+  .app-shell .brand {
+    padding: 0;
+  }
+  .app-shell .sidebar nav,
+  .app-shell.nav-collapsed .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0;
+    gap: 6px;
+  }
+  .app-shell .sidebar nav a,
+  .app-shell .nav-search,
+  .app-shell.nav-collapsed .sidebar nav a,
+  .app-shell.nav-collapsed .nav-search {
+    width: auto;
+    min-height: 40px;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 999px;
+  }
+  .app-shell.nav-collapsed .nav-label {
+    display: inline;
+  }
+  .app-shell.nav-collapsed .sidebar nav a::after {
+    display: none;
+  }
+  .app-shell .topbar {
+    position: static;
+    flex-wrap: wrap;
+  }
+  .app-shell .topbar-left {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 860px) {
+  .auth-card {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    min-height: 0;
+    padding: 28px 22px 32px;
+  }
+  .auth-aside-body {
+    display: none;
+  }
+  .auth-aside:has(.auth-person) .auth-aside-body {
+    display: grid;
+    padding: 20px 0 0;
+  }
+  .auth-main {
+    padding-top: 12px;
+  }
+  .auth-main h1 {
+    font-size: 24px;
+  }
+  .auth-blob-blue {
+    width: 170px;
+    top: -40px;
+    right: -28px;
+  }
+  .auth-blob-coral {
+    width: 240px;
+    height: 240px;
+    left: -70px;
+    bottom: -120px;
+  }
+  .facility-pill-label {
+    display: none;
+  }
+}
+
+@media print {
+  .app-shell {
+    display: block;
+    padding: 0;
+    background: #fff;
+  }
+  .app-shell .sidebar,
+  .app-shell .topbar {
+    display: none;
+  }
+}
+
+/* ---- Dropdown lists ----
+   Where the browser supports customizable selects (Chrome / Edge 135+), the open list is drawn as a card:
+   rounded, shadowed, roomy rows, the chosen row in light blue with a check. Other browsers keep their native
+   list; the closed field looks the same either way. */
+@supports (appearance: base-select) {
+  select:not([multiple]):not([size]),
+  select:not([multiple]):not([size])::picker(select) {
+    appearance: base-select;
+  }
+
+  select:not([multiple]):not([size]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding-right: 12px;
+    background-image: none;
+    text-align: left;
+  }
+
+  select:not([multiple]):not([size])::picker-icon {
+    content: "";
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-inline-start: auto;
+    background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a97a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
+      no-repeat center / 16px;
+    transition: rotate 0.15s ease;
+  }
+
+  select:not([multiple]):not([size]):open {
+    border-color: var(--primary);
+    box-shadow: var(--focus-ring);
+  }
+
+  select:not([multiple]):not([size]):open::picker-icon {
+    rotate: 180deg;
+  }
+
+  select:not([multiple]):not([size])::picker(select) {
+    margin-block: 6px;
+    padding: 6px;
+    min-width: anchor-size(width);
+    max-height: min(340px, 60vh);
+    overflow-y: auto;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--ink);
+    box-shadow: var(--pop-shadow);
+    scrollbar-width: thin;
+  }
+
+  select:not([multiple]):not([size]) option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 38px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    color: var(--body);
+    font-size: 14px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  select:not([multiple]):not([size]) option:hover,
+  select:not([multiple]):not([size]) option:focus-visible {
+    outline: none;
+    background: var(--panel-alt);
+    color: var(--ink);
+  }
+
+  select:not([multiple]):not([size]) option:checked {
+    background: var(--primary-light);
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  /* The check mark sits at the end of the chosen row. */
+  select:not([multiple]):not([size]) option::checkmark {
+    order: 1;
+    margin-inline-start: auto;
+    color: var(--primary);
+    font-weight: 700;
+  }
+
+  select:not([multiple]):not([size]) option:disabled {
+    color: var(--muted);
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  select:not([multiple]):not([size]) optgroup {
+    padding-top: 6px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  select:not([multiple]):not([size]) optgroup + optgroup {
+    margin-top: 4px;
+    border-top: 1px solid var(--line);
+  }
+
+  select:not([multiple]):not([size]) optgroup option {
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  /* Compact selects in tables keep their small size; their list stays roomy. */
+  .app-shell td select:not([multiple]):not([size]) {
+    padding-right: 8px;
+  }
+
+  .app-shell td select:not([multiple]):not([size])::picker-icon {
+    width: 14px;
+    height: 14px;
+    background-size: 14px;
+  }
+}
+
+/* ---- Primary actions at the top right of a screen ---- */
+.page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.btn.btn-danger {
+  color: var(--error);
+}
+
+.btn.btn-danger:hover {
+  background: var(--error-light);
+}
+
+/* ---- Centered form dialog: up to 544 px wide, 18 px radius, dimmed backdrop ---- */
+.form-dialog {
+  /* The base reset zeroes margins; auto margins put the modal dialog back in the middle. */
+  margin: auto;
+  width: min(544px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 24px;
+  border: 0;
+  border-radius: var(--card-radius);
+  background: var(--card);
+  color: var(--body);
+  box-shadow: var(--pop-shadow);
+  overflow-y: auto;
+}
+
+.form-dialog::backdrop {
+  background: rgba(17, 28, 45, 0.45);
+}
+
+.form-dialog[open] {
+  animation: form-dialog-in 0.16s ease-out;
+}
+
+@keyframes form-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.form-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.form-dialog-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.form-dialog-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.form-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* ---- Users & roles list: avatar + name, then one tidy line of controls per person ---- */
+.users-panel {
+  padding: 0;
+}
+
+.users-panel-head {
+  padding: 20px 22px 14px;
+}
+
+.users-panel-head h2 {
+  margin: 0;
+}
+
+.users-panel-head p {
+  margin: 4px 0 0;
+  font-size: 13px;
+}
+
+.users-table {
+  min-width: 940px;
+}
+
+.users-table th:first-child,
+.users-table td:first-child {
+  padding-left: 22px;
+}
+
+.users-table th:last-child,
+.users-table td:last-child {
+  padding-right: 22px;
+}
+
+.users-table th {
+  padding: 10px 10px;
+  background: var(--panel-alt);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.users-table td {
+  padding: 12px 10px;
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.users-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.user-cell > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.user-cell strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.user-cell span:not(.avatar):not(.gw-tag) {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.user-cell .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+
+.user-cell-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.users-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.app-shell .users-table td .users-inline select {
+  flex: none;
+  white-space: nowrap;
+}
+
+.app-shell .users-table td .users-inline input {
+  width: 150px;
+}
+
+/* Fixed widths so the Save / Set buttons line up down the column. */
+.app-shell .users-table td .users-inline select.users-role {
+  width: 200px;
+}
+
+.app-shell .users-table td .users-inline select.users-method {
+  width: 128px;
+}
+
+.users-table .users-inline .btn {
+  flex: none;
+  padding: 0 10px;
+}
+
+.users-table .btn.ghost,
+.users-table .btn {
+  white-space: nowrap;
+}
+
+.users-link {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.users-actions-col {
+  text-align: right;
+}
+
+.users-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.users-actions form {
+  margin: 0;
+}
+
+.users-reset > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.users-reset > summary::-webkit-details-marker {
+  display: none;
+}
+
+.users-reset[open] > summary {
+  background: var(--primary-light);
+}
+
+.users-reset .users-inline {
+  margin-top: 8px;
+}
+
+/* ---- Sticky side panels stop below the floating top bar ----
+   The top bar sticks 16 px from the top and is 72 px tall, so anything else that sticks (the patient card on a
+   gateway case, the chart's document workflow rail, the patient dashboard side panel, previews, the code library add
+   bar) starts 16 px below it. */
+.app-shell {
+  --sticky-top: 104px;
+}
+
+.app-shell :is(.gw-side, .vw-rail, .pd-side, .pd-preview, .cl-addbar) {
+  top: var(--sticky-top);
+}
+
+/* The patient dashboard side panel already scrolls inside itself; keep it within the space below the bar. (The
+   gateway patient card is not made to scroll, so its Quick actions menu can open outside it.) */
+.app-shell .pd-side {
+  max-height: calc(100vh - var(--sticky-top) - 16px);
+}
+
+@media (max-width: 1023px) {
+  /* The top bar no longer sticks on narrow screens. */
+  .app-shell {
+    --sticky-top: 16px;
+  }
+}
+
+/* ---- Referring as an individual or a company / group (provider form) ---- */
+.entity-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 260px));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.entity-choice label {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--card);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.entity-choice label.on {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.entity-choice input {
+  margin-top: 2px;
+}
+
+.entity-choice span {
+  display: grid;
+  gap: 2px;
+}
+
+.entity-choice strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.entity-choice small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* The provider form in a popup (adding a referring physician / source from a referral). */
+.form-dialog.form-dialog-wide {
+  width: min(1180px, calc(100vw - 32px));
+}
+
+.form-dialog .provider-form {
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.form-dialog .provider-types .provider-type-grid {
+  grid-template-columns: minmax(0, 320px);
+}
+
+@media (max-width: 700px) {
+  .entity-choice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- Provider form layout: two even columns, every row lined up ---- */
+.provider-form {
+  gap: 20px;
+}
+
+.provider-form .provider-columns {
+  gap: 32px;
+}
+
+/* Rows size to their own content: a field never stretches to match a taller neighbour. */
+.provider-form .form-grid {
+  align-items: start;
+  gap: 14px 16px;
+}
+
+.provider-form h3 {
+  margin: 20px 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.provider-form section > h3:first-child {
+  margin-top: 0;
+}
+
+.provider-form .role-sections {
+  padding-top: 20px;
+}
+
+.provider-form .provider-types {
+  padding-bottom: 20px;
+}
+
+.provider-full-row {
+  grid-column: 1 / -1;
+}
+
+/* City, State and ZIP share one row at one height; the address check sits on its own line under it. */
+.provider-city-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.provider-full-row .av {
+  margin-top: -4px;
+}
+
+.provider-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 28px;
+}
+
+.provider-form .checkbox-inline {
+  font-weight: 500;
+}
+
+.provider-form .npi-row {
+  gap: 8px;
+}
+
+.provider-form .npi-row .btn {
+  flex: none;
+}
+
+/* The NPI box gives up its built-in minimum width, so box + button always fit the column (narrow in the popup). */
+.provider-form .npi-row input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .provider-form .provider-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

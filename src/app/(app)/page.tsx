@@ -7,7 +7,7 @@ import {
   GATEWAY_ROLES,
   OPEN_INTAKE_STAGES,
   canWorkTeam,
-  defaultTeamForRole,
+  gatewayTeamScope,
   intakeStageLabel,
   teamLabel,
   teamStages,
@@ -25,33 +25,41 @@ const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
 export default async function PatientGatewayPage({ searchParams }: { searchParams: Promise<GatewaySearch> }) {
   const user = await requireUser();
   // Billing and credentialing staff work outside the gateway; send them to their own home.
-  if (!allowed(user, GATEWAY_ROLES)) redirect(user.role === "CREDENTIALING" ? "/credentialing" : ["CDS", "CODER"].includes(user.role) ? "/encounters" : "/billing");
+  if (!allowed(user, GATEWAY_ROLES))
+    redirect(
+      user.role === "CREDENTIALING" ? "/credentialing" : user.role === "BD" ? "/dashboard" : ["CDS", "CODER"].includes(user.role) ? "/encounters" : "/billing"
+    );
 
   const sp = await searchParams;
-  const ownTeam = defaultTeamForRole(user.role);
-  const defaultTab = ownTeam
-    ? TEAM_TABS.find((t) => t.team === ownTeam)!.key
-    : user.role === "CLINICIAN"
-      ? "today"
-      : "board";
-  const tab = sp.tab ?? defaultTab;
+  // A team role (data entry, verification, scheduling) sees only its own team: one tab, its own stages, nothing
+  // else — whatever tab the URL asks for. Admins, front desk and clinicians see every team.
+  const ownTeam = gatewayTeamScope(user.role);
+  const ownTab = ownTeam ? TEAM_TABS.find((t) => t.team === ownTeam)! : null;
+  const defaultTab = ownTab ? ownTab.key : user.role === "CLINICIAN" ? "today" : "board";
+  const tab = ownTab ? ownTab.key : (sp.tab ?? defaultTab);
 
   const counts = await prisma.intakeCase.groupBy({
     by: ["stage"],
-    where: { practiceId: user.practiceId },
+    where: { practiceId: user.practiceId, ...(ownTeam ? { stage: { in: teamStages[ownTeam] } } : {}) },
     _count: { _all: true },
   });
   const countFor = (stage: string) => counts.find((c) => c.stage === stage)?._count._all ?? 0;
   const teamCount = (team: GatewayTeam) =>
     teamStages[team].filter((s) => s !== "SCHEDULED").reduce((n, s) => n + countFor(s), 0);
 
-  const tabs = [
-    ...TEAM_TABS.map((t) => ({ key: t.key, label: `${teamLabel[t.team]} (${teamCount(t.team)})` })),
-    { key: "board", label: "Pipeline board" },
-    { key: "vob-learning", label: "VOB learning" },
-    { key: "registry", label: "All patients" },
-    { key: "today", label: "Today" },
-  ];
+  const tabs = ownTab
+    ? [{ key: ownTab.key, label: `${teamLabel[ownTab.team]} (${teamCount(ownTab.team)})` }]
+    : [
+        ...TEAM_TABS.map((t) => ({ key: t.key, label: `${teamLabel[t.team]} (${teamCount(t.team)})` })),
+        { key: "board", label: "Pipeline board" },
+        { key: "vob-learning", label: "VOB learning" },
+        { key: "registry", label: "All patients" },
+        { key: "today", label: "Today" },
+      ];
+  // The stage strip: every stage, or only the team's own (numbered as in the full pipeline).
+  const strip = [...OPEN_INTAKE_STAGES, "SCHEDULED"]
+    .map((stage, i) => ({ stage, n: i + 1 }))
+    .filter(({ stage }) => !ownTeam || teamStages[ownTeam].includes(stage));
 
   return (
     <>
@@ -70,13 +78,13 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
       </div>
 
       <section className="gw-pipeline" aria-label="Cases by stage">
-        {[...OPEN_INTAKE_STAGES, "SCHEDULED"].map((stage, i) => (
+        {strip.map(({ stage, n }) => (
           <Link
             key={stage}
-            href={`/?tab=registry&stage=${stage}`}
+            href={ownTab ? `/?tab=${ownTab.key}&stage=${stage}` : `/?tab=registry&stage=${stage}`}
             className={`gw-pipe-step gw-stage-${stage.toLowerCase()}`}
           >
-            <span className="gw-pipe-num">{i + 1}</span>
+            <span className="gw-pipe-num">{n}</span>
             <span>{intakeStageLabel[stage]}</span>
             <strong>{countFor(stage)}</strong>
           </Link>
@@ -96,10 +104,10 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
       {TEAM_TABS.filter((t) => t.key === tab).map((t) => (
         <TeamQueueTab key={t.key} team={t.team} tabKey={t.key} user={user} sp={sp} />
       ))}
-      {tab === "board" && <BoardTab user={user} />}
-      {tab === "vob-learning" && <VobLearningTab user={user} />}
-      {tab === "registry" && <RegistryTab user={user} sp={sp} />}
-      {tab === "today" && <TodayTab user={user} />}
+      {!ownTeam && tab === "board" && <BoardTab user={user} />}
+      {!ownTeam && tab === "vob-learning" && <VobLearningTab user={user} />}
+      {!ownTeam && tab === "registry" && <RegistryTab user={user} sp={sp} />}
+      {!ownTeam && tab === "today" && <TodayTab user={user} />}
     </>
   );
 }

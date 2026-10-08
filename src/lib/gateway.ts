@@ -59,6 +59,24 @@ export function defaultTeamForRole(role: string): GatewayTeam | null {
   return null;
 }
 
+// Strict team scope: a gateway team role (data entry, verification, scheduling) sees only its own team — its
+// queue, its stages and the cases currently in them. Admins, front desk and clinicians work across teams and
+// see everything. The screens, the case page and every case action check this.
+export function gatewayTeamScope(role: string): GatewayTeam | null {
+  return defaultTeamForRole(role);
+}
+
+// The case stages this role may see; null means every stage.
+export function visibleGatewayStages(role: string): string[] | null {
+  const team = gatewayTeamScope(role);
+  return team ? teamStages[team] : null;
+}
+
+export function canSeeGatewayCase(role: string, stage: string) {
+  const stages = visibleGatewayStages(role);
+  return !stages || stages.includes(stage);
+}
+
 export const referralSourceTypeLabel: Record<string, string> = {
   PHYSICIAN: "Physician office",
   HOSPITAL: "Hospital / discharge",

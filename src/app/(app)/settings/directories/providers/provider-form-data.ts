@@ -1,10 +1,23 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 
+// The BD owners a referring physician / source can be given: active users with the business development role in
+// this practice (plus the current owner, so an edit keeps showing them if they have since changed role).
+export async function bdOwnerOptions(practiceId: string, currentOwnerId?: string | null) {
+  const users = await prisma.user.findMany({
+    where: {
+      OR: [{ active: true, memberships: { some: { practiceId, role: "BD" } } }, ...(currentOwnerId ? [{ id: currentOwnerId }] : [])],
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
+  return users;
+}
+
 // Choices the provider form needs: logins that can still be linked, supervising
-// physicians, and group names to suggest.
-export async function providerFormOptions(practiceId: string, providerId?: string, linkedUserId?: string | null) {
-  const [users, supervisors, groups] = await Promise.all([
+// physicians, group names to suggest, and BD owners for referring providers.
+export async function providerFormOptions(practiceId: string, providerId?: string, linkedUserId?: string | null, bdOwnerId?: string | null) {
+  const [users, supervisors, groups, bdOwners] = await Promise.all([
     prisma.user.findMany({
       where: {
         practiceId,
@@ -20,8 +33,9 @@ export async function providerFormOptions(practiceId: string, providerId?: strin
       select: { id: true, name: true },
     }),
     prisma.billingProvider.findMany({ where: { practiceId }, orderBy: { name: "asc" }, select: { name: true } }),
+    bdOwnerOptions(practiceId, bdOwnerId),
   ]);
-  return { users, supervisors, groupNames: groups.map((g) => g.name) };
+  return { users, supervisors, groupNames: groups.map((g) => g.name), bdOwners };
 }
 
 // Records created before the unified form only have a display name ("Last, First Middle").
