@@ -9,6 +9,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { QuickActions } from "@/components/QuickActions";
+import { ReferralSourcePicker } from "@/components/ReferralSourcePicker";
+import { addReferringProvider, lookupReferrerNpi } from "../../settings/directories/actions";
+import { bdOwnerOptions } from "../../settings/directories/providers/provider-form-data";
 import { PatientFormsPanel } from "../../connect/patient-forms-panel";
 import { networkStatusForPayer } from "@/lib/credentialing";
 import { publicBase } from "@/lib/connect/core";
@@ -20,6 +23,7 @@ import {
   GATEWAY_ROLES,
   PATIENT_EDIT_ROLES,
   authStatusLabel,
+  canSeeGatewayCase,
   canWorkTeam,
   careStatusLabel,
   dataEntryGaps,
@@ -103,6 +107,8 @@ export default async function IntakeCasePage({
     },
   });
   if (!c) notFound();
+  // Strict team scope: a team role sees only the cases in its own team's stages.
+  if (!canSeeGatewayCase(user.role, c.stage)) return <OutsideTeam ok={ok} error={error} />;
   if (c.patientId) await requireChartAccess(user, c.patientId, `/gateway/${id}`);
   const patient = c.patient;
   const documents = await prisma.patientDocument.findMany({
@@ -110,7 +116,7 @@ export default async function IntakeCasePage({
     orderBy: { createdAt: "desc" },
   });
 
-  const [payers, referrers, providers, upcoming, network] = await Promise.all([
+  const [payers, referrers, providers, upcoming, network, bdOwners] = await Promise.all([
     prisma.payer.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
     prisma.renderingProvider.findMany({
       where: { practiceId: user.practiceId, isReferring: true, status: "ACTIVE" },
@@ -131,6 +137,8 @@ export default async function IntakeCasePage({
       orderBy: { startsAt: "asc" },
     }),
     c.payerId ? networkStatusForPayer(user.practiceId, c.payerId, c.planSegment) : Promise.resolve([]),
+    // BD owners for a referring physician / source added from this case.
+    bdOwnerOptions(user.practiceId),
   ]);
 
   const currentTeam = teamForStage(c.stage);
@@ -449,24 +457,14 @@ export default async function IntakeCasePage({
                     <Options labels={referralSourceTypeLabel} />
                   </select>
                 </label>
-                <label>
-                  <span>
-                    Referral source name <span className="req">*</span>
-                  </span>
-                  <input name="referralSourceName" defaultValue={c.referralSourceName ?? ""} placeholder="Facility / office name" />
-                </label>
-                <label>
-                  Referring physician
-                  <select name="referringPhysicianId" defaultValue={patient.referringPhysicianId ?? ""}>
-                    <option value="">—</option>
-                    {referrers.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.name}
-                        {r.credential ? `, ${r.credential}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <ReferralSourcePicker
+                  options={referrers.map((r) => ({ id: r.id, name: `${r.name}${r.credential ? `, ${r.credential}` : ""}` }))}
+                  currentId={patient.referringPhysicianId}
+                  currentName={c.referralSourceName}
+                  addReferrer={addReferringProvider}
+                  lookupNpi={lookupReferrerNpi}
+                  bdOwners={bdOwners}
+                />
                 <label>
                   Contact name
                   <input name="referralContactName" defaultValue={c.referralContactName ?? ""} />
@@ -957,5 +955,36 @@ export default async function IntakeCasePage({
         </section>
       </div>
     </div>
+  );
+}
+
+// Shown instead of the case when it is not in the user's team, including right after their own action (a hand-off)
+// moved it on. Nothing about the case is shown.
+function OutsideTeam({ ok, error }: { ok?: string; error?: string }) {
+  return (
+    <>
+      <div className="page-head">
+        <div>
+          <p className="muted">
+            <Link href="/">« Patient Gateway</Link>
+          </p>
+          <h1>Not in your team&apos;s queue</h1>
+        </div>
+      </div>
+      <section className="panel stack">
+        {ok && <p className="notice-ok">{ok}</p>}
+        {error && <p className="login-error">{error}</p>}
+        <p>
+          {ok
+            ? "Done. This case has moved on to another team, so it has left your queue."
+            : "This case is with another team. You only see the cases in your own team's stages."}
+        </p>
+        <p>
+          <Link className="btn" href="/">
+            Back to your queue
+          </Link>
+        </p>
+      </section>
+    </>
   );
 }

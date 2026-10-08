@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { signup } from "./actions";
+import { AuthFrame } from "@/components/AuthFrame";
 
 export default async function SignupPage({
   searchParams,
@@ -14,17 +15,9 @@ export default async function SignupPage({
   const { error } = await searchParams;
 
   return (
-    <div className="login-shell">
-      <div className="login-card">
-        <div className="brand">
-          <span className="brand-mark">CH</span>
-          <div>
-            <strong>CareHub</strong>
-            <p className="muted">Set up a new practice</p>
-          </div>
-        </div>
+    <AuthFrame title="Create your practice" subtitle="Sets up the practice, its first location and your admin account.">
 
-        <form className="panel stack" action={signup}>
+        <form className="stack" action={signup}>
           {error === "email" && <p className="login-error">That email is already in use.</p>}
           <label>
             Practice name
@@ -62,7 +55,6 @@ export default async function SignupPage({
         <p className="login-hint">
           Already have an account? <Link href="/login">Sign in</Link>
         </p>
-      </div>
-    </div>
+    </AuthFrame>
   );
 }

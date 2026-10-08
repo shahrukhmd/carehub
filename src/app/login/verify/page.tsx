@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getPendingSession } from "@/lib/auth";
 import { resendCode, verifyCode } from "../actions";
+import { AuthFrame } from "@/components/AuthFrame";
 
 // Second factor: the six-digit code emailed after the password was accepted.
 export default async function VerifyPage({ searchParams }: { searchParams: Promise<{ error?: string; left?: string; sent?: string }> }) {
@@ -17,17 +18,9 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
   const testCode = last?.body.match(/code is (\d{6})/)?.[1];
 
   return (
-    <div className="login-shell">
-      <div className="login-card">
-        <div className="brand">
-          <span className="brand-mark">CH</span>
-          <div>
-            <strong>CareHub</strong>
-            <p className="muted">Check your email</p>
-          </div>
-        </div>
+    <AuthFrame title="Check your email">
 
-        <form className="panel stack" action={verifyCode}>
+        <form className="stack" action={verifyCode}>
           <p className="muted">
             We emailed a six-digit code to <strong>{pending.user.email}</strong>. Enter it to finish signing in.
           </p>
@@ -52,7 +45,6 @@ export default async function VerifyPage({ searchParams }: { searchParams: Promi
             Settings → Patient Connect to send real codes.
           </p>
         )}
-      </div>
-    </div>
+    </AuthFrame>
   );
 }

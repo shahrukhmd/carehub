@@ -8,6 +8,11 @@ type Role = keyof typeof providerRoleLabel;
 
 export type ProviderFormValues = {
   isReferring: boolean;
+  // A referring company or group (hospital, facility, agency): `name` is its name; no personal name parts.
+  isOrganization: boolean;
+  name: string | null;
+  // The BD rep who owns a referring physician / source.
+  bdOwnerId: string | null;
   isClinician: boolean;
   isRendering: boolean;
   isSupervising: boolean;
@@ -57,10 +62,16 @@ type Props = {
   users: { id: string; name: string }[];
   supervisors: { id: string; name: string }[];
   groupNames: string[];
+  // Business development reps a referring provider can be owned by.
+  bdOwners?: { id: string; name: string }[];
   submitLabel: string;
-  cancelHref: string;
+  // Cancel goes to cancelHref, or calls onCancel (the form in a popup).
+  cancelHref?: string;
+  onCancel?: () => void;
   // Where the add was started ("credentialing"); saving goes back there.
   from?: string;
+  // Added from a referral: the provider is always a referring one, and the type can't be changed.
+  lockedReferring?: boolean;
 };
 
 const ROLES = Object.entries(providerRoleLabel) as [Role, string][];
@@ -87,14 +98,34 @@ function YesNo({ name, defaultChecked }: { name: string; defaultChecked: boolean
   );
 }
 
-export function ProviderForm({ action, lookupNpi, initial = {}, users, supervisors, groupNames, submitLabel, cancelHref, from }: Props) {
+export function ProviderForm({
+  action,
+  lookupNpi,
+  initial = {},
+  users,
+  supervisors,
+  groupNames,
+  bdOwners = [],
+  submitLabel,
+  cancelHref,
+  onCancel,
+  from,
+  lockedReferring = false,
+}: Props) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [roles, setRoles] = useState<Record<Role, boolean>>({
-    isReferring: initial.isReferring ?? false,
-    isClinician: initial.isClinician ?? false,
-    isRendering: initial.isRendering ?? true,
-    isSupervising: initial.isSupervising ?? false,
-  });
+  const [roles, setRoles] = useState<Record<Role, boolean>>(
+    lockedReferring
+      ? { isReferring: true, isClinician: false, isRendering: false, isSupervising: false }
+      : {
+          isReferring: initial.isReferring ?? false,
+          isClinician: initial.isClinician ?? false,
+          isRendering: initial.isRendering ?? true,
+          isSupervising: initial.isSupervising ?? false,
+        }
+  );
+  // A referring provider is a person or a company / group; a company keeps one Name instead of the name parts.
+  const [entity, setEntity] = useState<"INDIVIDUAL" | "ORGANIZATION">(initial.isOrganization ? "ORGANIZATION" : "INDIVIDUAL");
+  const isOrg = roles.isReferring && entity === "ORGANIZATION";
   const [lookupMsg, setLookupMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [looking, startLookup] = useTransition();
 
@@ -118,7 +149,9 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
         if (el && value && (!onlyIfEmpty || !el.value)) el.value = value;
       };
       const parts = m.name.split(/\s+/).map((w) => w.charAt(0) + w.slice(1).toLowerCase());
-      if (parts.length > 1) {
+      if (isOrg) {
+        set("organizationName", parts.join(" "));
+      } else if (parts.length > 1) {
         set("firstName", parts[0]);
         set("lastName", parts[parts.length - 1]);
         if (parts.length > 2) set("middleName", parts.slice(1, -1).join(" "));
@@ -146,14 +179,19 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
         <h2>
           <span>Provider type <span className="req">*</span></span>
         </h2>
-        <p className="muted">Pick every role this person holds — the form shows only the fields those roles need.</p>
+        <p className="muted">
+          {lockedReferring
+            ? "Added from a referral, so this is always a referring physician or source."
+            : "Pick every role this person holds — the form shows only the fields those roles need."}
+        </p>
         <div className="provider-type-grid">
-          {ROLES.map(([key, label]) => (
+          {ROLES.filter(([key]) => !lockedReferring || key === "isReferring").map(([key, label]) => (
             <label key={key} className={`provider-type${roles[key] ? " on" : ""}`}>
               <input
                 type="checkbox"
                 name={key}
                 checked={roles[key]}
+                disabled={lockedReferring}
                 onChange={(e) => setRoles((r) => ({ ...r, [key]: e.target.checked }))}
               />
               <span>
@@ -163,40 +201,71 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
             </label>
           ))}
         </div>
+        {/* A disabled checkbox is not sent with the form; the locked Referring type is sent here instead. */}
+        {lockedReferring && <input type="hidden" name="isReferring" value="on" />}
         {!anyRole && <p className="login-error">Choose at least one provider type.</p>}
+        {roles.isReferring && (
+          <div className="entity-choice" role="radiogroup" aria-label="Referring as">
+            <label className={entity === "INDIVIDUAL" ? "on" : undefined}>
+              <input type="radio" name="entityType" value="INDIVIDUAL" checked={entity === "INDIVIDUAL"} onChange={() => setEntity("INDIVIDUAL")} />
+              <span>
+                <strong>Individual</strong>
+                <small>A physician or other person</small>
+              </span>
+            </label>
+            <label className={entity === "ORGANIZATION" ? "on" : undefined}>
+              <input type="radio" name="entityType" value="ORGANIZATION" checked={entity === "ORGANIZATION"} onChange={() => setEntity("ORGANIZATION")} />
+              <span>
+                <strong>Company / group</strong>
+                <small>Hospital, facility, agency or practice</small>
+              </span>
+            </label>
+          </div>
+        )}
       </section>
 
       <div className="provider-columns">
         <section>
           <h3>Identity</h3>
           <div className="form-grid">
-            <label>
-              Title
-              <select name="title" defaultValue={v("title")}>
-                <option value="">—</option>
-                {Object.entries(providerTitleLabel).map(([k, l]) => (
-                  <option key={k} value={k}>
-                    {l}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Suffix
-              <input name="suffix" defaultValue={v("suffix")} placeholder="Jr., III" />
-            </label>
-            <label>
-              <span>First name <span className="req">*</span></span>
-              <input name="firstName" defaultValue={v("firstName")} required />
-            </label>
-            <label>
-              Middle name
-              <input name="middleName" defaultValue={v("middleName")} />
-            </label>
-            <label style={{ gridColumn: "1 / -1" }}>
-              <span>Last name <span className="req">*</span></span>
-              <input name="lastName" defaultValue={v("lastName")} required />
-            </label>
+            {isOrg ? (
+              <label style={{ gridColumn: "1 / -1" }}>
+                <span>
+                  Name <span className="req">*</span>
+                </span>
+                <input name="organizationName" defaultValue={initial.isOrganization ? v("name") : ""} placeholder="e.g. Riverside General Hospital" required />
+              </label>
+            ) : (
+              <>
+                <label>
+                  Title
+                  <select name="title" defaultValue={v("title")}>
+                    <option value="">—</option>
+                    {Object.entries(providerTitleLabel).map(([k, l]) => (
+                      <option key={k} value={k}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Suffix
+                  <input name="suffix" defaultValue={v("suffix")} placeholder="Jr., III" />
+                </label>
+                <label>
+                  <span>First name <span className="req">*</span></span>
+                  <input name="firstName" defaultValue={v("firstName")} required />
+                </label>
+                <label>
+                  Middle name
+                  <input name="middleName" defaultValue={v("middleName")} />
+                </label>
+                <label style={{ gridColumn: "1 / -1" }}>
+                  <span>Last name <span className="req">*</span></span>
+                  <input name="lastName" defaultValue={v("lastName")} required />
+                </label>
+              </>
+            )}
             <label>
               Credentials
               <select name="credential" defaultValue={v("credential")}>
@@ -212,6 +281,20 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
               Specialty
               <input name="specialty" defaultValue={v("specialty")} placeholder="Wound care, Podiatry" />
             </label>
+            {roles.isReferring && (
+              <label>
+                BD owner
+                <select name="bdOwnerId" defaultValue={v("bdOwnerId")}>
+                  <option value="">Not assigned</option>
+                  {bdOwners.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                {bdOwners.length === 0 && <small className="muted">No one has the Business development role yet (Settings → Users &amp; roles).</small>}
+              </label>
+            )}
             <label className="checkbox-inline" style={{ gridColumn: "1 / -1" }}>
               <input type="checkbox" name="signatureOnFile" defaultChecked={initial.signatureOnFile ?? false} />
               Signature on file
@@ -263,11 +346,11 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
               Address 2
               <input name="addressLine2" defaultValue={v("addressLine2")} />
             </label>
-            <label>
-              City
-              <input name="city" defaultValue={v("city")} />
-            </label>
-            <span className="form-grid" style={{ gap: "0.5rem" }}>
+            <div className="provider-city-row">
+              <label>
+                City
+                <input name="city" defaultValue={v("city")} />
+              </label>
               <label>
                 State
                 <select name="state" defaultValue={v("state")}>
@@ -283,8 +366,10 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
                 ZIP
                 <input name="zip" defaultValue={v("zip")} inputMode="numeric" />
               </label>
-        <AddressValidator fields={{ line1: "addressLine1", line2: "addressLine2", city: "city", state: "state", zip: "zip" }} />
-            </span>
+            </div>
+            <div className="provider-full-row">
+              <AddressValidator fields={{ line1: "addressLine1", line2: "addressLine2", city: "city", state: "state", zip: "zip" }} />
+            </div>
             <label>
               Phone
               <input name="phone" type="tel" defaultValue={v("phone")} />
@@ -328,7 +413,7 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
                   CAQH ID
                   <input name="caqhId" defaultValue={v("caqhId")} />
                 </label>
-                <label>
+                <label style={{ gridColumn: "1 / -1" }}>
                   Supervising physician
                   <select name="supervisingProviderId" defaultValue={v("supervisingProviderId")}>
                     <option value="">—</option>
@@ -339,14 +424,16 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
                     ))}
                   </select>
                 </label>
-                <label className="checkbox-inline">
-                  <input type="checkbox" name="acceptsAssignment" defaultChecked={initial.acceptsAssignment ?? false} />
-                  Accepts assignment
-                </label>
-                <label className="checkbox-inline">
-                  <input type="checkbox" name="requiresSupervision" defaultChecked={initial.requiresSupervision ?? false} />
-                  Requires supervision
-                </label>
+                <div className="provider-full-row provider-checks">
+                  <label className="checkbox-inline">
+                    <input type="checkbox" name="acceptsAssignment" defaultChecked={initial.acceptsAssignment ?? false} />
+                    Accepts assignment
+                  </label>
+                  <label className="checkbox-inline">
+                    <input type="checkbox" name="requiresSupervision" defaultChecked={initial.requiresSupervision ?? false} />
+                    Requires supervision
+                  </label>
+                </div>
               </div>
             </section>
           )}
@@ -389,7 +476,7 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
                     Interface ID
                     <input name="interfaceId" defaultValue={v("interfaceId")} />
                   </label>
-                  <div className="yesno-field">
+                  <div className="yesno-field provider-full-row">
                     E-Prescribe
                     <YesNo name="ePrescribe" defaultChecked={initial.ePrescribe ?? false} />
                   </div>
@@ -407,9 +494,15 @@ export function ProviderForm({ action, lookupNpi, initial = {}, users, superviso
       )}
 
       <div className="form-actions">
-        <a className="btn secondary" href={cancelHref}>
-          Cancel
-        </a>
+        {onCancel ? (
+          <button className="btn secondary" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        ) : (
+          <a className="btn secondary" href={cancelHref}>
+            Cancel
+          </a>
+        )}
         <button className="btn" type="submit" disabled={!anyRole}>
           {submitLabel}
         </button>

@@ -76,7 +76,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     href: "/tasks",
     label: "Task list",
     description: "Tasks the system raised and tasks not tied to a patient; patient messages between teams are on each patient's thread",
-    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CDS", "CODER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER"],
+    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CDS", "CODER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "BD"],
   },
   {
     key: "scheduling",
@@ -204,7 +204,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     href: "/settings/password",
     label: "My password",
     description: "Change your own password",
-    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CDS", "CODER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER"],
+    roles: ["ADMIN", "FRONT_DESK", "BILLER", "CLINICIAN", "CDS", "CODER", "CREDENTIALING", "INTAKE", "VERIFICATION", "SCHEDULER", "BD"],
   },
   {
     key: "users",

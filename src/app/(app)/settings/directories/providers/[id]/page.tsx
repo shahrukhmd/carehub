@@ -15,7 +15,7 @@ export default async function EditProviderPage({ params }: { params: Promise<{ i
   const provider = await prisma.renderingProvider.findFirst({ where: { id, practiceId: user.practiceId } });
   if (!provider) notFound();
 
-  const options = await providerFormOptions(user.practiceId, provider.id, provider.userId);
+  const options = await providerFormOptions(user.practiceId, provider.id, provider.userId, provider.bdOwnerId);
   const names = provider.firstName
     ? { firstName: provider.firstName, middleName: provider.middleName ?? "", lastName: provider.lastName ?? "" }
     : splitDisplayName(provider.name);
@@ -52,6 +52,7 @@ export default async function EditProviderPage({ params }: { params: Promise<{ i
         users={options.users}
         supervisors={options.supervisors}
         groupNames={options.groupNames}
+        bdOwners={options.bdOwners}
         submitLabel="Save changes"
         cancelHref="/settings/directories?section=providers"
       />

@@ -32,6 +32,7 @@ export default async function NewProviderPage({ searchParams }: { searchParams: 
         users={options.users}
         supervisors={options.supervisors}
         groupNames={options.groupNames}
+        bdOwners={options.bdOwners}
         submitLabel="Add provider"
         cancelHref={fromCredentialing ? "/credentialing" : "/settings/directories?section=providers"}
         from={fromCredentialing ? "credentialing" : undefined}

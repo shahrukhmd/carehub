@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { PASSWORD_ERRORS, PASSWORD_MIN } from "@/lib/organization";
 import { changePassword, logout } from "../actions";
+import { AuthFrame } from "@/components/AuthFrame";
 
 
 // A forced password change: after an administrator reset, on first sign-in, or when the password is older
@@ -13,16 +14,8 @@ export default async function ForcedPasswordPage({ searchParams }: { searchParam
   const sp = await searchParams;
 
   return (
-    <div className="login-shell">
-      <div className="login-card">
-        <div className="brand">
-          <span className="brand-mark">CH</span>
-          <div>
-            <strong>CareHub</strong>
-            <p className="muted">Choose a new password</p>
-          </div>
-        </div>
-        <form className="panel stack" action={changePassword}>
+    <AuthFrame title="Choose a new password">
+        <form className="stack" action={changePassword}>
           <p className="muted">Your password was reset or has expired. Set a new one to continue, {user.name.split(" ")[0]}.</p>
           {sp.error && <p className="login-error">{PASSWORD_ERRORS[sp.error] ?? "Could not change the password."}</p>}
           <label>
@@ -46,7 +39,6 @@ export default async function ForcedPasswordPage({ searchParams }: { searchParam
             Sign out
           </button>
         </form>
-      </div>
-    </div>
+    </AuthFrame>
   );
 }

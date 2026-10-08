@@ -201,6 +201,7 @@ export const roleLabel: Record<string, string> = {
   SCHEDULER: "Gateway · Scheduling",
   CDS: "CDS · Documentation review",
   CODER: "Coding",
+  BD: "Business development",
 };
 
 export const credentialingStatusLabel: Record<string, string> = {

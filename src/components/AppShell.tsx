@@ -7,6 +7,7 @@ import { roleLabel } from "@/lib/format";
 import { SidebarNav } from "@/components/SidebarNav";
 import { SectionTabs } from "@/components/SectionTabs";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Popover } from "@/components/Popover";
 import { SystemBanner } from "@/components/SystemBanner";
 import { PatientSearchPanel } from "@/components/PatientSearchPanel";
 import { PATIENT_VIEW_ROLES, canWorkTeam } from "@/lib/gateway";
@@ -108,6 +109,15 @@ function initials(name: string) {
     .join("");
 }
 
+function PinIcon() {
+  return (
+    <svg className="pin" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z" />
+      <circle cx="12" cy="9.5" r="2.5" />
+    </svg>
+  );
+}
+
 export function AppShell({
   children,
   user,
@@ -149,11 +159,18 @@ export function AppShell({
   );
   const sections = menu.flatMap((g) => g.entries.map((e) => e.tabs.map(({ href, label }) => ({ href, label }))));
 
+  const roleName = roleLabel[user.role] ?? user.role;
+  const facilityLabel = (p: Practice) => (p.state ? `${p.name} · ${p.state}` : p.name);
+
   return (
     <div className={`app-shell${navCollapsed ? " nav-collapsed" : ""}`} data-theme={theme}>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">CH</span>
+          <span className="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z" fill="currentColor" />
+            </svg>
+          </span>
           <div className="brand-text">
             <strong>CareHub</strong>
             <p>Integrated EHR &amp; PM</p>
@@ -165,33 +182,80 @@ export function AppShell({
           search={allowed(user, PATIENT_VIEW_ROLES) ? <PatientSearchPanel canAdd={canWorkTeam(user.role, "DATA_ENTRY")} /> : null}
         />
         <div className="sidebar-foot">
+          <div className="sidebar-user">
+            <span className="avatar">{initials(user.name)}</span>
+            <div className="sidebar-user-text">
+              <strong>{user.name}</strong>
+              <span>
+                {user.practice.name} · {roleName}
+              </span>
+            </div>
+            <form action={logout}>
+              <button type="submit" className="sidebar-logout" aria-label="Sign out" title="Sign out">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2M9 12h12M18 9l3 3-3 3" />
+                </svg>
+              </button>
+            </form>
+          </div>
           <p className="demo-note">Demo clinic. Do not store real PHI.</p>
         </div>
       </aside>
       <div className="main">
         <header className="topbar">
           <div className="topbar-left">
-            <div>
-              <p className="clinic-name">{user.practice.name}</p>
-              <p className="clinic-meta">{user.practice.state ? `Facility · ${user.practice.state}` : "Facility"}</p>
-            </div>
+            {user.memberships.length > 1 ? (
+              <Popover
+                className="facility-switch"
+                label="Working facility"
+                trigger={
+                  <span className="facility-pill">
+                    <PinIcon />
+                    <span className="facility-pill-label">Facility</span>
+                    <strong>{facilityLabel(user.practice)}</strong>
+                    <svg className="chev" viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </span>
+                }
+              >
+                <div className="popover-head">
+                  <div>
+                    <strong>Working facility</strong>
+                    <p>You only see data for the facility you pick.</p>
+                  </div>
+                  <button type="button" className="popover-close" data-close aria-label="Close">
+                    ×
+                  </button>
+                </div>
+                <form className="facility-grid" action={switchPractice}>
+                  {user.memberships.map((m) => {
+                    const current = m.practiceId === user.practiceId;
+                    return (
+                      <button key={m.practiceId} type="submit" name="practiceId" value={m.practiceId} className={current ? "current" : undefined} aria-current={current ? "true" : undefined}>
+                        <span>
+                          {current && <span aria-hidden="true">✓ </span>}
+                          {m.practice.name}
+                        </span>
+                        <small>
+                          {m.practice.state ? `${m.practice.state} · ` : ""}
+                          {roleLabel[m.role] ?? m.role}
+                        </small>
+                      </button>
+                    );
+                  })}
+                </form>
+              </Popover>
+            ) : (
+              <span className="facility-pill static" title="Your facility">
+                <PinIcon />
+                <span className="facility-pill-label">Facility</span>
+                <strong>{facilityLabel(user.practice)}</strong>
+              </span>
+            )}
             <SectionTabs sections={sections} />
           </div>
           <div className="topbar-right">
-            {user.memberships.length > 1 && (
-              <form className="practice-switch" action={switchPractice}>
-                <select name="practiceId" defaultValue={user.practiceId} aria-label="Facility">
-                  {user.memberships.map((m) => (
-                    <option key={m.practiceId} value={m.practiceId}>
-                      {m.practice.name}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn secondary" type="submit">
-                  Switch
-                </button>
-              </form>
-            )}
             {user.isMaster && (
               <span className="pill pill-master" title="Consolidated view across all your practices">
                 Master
@@ -205,23 +269,58 @@ export function AppShell({
               ✦ AI {ai ? "on" : "off"}
             </Link>
             <ThemeToggle initial={theme} />
-            <details className="user-menu">
-              <summary aria-label="Account menu">
-                <span className="avatar" title={user.name}>
-                  {initials(user.name)}
+            <Popover
+              className="user-menu"
+              label="Account menu"
+              trigger={
+                <span className="profile-chip">
+                  <span className="avatar" title={user.name}>
+                    {initials(user.name)}
+                  </span>
+                  <span className="profile-chip-text">
+                    <strong>{user.name}</strong>
+                    <small>{roleName}</small>
+                  </span>
                 </span>
-              </summary>
-              <div className="user-menu-pop">
-                <strong>{user.name}</strong>
-                <span className="muted">{roleLabel[user.role] ?? user.role}</span>
-                <hr />
-                {["ADMIN", "CLINICIAN"].includes(user.role) && <Link href="/settings/signature">My signature</Link>}
-                <Link href="/settings">Settings</Link>
-                <form action={logout}>
-                  <button type="submit">Sign out</button>
-                </form>
+              }
+            >
+              <div className="profile-head">
+                <span className="avatar avatar-lg">{initials(user.name)}</span>
+                <div>
+                  <strong>{user.name}</strong>
+                  <span>{roleName}</span>
+                  <span>{user.email}</span>
+                </div>
               </div>
-            </details>
+              <dl className="profile-rows">
+                <dt>Working in</dt>
+                <dd>{user.practice.name}</dd>
+                {user.memberships.length > 1 && (
+                  <>
+                    <dt>Facilities</dt>
+                    <dd>{user.memberships.map((m) => m.practice.name).join(", ")}</dd>
+                  </>
+                )}
+              </dl>
+              <div className="profile-links">
+                {["ADMIN", "CLINICIAN"].includes(user.role) && (
+                  <Link href="/settings/signature" data-close>
+                    My signature
+                  </Link>
+                )}
+                <Link href="/settings/password" data-close>
+                  Change password
+                </Link>
+                <Link href="/settings" data-close>
+                  Settings
+                </Link>
+              </div>
+              <form action={logout}>
+                <button type="submit" className="btn profile-logout">
+                  Log out
+                </button>
+              </form>
+            </Popover>
           </div>
         </header>
         <main className="content">

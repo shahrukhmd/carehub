@@ -11,10 +11,10 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "db:reset": "prisma migrate reset --force",
-    "setup": "prisma migrate dev --name init && tsx prisma/seed.ts",
-    "import:credentialing": "tsx scripts/import-credentialing.ts"
+    "setup": "prisma migrate dev --name init && tsx --env-file-if-exists=.env prisma/seed.ts",
+    "import:credentialing": "tsx --env-file-if-exists=.env scripts/import-credentialing.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

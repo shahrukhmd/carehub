@@ -195,6 +195,7 @@ model Location {
 
 model User {
   textMacros      TextMacro[]
+  referrersOwned  RenderingProvider[] @relation("ReferrerBdOwner")
   reportSubscriptions ReportSubscription[]
   followUpsOwned  ClaimFollowUp[] @relation("FollowUpOwner")
   alertsCreated   PatientAlert[] @relation("AlertCreator")
@@ -642,7 +643,13 @@ model RenderingProvider {
   middleName            String?
   lastName              String?
   suffix                String?
+  // A referring source that is a company or group (hospital, facility, agency) rather than a person: only `name`
+  // is kept, and it is never sent on a claim as the referring provider (box 17 must be a person).
+  isOrganization        Boolean   @default(false)
   isReferring           Boolean   @default(false)
+  // The business development (BD) rep who owns the relationship with this referring physician / source.
+  bdOwnerId             String?
+  bdOwner               User?     @relation("ReferrerBdOwner", fields: [bdOwnerId], references: [id], onDelete: SetNull)
   isClinician           Boolean   @default(false)
   isRendering           Boolean   @default(false)
   isSupervising         Boolean   @default(false)
