@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "cmd /c scripts\\ensure-postgres.cmd",
     "dev": "next dev --turbopack",
     "build": "prisma generate && next build",
     "start": "next start",
