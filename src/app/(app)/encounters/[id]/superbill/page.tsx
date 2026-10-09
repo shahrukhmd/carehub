@@ -90,8 +90,9 @@ export default async function SuperbillPage({
   }
   const cptFavorites: CatalogCode[] = [
     ...practiceCodes.filter((c) => c.type === "CPT").map((c) => ({ code: c.code, description: c.description, category: "Practice fee schedule" })),
-    ...templates.flatMap((t) => t.items.map((i) => ({ code: i.cptCode, description: i.description, category: t.name }))),
+    ...templates.flatMap((t) => t.items.map((i) => ({ code: i.cptCode, description: i.description, category: i.category ? `${t.name} · ${i.category}` : t.name }))),
   ].filter((c, i, arr) => arr.findIndex((x) => x.code === c.code) === i);
+  const favoriteGroups = [...new Set(cptFavorites.map((c) => c.category))].map((g) => [g, cptFavorites.filter((c) => c.category === g)] as const);
   const cq = sp.cq?.trim() ?? "";
   const cptResults = cq ? withLibrary(searchCatalog([...cptFavorites, ...CPT_CATALOG], cq), await searchMasterCodes(cq, ["CPT", "HCPCS"], 100), "Code library").slice(0, 100) : [];
   const letters = encounter.diagnoses.map((_, i) => diagnosisPointerLetter(i));
@@ -493,8 +494,13 @@ export default async function SuperbillPage({
             {cptFavorites.length > 0 && (
               <details className="sb-cat" open={!cq}>
                 <summary>Practice fee schedule &amp; superbill templates ({cptFavorites.length})</summary>
-                {cptFavorites.map((c) => (
-                  <CptRow key={`f-${c.code}`} c={c} />
+                {favoriteGroups.map(([group, codes]) => (
+                  <div key={group}>
+                    {favoriteGroups.length > 1 && <h4 className="sb-sub">{group}</h4>}
+                    {codes.map((c) => (
+                      <CptRow key={`f-${c.code}`} c={c} />
+                    ))}
+                  </div>
                 ))}
               </details>
             )}

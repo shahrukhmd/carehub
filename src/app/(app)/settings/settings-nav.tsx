@@ -111,6 +111,14 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
     roles: ["ADMIN", "CLINICIAN", "CDS"],
   },
   {
+    key: "findings",
+    group: "clinical",
+    href: "/settings/findings",
+    label: "ROS & exam phrases",
+    description: "Normal statements and common findings per body system, inserted with one click on the ROS and exam forms",
+    roles: ["ADMIN"],
+  },
+  {
     key: "clinical-rules",
     group: "clinical",
     href: "/settings/clinical-rules",

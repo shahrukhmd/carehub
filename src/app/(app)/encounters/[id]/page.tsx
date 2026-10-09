@@ -1,7 +1,7 @@
 import { PatientThread } from "@/components/PatientThread";
 import { ChartTools } from "@/components/ChartTools";
 import { EducationPanel } from "./education-panel";
-import { ageFromDob } from "@/lib/format";
+import { ageFromDob, formatTime } from "@/lib/format";
 import { HandoffHeader } from "@/components/HandoffHeader";
 
 import { CodeLookup } from "@/components/CodeLookup";
@@ -75,7 +75,10 @@ import {
   parseFields,
   stepStatus,
   type DocState,
+  fieldsForDocument,
+  changedAnswers,
 } from "@/lib/chart-forms";
+import { ensureFindingLibrary, phrasesForFields, type PhraseLibrary } from "@/lib/findings";
 import { ensureChartSetup, getPracticeSettings, resolveWorkflow, workflowSteps } from "@/lib/chart-setup";
 import { parseSpecialties, specialtyWhere } from "@/lib/specialties";
 import { prisma } from "@/lib/prisma";
@@ -161,12 +164,13 @@ export default async function EncounterPage({
       events: { include: { user: true }, orderBy: { createdAt: "desc" } },
       woundAssessments: true,
       appointment: { include: { location: true } },
-      documents: { include: { template: true, completedBy: true, signedBy: true } },
+      documents: { include: { template: true, completedBy: true, signedBy: true, revisions: { orderBy: { savedAt: "desc" }, take: 20 } } },
       attachments: { include: { uploadedBy: true }, orderBy: { createdAt: "desc" } },
     },
   });
 
   if (!encounter) notFound();
+  const phraseLibrary: PhraseLibrary = await ensureFindingLibrary(encounter.practiceId);
 
   await ensureChartSetup(user.practiceId);
   const packs = parseSpecialties((await getPracticeSettings(user.practiceId)).specialties);
@@ -886,7 +890,7 @@ export default async function EncounterPage({
                     {d.template.name}
                     {d.woundKey ? ` — ${woundTitle(d.woundKey)}` : ""}
                   </h4>
-                  <DocumentSummary fields={parseFields(d.template.fields)} values={parseData(d.data)} score={d.score} />
+                  <DocumentSummary fields={fieldsForDocument(d, d.template)} values={parseData(d.data)} score={d.score} />
                 </div>
               ))}
             </div>
@@ -1077,6 +1081,8 @@ export default async function EncounterPage({
     const doc = encounter.documents.find((d) => d.templateId === t.id && d.woundKey === (woundId ?? ""));
     const values = parseData(doc?.data);
     const locked = !clinicalEditable || Boolean(doc?.signedAt);
+    const outdated = doc && doc.templateVersion !== t.version;
+    const phrases = phrasesForFields(t.key, fields, phraseLibrary);
     const value = woundId ? `${t.key}.${woundId}` : t.key;
     const back = isAll ? "all" : value;
     return (
@@ -1093,7 +1099,14 @@ export default async function EncounterPage({
           )}
           {t.signatureRequired && <span className="gw-tag gw-tag-info">Signature required</span>}
           {t.critical && <span className="gw-tag gw-tag-bad">Critical document</span>}
+          {doc && <span className="muted cn-small">form version {doc.templateVersion}</span>}
         </p>
+        {outdated && (
+          <p className="gw-warn cn-small">
+            These answers were recorded on version {doc.templateVersion} of this form; the form is now version {t.version}. They are shown and printed
+            as they were answered. Saving again records them against the current version.
+          </p>
+        )}
         {fields.length === 0 ? (
           <p className="muted">
             This template has no fields yet.{" "}
@@ -1108,10 +1121,29 @@ export default async function EncounterPage({
                 values={values}
                 idPrefix={value.replace(".", "-")}
                 wounds={encounter.patient.wounds.filter((w) => w.status === "ACTIVE").map((w) => `${w.label} — ${w.location}`)}
+                phrases={phrases?.byField}
+                quickFill={phrases?.kind}
               />
             </fieldset>
             {!locked && <StepSave current={value} />}
           </form>
+        )}
+        {doc && doc.revisions.length > 0 && (
+          <details className="cn-small">
+            <summary className="muted">History · {doc.revisions.length} save{doc.revisions.length === 1 ? "" : "s"}</summary>
+            <ul className="stack" style={{ gap: "0.25rem", marginTop: "0.4rem" }}>
+              {doc.revisions.map((r, i) => {
+                const prev = doc.revisions[i + 1];
+                const changed = prev ? changedAnswers(parseFields(r.fields), parseData(prev.data), parseData(r.data)) : [];
+                return (
+                  <li key={r.id}>
+                    {formatDate(r.savedAt)} {formatTime(r.savedAt)} · {r.savedByName ?? "—"} · {r.status === "COMPLETE" ? "complete" : "draft"} · form v{r.templateVersion}
+                    {prev ? (changed.length ? ` · changed: ${changed.slice(0, 8).join(", ")}${changed.length > 8 ? "…" : ""}` : " · form version only") : " · first save"}
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         )}
         {t.signatureRequired && (
           <div className="vw-doc-sign">

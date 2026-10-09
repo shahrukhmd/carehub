@@ -9,13 +9,21 @@ import {
   type DocValues,
   type FieldDef,
 } from "@/lib/chart-forms";
+import { FindingPicker, QuickFill } from "./FindingPicker";
 
 // Inputs for a designed form. Field inputs are named f_<fieldId>; the surrounding <form> posts them.
 // wounds: the patient's open wounds, offered by "wounds" fields (orders name the wounds they are for).
-export function DocumentFields({ fields, values, idPrefix = "doc", wounds }: { fields: FieldDef[]; values: DocValues; idPrefix?: string; wounds?: string[] }) {
+export function DocumentFields({ fields, values, idPrefix = "doc", wounds, phrases, quickFill }: { fields: FieldDef[]; values: DocValues; idPrefix?: string; wounds?: string[]; phrases?: Record<string, { id: string; text: string; normal: boolean }[]>; quickFill?: "EXAM" | "ROS" }) {
   const score = computeScore(fields, values);
+  const quick = quickFill ?? null;
   return (
-    <div className="df-grid">
+    <div className="df-grid" id={`${idPrefix}-grid`}>
+      {quick && (
+        <div className="df-field cn-inline">
+          <QuickFill scope={`${idPrefix}-grid`} kind={quick} />
+          <span className="muted cn-small">{quick === "EXAM" ? "Fills every empty system with its normal statement; chips under each field insert phrases." : "Ticks every \"denies\" box; chips under Details insert findings."}</span>
+        </div>
+      )}
       {fields.map((f) => {
         const name = `f_${f.id}`;
         const id = `${idPrefix}-${f.id}`;
@@ -56,14 +64,18 @@ export function DocumentFields({ fields, values, idPrefix = "doc", wounds }: { f
               </div>
             );
           }
-          case "textarea":
+          case "textarea": {
+            const ph = phrases?.[f.id];
+            const normal = ph?.find((p) => p.normal)?.text;
             return (
               <label key={f.id} className={cls} htmlFor={id}>
                 {label}
-                <textarea id={id} name={name} defaultValue={one} rows={4} />
+                <textarea id={id} name={name} defaultValue={one} rows={ph ? 3 : 4} data-normal={normal} />
+                {ph && <FindingPicker targetId={id} phrases={ph} />}
                 {help}
               </label>
             );
+          }
           case "number":
             return (
               <label key={f.id} className={cls} htmlFor={id}>

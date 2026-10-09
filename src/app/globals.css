@@ -10019,3 +10019,372 @@ table .btn.ghost {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ROS / exam phrase chips under a textarea */
+.fp-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+.fp-chip {
+  font-size: var(--text-xs);
+  padding: 0.1rem var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--panel-alt);
+  color: var(--ink);
+  cursor: pointer;
+  max-width: 100%;
+}
+.fp-chip:hover {
+  border-color: var(--accent);
+}
+.fp-normal {
+  border-color: var(--ok);
+  color: var(--ok);
+  font-weight: 600;
+}
+.fp-more {
+  color: var(--muted);
+}
+
+.sb-sub {
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+/* ---- Fit fixes: nothing in the frame gets cut off silently ---- */
+/* Sidebar menu: when the screen is shorter than the menu, the list scrolls with a visible thin scrollbar and the
+   items tighten up so the whole menu usually fits without scrolling. */
+.app-shell .sidebar {
+  overflow: hidden;
+}
+.app-shell .sidebar nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+.app-shell .sidebar-foot {
+  flex: none;
+}
+@media (max-height: 900px) {
+  .app-shell .sidebar {
+    padding-top: 14px;
+    gap: 10px;
+  }
+  .app-shell .sidebar nav a,
+  .app-shell .nav-search {
+    min-height: 40px;
+    font-size: 14px;
+  }
+  .app-shell .nav-group {
+    margin: 10px 0 4px 24px;
+  }
+  .app-shell .sidebar-user {
+    padding: 8px 10px;
+  }
+}
+
+/* Top bar: the facility pill stays compact so the page tabs keep their room; the tabs shrink a little on
+   laptop widths and, when they still do not fit, scroll sideways with a fade at the clipped edge instead of
+   being cut off dead. The right-hand controls never shrink. */
+.app-shell .topbar-left {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.app-shell .topbar-right {
+  flex: none;
+}
+.app-shell .facility-switch,
+.app-shell .facility-pill {
+  flex: none;
+}
+.app-shell .facility-pill strong {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell .section-tabs {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  padding-right: 28px;
+}
+.app-shell .section-tabs a {
+  flex: none;
+}
+@media (max-width: 1500px) {
+  .app-shell .facility-pill-label {
+    display: none;
+  }
+  .app-shell .facility-pill strong {
+    max-width: 150px;
+  }
+  .app-shell .section-tabs a {
+    padding: 0 9px;
+    font-size: 13px;
+  }
+  .app-shell .section-tabs {
+    gap: 2px;
+  }
+}
+@media (max-width: 1280px) {
+  .app-shell .facility-pill strong {
+    max-width: 120px;
+  }
+}
+
+/* ---- Compact density: the frame and shared parts fit a laptop screen ---- */
+/* Frame: slimmer sidebar, tighter gutters, a 56 px top bar. Sticky panels follow the bar. */
+.app-shell {
+  grid-template-columns: 236px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
+  --card-radius: 14px;
+  --sticky-top: 80px;
+}
+.app-shell.nav-collapsed {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+.app-shell .sidebar {
+  top: 12px;
+  height: calc(100vh - 24px);
+  padding: 12px 0 10px;
+  gap: 8px;
+}
+.app-shell .brand {
+  padding: 0 16px 0 18px;
+  gap: 8px;
+}
+.app-shell .brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+.app-shell .brand strong {
+  font-size: 16px;
+}
+.app-shell .brand .muted,
+.app-shell .brand span:not(.brand-mark) {
+  font-size: 11px;
+}
+.app-shell .nav-toggle {
+  top: 14px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+}
+.app-shell .sidebar nav {
+  gap: 1px;
+  padding-right: 10px;
+  padding-bottom: 4px;
+}
+.app-shell .sidebar nav a,
+.app-shell .nav-search {
+  min-height: 38px;
+  padding: 0 12px 0 18px;
+  gap: 10px;
+  font-size: 14px;
+}
+.app-shell .nav-icon,
+.app-shell .nav-search svg {
+  width: 20px;
+  height: 20px;
+}
+.app-shell .nav-group {
+  margin: 8px 0 2px 18px;
+  font-size: 11px;
+}
+.app-shell .nav-group:first-of-type {
+  margin-top: 2px;
+}
+.app-shell .sidebar-foot {
+  margin: 6px 10px 0;
+  gap: 6px;
+}
+.app-shell .sidebar-user {
+  padding: 8px 10px;
+  gap: 8px;
+  border-radius: 12px;
+}
+.app-shell .sidebar-user .avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+.app-shell .sidebar-user-text strong {
+  font-size: 13px;
+}
+.app-shell .sidebar-user-text span {
+  font-size: 11px;
+}
+.app-shell .sidebar .demo-note {
+  font-size: 10.5px;
+  margin: 0;
+}
+/* Short screens: the menu still fits without scrolling down to about 600 px of height. */
+@media (max-height: 720px) {
+  .app-shell .sidebar nav a,
+  .app-shell .nav-search {
+    min-height: 34px;
+    font-size: 13.5px;
+  }
+  .app-shell .nav-group {
+    margin: 5px 0 1px 18px;
+  }
+  .app-shell .sidebar {
+    gap: 4px;
+    padding-top: 10px;
+  }
+  .app-shell .sidebar .demo-note {
+    display: none;
+  }
+}
+
+/* Top bar */
+.app-shell .topbar {
+  top: 12px;
+  min-height: 56px;
+  padding: 8px 12px 8px 16px;
+  gap: 12px;
+  box-shadow: var(--card-shadow), 0 -12px 0 0 var(--page);
+}
+.app-shell .topbar-left {
+  gap: 10px;
+}
+.app-shell .topbar-right {
+  gap: 8px;
+}
+.app-shell .facility-pill {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.app-shell .section-tabs a {
+  height: 32px;
+  font-size: 13px;
+  padding: 0 10px;
+}
+.app-shell .ai-chip {
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.app-shell .topbar .avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 12px;
+}
+.app-shell .profile-chip {
+  min-height: 36px;
+}
+@media (max-width: 1023px) {
+  .app-shell {
+    --sticky-top: 12px;
+  }
+}
+
+/* Content: tighter page head, panels, forms, buttons and tables. */
+.app-shell .content {
+  padding: 2px 0 20px;
+}
+.app-shell .page-head {
+  margin-bottom: 10px;
+  gap: 10px;
+}
+.app-shell .page-head h1 {
+  font-size: 20px;
+}
+.app-shell .page-head p.muted {
+  font-size: 12px;
+}
+.app-shell .card,
+.app-shell .stat,
+.app-shell .panel {
+  padding: 14px 16px;
+}
+.app-shell .panel h2 {
+  font-size: 16px;
+}
+.app-shell .panel h3 {
+  font-size: 14px;
+}
+.app-shell form.stack,
+.app-shell .stack {
+  gap: 10px;
+}
+.app-shell .form-grid {
+  gap: 10px 12px;
+}
+.app-shell .two-col,
+.app-shell .grid-2,
+.app-shell .grid-3 {
+  gap: 12px;
+}
+.app-shell .btn,
+.app-shell button.btn,
+.app-shell input[type="submit"] {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 13.5px;
+}
+.app-shell .btn.btn-lg {
+  min-height: 40px;
+  font-size: 14px;
+}
+.app-shell .btn.ghost {
+  padding: 0 10px;
+}
+.app-shell table .btn,
+.app-shell .board .btn,
+.app-shell .btn.gw-mini {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.app-shell :is(.stack, .form-grid) :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"])), select:not([multiple])) {
+  min-height: 38px;
+}
+.app-shell :is(input:where(:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="submit"], [type="button"])), select:not([multiple]), textarea) {
+  padding: 6px 10px;
+  font-size: 13.5px;
+}
+.app-shell label {
+  gap: 4px;
+  font-size: 12.5px;
+}
+.app-shell textarea {
+  min-height: 0;
+}
+.app-shell table {
+  font-size: 13px;
+}
+.app-shell td,
+.app-shell th {
+  padding: 6px 8px;
+}
+.app-shell th {
+  font-size: 11px;
+}
+.app-shell .view-tabs {
+  padding: 3px;
+}
+.app-shell .view-tab {
+  padding: 4px 12px;
+  font-size: 13px;
+}
+.app-shell .cn-head,
+.app-shell .cn-filters {
+  margin-bottom: 6px;
+}

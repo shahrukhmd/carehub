@@ -40,6 +40,7 @@ model Organization {
 }
 
 model Practice {
+  findingPhrases FindingPhrase[]
   interfaceMessages InterfaceMessage[]
   textMacros     TextMacro[]
   educationResources EducationResource[]
@@ -1112,6 +1113,8 @@ model SuperbillTemplateItem {
   description String
   modifiers   String?
   amountCents Int
+  // Superbill grouping (E/M, Procedures, Supplies…); null = listed under the template name.
+  category    String?
   order       Int               @default(0)
 }
 
@@ -1791,6 +1794,9 @@ model EncounterDocument {
   status        String           @default("DRAFT")
   score         Int?
   templateVersion Int            @default(1)
+  // Field definitions at the last save (read back with these when the template has moved on).
+  fieldsSnapshot String?
+  revisions     DocumentRevision[]
   completedById String?
   completedBy   User?            @relation("DocumentCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
   completedAt   DateTime?
@@ -2149,6 +2155,8 @@ model IntakeRequest {
   sessionHash   String?
   // JSON { templateKey: { fieldId: value } }
   answers       String       @default("{}")
+  // JSON { templateKey: { version, fields } } — the form as the patient saw it when answering.
+  formSnapshots String       @default("{}")
   currentStep   Int          @default(0)
   documentId    String?
   kioskLinkId   String?
@@ -3598,4 +3606,41 @@ model InterfaceMessage {
   processedAt DateTime?
 
   @@index([practiceId, status, receivedAt])
+}
+
+// Every save of a visit document, with the field definitions in force at the time, so an answer set can be
+// read back exactly as it was even after the form template changes.
+model DocumentRevision {
+  id              String            @id @default(cuid())
+  documentId      String
+  document        EncounterDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  encounterId     String
+  templateVersion Int               @default(1)
+  fields          String            @default("[]")
+  data            String            @default("{}")
+  status          String            @default("DRAFT")
+  savedById       String?
+  savedByName     String?
+  savedAt         DateTime          @default(now())
+
+  @@index([documentId, savedAt])
+  @@index([encounterId])
+}
+
+// Review-of-systems and exam phrase library: per body system, the normal statement and common findings a
+// provider inserts with one click. Seeded per practice; edited in Settings → ROS & exam phrases.
+model FindingPhrase {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // ROS | EXAM
+  kind       String
+  system     String
+  text       String
+  normal     Boolean  @default(false)
+  sortOrder  Int      @default(0)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([practiceId, kind, system])
 }

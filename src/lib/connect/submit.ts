@@ -129,8 +129,19 @@ export async function finalizeIntakeRequest(requestId: string) {
     where: { id: requestId },
     include: { patient: true, packet: true, practice: { include: { connectSettings: true } }, appointment: true },
   });
-  const templates = await packetTemplates(r.practiceId, r.packet.templateKeys);
+  const current = await packetTemplates(r.practiceId, r.packet.templateKeys);
   const answers = parseAnswers(r.answers);
+  // File the answers against the form the patient actually saw, not a template edited since.
+  let snapshots: Record<string, { version: number; fields: string }> = {};
+  try {
+    snapshots = JSON.parse(r.formSnapshots || "{}");
+  } catch {
+    snapshots = {};
+  }
+  const templates = current.map((t) => {
+    const snap = snapshots[t.key];
+    return snap && snap.version !== t.version && snap.fields ? { ...t, fields: snap.fields, version: snap.version } : t;
+  });
 
   const pdf = await PDFDocument.create();
   pdf.setTitle(`${r.packet.name}`);

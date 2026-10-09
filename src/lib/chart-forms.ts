@@ -309,3 +309,17 @@ export function finalizeGaps(steps: StepInput[], docs: DocState[], builtinDone: 
   }
   return gaps;
 }
+
+// The field definitions a saved document should be read with: the snapshot taken when it was saved whenever
+// the template has changed since, else the template's current fields.
+export function fieldsForDocument(doc: { fieldsSnapshot?: string | null; templateVersion: number } | null | undefined, template: { fields: string; version: number }): FieldDef[] {
+  if (doc && doc.fieldsSnapshot && doc.templateVersion !== template.version) return parseFields(doc.fieldsSnapshot);
+  return parseFields(template.fields);
+}
+
+// Labels of the answers that differ between two saves (for the revision history).
+export function changedAnswers(fields: FieldDef[], before: DocValues, after: DocValues): string[] {
+  const norm = (v: string | string[] | undefined) => (Array.isArray(v) ? v.join("|") : (v ?? ""));
+  const ids = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...ids].filter((id) => norm(before[id]) !== norm(after[id])).map((id) => fields.find((f) => f.id === id)?.label ?? id);
+}

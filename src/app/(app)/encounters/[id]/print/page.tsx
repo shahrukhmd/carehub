@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { PrintButton } from "@/components/PrintButton";
 import { DocumentSummary } from "@/components/DocumentForm";
 import { visitStatusLabel } from "@/lib/visit-workflow";
-import { parseData, parseFields } from "@/lib/chart-forms";
+import { fieldsForDocument, parseData } from "@/lib/chart-forms";
 import { ensureChartSetup } from "@/lib/chart-setup";
 import { calcBmi, formatDate, formatMoney, patientName } from "@/lib/format";
 import { diagnosisPointerLetter, mdmLevelLabel, parsePointerIds, patientStatusLabel } from "@/lib/superbill";
@@ -104,7 +104,7 @@ export default async function EncounterPrintPage({
         {d.woundKey ? ` — ${woundTitle(d.woundKey)}` : ""}
         {d.status === "DRAFT" ? " (draft)" : ""}
       </h3>
-      <DocumentSummary fields={parseFields(d.template.fields)} values={parseData(d.data)} score={d.score} />
+      <DocumentSummary fields={fieldsForDocument(d, d.template)} values={parseData(d.data)} score={d.score} />
       {d.signedAt && (
         <div className="print-docsig">
           {d.signatureImage && (
@@ -514,7 +514,7 @@ export default async function EncounterPrintPage({
             {formatDate(v.date)}
             {d.woundKey ? ` — ${woundTitle(d.woundKey)}` : ""} · {v.provider.name}
           </h3>
-          <DocumentSummary fields={parseFields(d.template.fields)} values={parseData(d.data)} score={d.score} />
+          <DocumentSummary fields={fieldsForDocument(d, d.template)} values={parseData(d.data)} score={d.score} />
         </div>
       ))
     );

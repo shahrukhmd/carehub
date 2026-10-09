@@ -379,6 +379,7 @@ export async function addSuperbillTemplateItem(templateId: string, formData: For
   const description = required(formData, "description");
   const amount = Number(required(formData, "amount"));
   const modifiers = optional(formData, "modifiers");
+  const category = optional(formData, "category")?.slice(0, 40) || null;
 
   const count = await prisma.superbillTemplateItem.count({ where: { templateId: template.id } });
 
@@ -388,11 +389,21 @@ export async function addSuperbillTemplateItem(templateId: string, formData: For
       cptCode,
       description,
       modifiers,
+      category,
       amountCents: Math.round(amount * 100),
       order: count,
     },
   });
 
+  revalidatePath("/settings/directories");
+  revalidatePath("/encounters");
+}
+
+export async function setSuperbillItemCategory(itemId: string, templateId: string, formData: FormData) {
+  const user = await requireUser(rolesFor("billing.templates"));
+  await prisma.superbillTemplate.findFirstOrThrow({ where: { id: templateId, practiceId: user.practiceId } });
+  const category = optional(formData, "category")?.slice(0, 40) || null;
+  await prisma.superbillTemplateItem.updateMany({ where: { id: itemId, templateId }, data: { category } });
   revalidatePath("/settings/directories");
   revalidatePath("/encounters");
 }

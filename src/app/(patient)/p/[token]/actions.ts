@@ -90,6 +90,14 @@ export async function saveStep(token: string, step: number, fd: FormData) {
     }
   }
   answers[t.key] = values;
+  // Remember the form exactly as answered (the designer may change it later).
+  let snapshots: Record<string, { version: number; fields: string }> = {};
+  try {
+    snapshots = JSON.parse(r.formSnapshots || "{}");
+  } catch {
+    snapshots = {};
+  }
+  snapshots[t.key] = { version: t.version, fields: t.fields };
   const missing = fields.filter((f) => f.required && ["text", "textarea", "number", "date", "yesno", "select", "radio", "checkboxes", "checkbox", "consent", "signature", "file"].includes(f.type)).filter((f) => {
     const v = values[f.id];
     return Array.isArray(v) ? v.length === 0 : !v;
@@ -97,7 +105,7 @@ export async function saveStep(token: string, step: number, fd: FormData) {
   const nextStep = missing.length || uploadError ? step : step + 1;
   await prisma.intakeRequest.update({
     where: { id: r.id },
-    data: { answers: JSON.stringify(answers), currentStep: Math.max(r.currentStep, nextStep), status: "IN_PROGRESS" },
+    data: { answers: JSON.stringify(answers), formSnapshots: JSON.stringify(snapshots), currentStep: Math.max(r.currentStep, nextStep), status: "IN_PROGRESS" },
   });
   if (uploadError) redirect(back(token, { s: String(step), error: "upload", msg: uploadError.slice(0, 120) }));
   if (missing.length) redirect(back(token, { s: String(step), error: "missing", msg: missing.map((f) => f.label).join(", ").slice(0, 200) }));

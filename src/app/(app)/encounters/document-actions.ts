@@ -72,19 +72,25 @@ export async function saveDocument(encounterId: string, templateId: string, woun
     const fields = parseFields(template.fields);
     const { values, missing, answered, score } = collectValues(fields, fd);
     const complete = answered && missing.length === 0;
+    const json = JSON.stringify(values);
     const data = {
-      data: JSON.stringify(values),
+      data: json,
       status: complete ? "COMPLETE" : "DRAFT",
       score,
       templateVersion: template.version,
+      fieldsSnapshot: template.fields,
       completedById: complete ? (existing?.completedById ?? user.id) : null,
       completedAt: complete ? (existing?.completedAt ?? new Date()) : null,
     };
-    await prisma.encounterDocument.upsert({
+    const saved = await prisma.encounterDocument.upsert({
       where: { encounterId_templateId_woundKey: { encounterId, templateId, woundKey } },
       update: data,
       create: { encounterId, templateId, woundKey, ...data },
     });
+    // Keep every distinct answer set (with the fields it was answered against) as a revision.
+    if (!existing || existing.data !== json || existing.templateVersion !== template.version) {
+      await prisma.documentRevision.create({ data: { documentId: saved.id, encounterId, templateVersion: template.version, fields: template.fields, data: json, status: data.status, savedById: user.id, savedByName: user.name } });
+    }
     revalidatePath("/encounters");
     if (answered && missing.length) fail(`Saved as draft — still required: ${missing.join(", ")}`);
     return String(fd.get("next") ?? "") || back;

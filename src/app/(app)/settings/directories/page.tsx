@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SettingsNav } from "../settings-nav";
 import { prisma } from "@/lib/prisma";
+import { SUPERBILL_CATEGORIES } from "@/lib/superbill-categories";
 import { requireUser } from "@/lib/auth";
 import { StatusBadge } from "@/components/StatusBadge";
 import { formatMoney, insuranceTypeLabel, providerRoleLabel } from "@/lib/format";
@@ -11,6 +12,7 @@ import {
   createBillingProvider,
   createSuperbillTemplate,
   removeSuperbillTemplateItem,
+  setSuperbillItemCategory,
   savePracticeCode,
   togglePracticeCode,
   toggleBillingProviderActive,
@@ -396,6 +398,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
                     <tr>
                       <th>CPT</th>
                       <th>Description</th>
+                      <th>Category</th>
                       <th>Fee</th>
                       <th></th>
                     </tr>
@@ -408,6 +411,14 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
                           {item.modifiers ? <div className="muted">{item.modifiers}</div> : null}
                         </td>
                         <td>{item.description}</td>
+                        <td>
+                          <form action={setSuperbillItemCategory.bind(null, item.id, t.id)} className="cn-inline">
+                            <input name="category" list="sb-categories" defaultValue={item.category ?? ""} placeholder="—" style={{ width: "9rem" }} aria-label={`${item.cptCode} category`} />
+                            <button className="btn ghost gw-mini" type="submit">
+                              Save
+                            </button>
+                          </form>
+                        </td>
                         <td>{formatMoney(item.amountCents)}</td>
                         <td>
                           <form action={removeSuperbillTemplateItem.bind(null, item.id, t.id)}>
@@ -420,7 +431,7 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
                     ))}
                     {t.items.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="muted">
+                        <td colSpan={5} className="muted">
                           No items yet.
                         </td>
                       </tr>
@@ -445,7 +456,16 @@ export default async function DirectoriesPage({ searchParams }: { searchParams: 
                       Modifiers
                       <input name="modifiers" placeholder="25" />
                     </label>
+                    <label>
+                      Category
+                      <input name="category" list="sb-categories" placeholder="E/M, Procedures, Supplies…" />
+                    </label>
                   </div>
+                  <datalist id="sb-categories">
+                    {SUPERBILL_CATEGORIES.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
                   <button className="btn secondary" type="submit">
                     Add code to template
                   </button>
