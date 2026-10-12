@@ -27,7 +27,7 @@ export const TASK_TEAMS: Record<string, string> = {
   BILLER: "Billing",
   INTAKE: "Intake / data entry",
   VERIFICATION: "Verification",
-  SCHEDULER: "Scheduling",
+  SCHEDULER: "PCC · Patient care",
   CDS: "CDS",
   CODER: "Coding",
   ADMIN: "Administrators",

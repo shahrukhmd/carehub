@@ -3,23 +3,16 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import {
-  GATEWAY_ROLES,
-  OPEN_INTAKE_STAGES,
-  canWorkTeam,
-  gatewayTeamScope,
-  intakeStageLabel,
-  teamLabel,
-  teamStages,
-  type GatewayTeam,
-} from "@/lib/gateway";
-import { BoardTab, RegistryTab, TeamQueueTab, TodayTab, VobLearningTab, type GatewaySearch } from "./gateway/views";
+import { CARE_BOARD, GATEWAY_ROLES, VOB_BOARD, canWorkTeam, gatewayTeamScope, teamLabel, type GatewayTeam } from "@/lib/gateway";
+import { StatusBoard, TeamQueueTab, type GatewaySearch } from "./gateway/views";
 import { allowed } from "@/lib/permissions";
 
-const TEAM_TABS: { key: string; team: GatewayTeam }[] = [
-  { key: "data-entry", team: "DATA_ENTRY" },
-  { key: "verification", team: "VERIFICATION" },
-  { key: "scheduling", team: "SCHEDULING" },
+// The gateway's three views, one per team: data entry (DSS) works its queue as a list; VOB and patient care (PCC)
+// see their cases as a board of statuses.
+const VIEWS: { key: string; team: GatewayTeam; hint: string }[] = [
+  { key: "data-entry", team: "DATA_ENTRY", hint: "New referrals being registered" },
+  { key: "vob", team: "VERIFICATION", hint: "Benefits, authorization and referral" },
+  { key: "care", team: "SCHEDULING", hint: "Scheduling and ongoing care" },
 ];
 
 export default async function PatientGatewayPage({ searchParams }: { searchParams: Promise<GatewaySearch> }) {
@@ -31,41 +24,30 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
     );
 
   const sp = await searchParams;
-  // A team role (data entry, verification, scheduling) sees only its own team: one tab, its own stages, nothing
-  // else — whatever tab the URL asks for. Admins, front desk and clinicians see every team.
+  // A team role (DSS, VOB, PCC) sees only its own card and view, whatever the URL asks for. Admins, front desk and
+  // clinicians see all three.
   const ownTeam = gatewayTeamScope(user.role);
-  const ownTab = ownTeam ? TEAM_TABS.find((t) => t.team === ownTeam)! : null;
-  const defaultTab = ownTab ? ownTab.key : user.role === "CLINICIAN" ? "today" : "board";
-  const tab = ownTab ? ownTab.key : (sp.tab ?? defaultTab);
+  const cards = ownTeam ? VIEWS.filter((v) => v.team === ownTeam) : VIEWS;
+  const view = cards.find((v) => v.key === sp.view) ?? cards[0];
+  // The VOB and Patient care boards open as Kanban; the switcher offers the table grouped by status.
+  const layout = sp.layout === "table" ? "table" : "kanban";
 
-  const counts = await prisma.intakeCase.groupBy({
-    by: ["stage"],
-    where: { practiceId: user.practiceId, ...(ownTeam ? { stage: { in: teamStages[ownTeam] } } : {}) },
-    _count: { _all: true },
-  });
-  const countFor = (stage: string) => counts.find((c) => c.stage === stage)?._count._all ?? 0;
-  const teamCount = (team: GatewayTeam) =>
-    teamStages[team].filter((s) => s !== "SCHEDULED").reduce((n, s) => n + countFor(s), 0);
-
-  const tabs = ownTab
-    ? [{ key: ownTab.key, label: `${teamLabel[ownTab.team]} (${teamCount(ownTab.team)})` }]
-    : [
-        ...TEAM_TABS.map((t) => ({ key: t.key, label: `${teamLabel[t.team]} (${teamCount(t.team)})` })),
-        { key: "board", label: "Pipeline board" },
-        { key: "vob-learning", label: "VOB learning" },
-        { key: "registry", label: "All patients" },
-        { key: "today", label: "Today" },
-      ];
-  // The stage strip: every stage, or only the team's own (numbered as in the full pipeline).
-  const strip = [...OPEN_INTAKE_STAGES, "SCHEDULED"]
-    .map((stage, i) => ({ stage, n: i + 1 }))
-    .filter(({ stage }) => !ownTeam || teamStages[ownTeam].includes(stage));
+  // Each card's count is the team's open work: data entry; VOB review, auth pending and referral; ready to schedule
+  // and scheduled patients not yet discharged.
+  const p = user.practiceId;
+  const [dataEntry, vob, ready, inCare] = await Promise.all([
+    prisma.intakeCase.count({ where: { practiceId: p, stage: "DATA_ENTRY" } }),
+    prisma.intakeCase.count({ where: { practiceId: p, stage: { in: ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"] } } }),
+    prisma.intakeCase.count({ where: { practiceId: p, stage: "SCHEDULING" } }),
+    prisma.intakeCase.count({ where: { practiceId: p, stage: "SCHEDULED", OR: [{ careStatus: null }, { careStatus: { not: "DISCHARGED" } }] } }),
+  ]);
+  const count: Record<string, number> = { "data-entry": dataEntry, vob, care: ready + inCare };
 
   return (
     <>
       <div className="page-head">
         <div>
-          <p className="muted">Pre-scheduling console · Data entry → VOB → Scheduling</p>
+          <p className="muted">Pre-scheduling console · Data entry → VOB → Patient care</p>
           <h1>Patient Gateway</h1>
         </div>
         {canWorkTeam(user.role, "DATA_ENTRY") && (
@@ -77,37 +59,23 @@ export default async function PatientGatewayPage({ searchParams }: { searchParam
         )}
       </div>
 
-      <section className="gw-pipeline" aria-label="Cases by stage">
-        {strip.map(({ stage, n }) => (
-          <Link
-            key={stage}
-            href={ownTab ? `/?tab=${ownTab.key}&stage=${stage}` : `/?tab=registry&stage=${stage}`}
-            className={`gw-pipe-step gw-stage-${stage.toLowerCase()}`}
-          >
-            <span className="gw-pipe-num">{n}</span>
-            <span>{intakeStageLabel[stage]}</span>
-            <strong>{countFor(stage)}</strong>
-          </Link>
-        ))}
-      </section>
-
-      <TeamWaiting user={user} />
-
-      <nav className="view-tabs" style={{ margin: "0.9rem 0", width: "fit-content", flexWrap: "wrap" }}>
-        {tabs.map((t) => (
-          <Link key={t.key} href={`/?tab=${t.key}`} className={`view-tab${t.key === tab ? " active" : ""}`}>
-            {t.label}
+      <nav className="gw-team-cards" aria-label="Gateway views">
+        {cards.map((v) => (
+          <Link key={v.key} href={`/?view=${v.key}${layout === "table" && v.key !== "data-entry" ? "&layout=table" : ""}`} className={`gw-team-card${v.key === view.key ? " active" : ""}`} aria-current={v.key === view.key ? "page" : undefined}>
+            <span>
+              <strong>{teamLabel[v.team]}</strong>
+              <small>{v.hint}</small>
+            </span>
+            <em>{count[v.key]}</em>
           </Link>
         ))}
       </nav>
 
-      {TEAM_TABS.filter((t) => t.key === tab).map((t) => (
-        <TeamQueueTab key={t.key} team={t.team} tabKey={t.key} user={user} sp={sp} />
-      ))}
-      {!ownTeam && tab === "board" && <BoardTab user={user} />}
-      {!ownTeam && tab === "vob-learning" && <VobLearningTab user={user} />}
-      {!ownTeam && tab === "registry" && <RegistryTab user={user} sp={sp} />}
-      {!ownTeam && tab === "today" && <TodayTab user={user} />}
+      <TeamWaiting user={user} />
+
+      {view.key === "data-entry" && <TeamQueueTab team="DATA_ENTRY" tabKey="data-entry" user={user} sp={sp} />}
+      {view.key === "vob" && <StatusBoard user={user} columns={VOB_BOARD} title="VOB board" layout={layout} viewHref="/?view=vob" />}
+      {view.key === "care" && <StatusBoard user={user} columns={CARE_BOARD} title="Patient care board" layout={layout} viewHref="/?view=care" />}
     </>
   );
 }

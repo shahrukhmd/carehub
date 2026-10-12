@@ -1439,6 +1439,7 @@ textarea {
 .gw-stage-scheduling { --gw-tone: var(--accent); }
 .gw-stage-scheduled { --gw-tone: var(--accent-dark); }
 .gw-stage-closed { --gw-tone: var(--muted); }
+.gw-stage-unable_to_see { --gw-tone: #0284c7; }
 
 .gw-stage {
   display: inline-block;

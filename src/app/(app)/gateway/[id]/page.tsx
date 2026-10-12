@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { QuickActions } from "@/components/QuickActions";
+import { CareStatusControl } from "@/components/CareStatusControl";
 import { ReferralSourcePicker } from "@/components/ReferralSourcePicker";
 import { addReferringProvider, lookupReferrerNpi } from "../../settings/directories/actions";
 import { bdOwnerOptions } from "../../settings/directories/providers/provider-form-data";
@@ -24,6 +25,9 @@ import {
   PATIENT_EDIT_ROLES,
   authStatusLabel,
   canSeeGatewayCase,
+  CARE_BOARD,
+  DEFAULT_CARE_STATUS,
+  canActOnStage,
   canWorkTeam,
   careStatusLabel,
   dataEntryGaps,
@@ -34,6 +38,7 @@ import {
   referralStatusLabel,
   schedulingGaps,
   teamForStage,
+  teamStages,
   vobDecisionLabel,
   vobDecisionShort,
   vobDecisionTone,
@@ -48,6 +53,7 @@ import {
   saveReferral,
   saveScheduling,
   saveVerification,
+  setCareStatus,
   takeCase,
 } from "../actions";
 import { NetworkTag, SexMark, Tag, authTone, eligibilityTone } from "../views";
@@ -77,7 +83,7 @@ function Options({ labels }: { labels: Record<string, string> }) {
 const STEPS = [
   { team: "DATA_ENTRY" as const, title: "Data entry", detail: "Documents · eligibility · verification · consents" },
   { team: "VERIFICATION" as const, title: "VOB", detail: "Benefits vs credentialing · auth / referral · decision" },
-  { team: "SCHEDULING" as const, title: "Scheduling", detail: "Signed consents · PCP · appointment" },
+  { team: "SCHEDULING" as const, title: "Patient care", detail: "Appointment · consents · PCP · patient care status" },
 ];
 
 export default async function IntakeCasePage({
@@ -146,6 +152,13 @@ export default async function IntakeCasePage({
   const canTeam2 = canWorkTeam(user.role, "VERIFICATION");
   const canTeam3 = canWorkTeam(user.role, "SCHEDULING");
   const closed = c.stage === "CLOSED";
+  // The case's column on the Patient care board (for the PCC status dropdown).
+  const currentCareColumn =
+    c.stage === "UNABLE_TO_SEE"
+      ? "unable"
+      : c.stage === "SCHEDULING"
+        ? "ready"
+        : (CARE_BOARD.find((col) => col.careStatus === (c.careStatus ?? DEFAULT_CARE_STATUS))?.key ?? "confirmed");
   const t1Gaps = dataEntryGaps(patient, c);
   const t3Gaps = schedulingGaps(c);
 
@@ -230,13 +243,42 @@ export default async function IntakeCasePage({
           <dd>
             {c.vobDecision ? <Tag tone={vobDecisionTone(c.vobDecision)}>{vobDecisionShort[c.vobDecision]}</Tag> : "Not decided"}
             {c.vobDecisionSource === "DIRECT" && <div className="muted">Taken directly by data entry</div>}
+            {teamStages.VERIFICATION.includes(c.stage) && canTeam2 && (
+              <details className="side-unable">
+                <summary>Move to Unable to see</summary>
+                <form action={moveCase.bind(null, c.id, "MARK_UNABLE_TO_SEE")} className="side-status-form">
+                  <input name="note" required placeholder="Reason" aria-label="Why the patient can't be seen" />
+                  <button className="btn secondary btn-danger" type="submit">
+                    Move to Unable to see
+                  </button>
+                </form>
+              </details>
+            )}
           </dd>
-          <dt>Care status</dt>
-          <dd>{c.careStatus ? careStatusLabel[c.careStatus] : "—"}</dd>
+          <dt>Patient care status</dt>
+          <dd>
+            {/* The PCC team moves the patient between the Patient care board's columns here; everyone else reads it. */}
+            {["SCHEDULING", "SCHEDULED", "UNABLE_TO_SEE"].includes(c.stage) && canTeam3 ? (
+              <CareStatusControl
+                action={setCareStatus.bind(null, c.id)}
+                options={CARE_BOARD.map((col) => ({ key: col.key, label: col.label }))}
+                current={currentCareColumn}
+                unableKey="unable"
+              />
+            ) : c.stage === "SCHEDULED" ? (
+              careStatusLabel[c.careStatus ?? DEFAULT_CARE_STATUS]
+            ) : ["SCHEDULING", "UNABLE_TO_SEE"].includes(c.stage) ? (
+              intakeStageLabel[c.stage]
+            ) : closed ? (
+              c.careStatus ? careStatusLabel[c.careStatus] : "—"
+            ) : (
+              <span className="muted">Not with patient care yet</span>
+            )}
+          </dd>
           <dt>Case owner</dt>
           <dd>
             {c.owner?.name ?? "Unassigned"}
-            {currentTeam && canWorkTeam(user.role, currentTeam) && c.ownerId !== user.id && (
+            {canActOnStage(user.role, c.stage) && c.ownerId !== user.id && (
               <form action={takeCase.bind(null, c.id)}>
                 <button className="btn ghost gw-mini" type="submit">
                   Take case
@@ -295,6 +337,25 @@ export default async function IntakeCasePage({
                 </button>
               </form>
             )}
+          </section>
+        )}
+
+        {/* Unable to see: on both the VOB and Patient care boards. VOB can review the patient again; PCC moves a patient
+            approved for service on with the status dropdown above. */}
+        {c.stage === "UNABLE_TO_SEE" && (
+          <section className="panel gw-handoff">
+            <p>
+              <strong>Unable to see:</strong> {c.closedReason ?? "No reason recorded"}
+            </p>
+            <div className="gw-handoff-actions">
+              {canTeam2 && (
+                <form action={moveCase.bind(null, c.id, "BACK_TO_VOB_REVIEW")}>
+                  <button className="btn secondary" type="submit">
+                    Back to VOB review
+                  </button>
+                </form>
+              )}
+            </div>
           </section>
         )}
 
@@ -834,10 +895,10 @@ export default async function IntakeCasePage({
           </div>
         </section>
 
-        {/* ---------------- Team 3 ---------------- */}
+        {/* ---------------- Team 3: patient care (PCC) ---------------- */}
         <section className="panel">
           <div className="gw-section-head">
-            <h2>3 · Scheduling &amp; ongoing status</h2>
+            <h2>3 · Patient care (PCC)</h2>
             <span>
               {schedulingOpen && c.vobDecision && <Tag tone={vobDecisionTone(c.vobDecision)}>{vobDecisionLabel[c.vobDecision]}</Tag>}{" "}
               {c.careStatus && <Tag tone="info">{careStatusLabel[c.careStatus]}</Tag>}
@@ -881,13 +942,7 @@ export default async function IntakeCasePage({
                       <Options labels={referralAppStatusLabel} />
                     </select>
                   </label>
-                  <label>
-                    Patient status
-                    <select name="careStatus" defaultValue={c.careStatus ?? ""}>
-                      <option value="">—</option>
-                      <Options labels={careStatusLabel} />
-                    </select>
-                  </label>
+                  <span />
                   <span />
                   <label className="gw-span-3">
                     Brief for the provider (shown on the day&apos;s schedule)
@@ -901,7 +956,7 @@ export default async function IntakeCasePage({
                 {canTeam3 && !closed && (
                   <div className="form-actions">
                     <button className="btn" type="submit">
-                      Save scheduling
+                      Save patient care
                     </button>
                   </div>
                 )}
@@ -941,7 +996,7 @@ export default async function IntakeCasePage({
               </li>
             ))}
           </ul>
-          {!closed && currentTeam && canWorkTeam(user.role, currentTeam) && (
+          {!closed && canActOnStage(user.role, c.stage) && (
             <details className="gw-inline-form">
               <summary>Close case (not eligible, declined, unable to reach…)</summary>
               <form action={moveCase.bind(null, c.id, "CLOSE")}>

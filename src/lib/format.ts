@@ -198,7 +198,7 @@ export const roleLabel: Record<string, string> = {
   CREDENTIALING: "Credentialing",
   INTAKE: "Gateway · Data entry",
   VERIFICATION: "Gateway · Verification",
-  SCHEDULER: "Gateway · Scheduling",
+  SCHEDULER: "Gateway · PCC (patient care)",
   CDS: "CDS · Documentation review",
   CODER: "Coding",
   BD: "Business development",

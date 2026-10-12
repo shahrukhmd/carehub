@@ -1428,7 +1428,7 @@ model IntakeCase {
   practice              Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   patientId             String
   patient               Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  // DATA_ENTRY | VERIFICATION | AUTH_PENDING | PCC_REFERRAL | SCHEDULING | SCHEDULED | CLOSED
+  // DATA_ENTRY | VERIFICATION | AUTH_PENDING | PCC_REFERRAL | SCHEDULING | SCHEDULED | UNABLE_TO_SEE | CLOSED
   stage                 String    @default("DATA_ENTRY")
   priority              String    @default("NORMAL")
   ownerId               String?
@@ -1518,7 +1518,7 @@ model IntakeCase {
   pcpFax                String?
   referralAppStatus     String    @default("NOT_STARTED")
   scheduledAt           DateTime?
-  // FOLLOW_UP | ACTIVE | INACTIVE | LIMITED
+  // Patient care status once scheduled: CONFIRMED | RESCHEDULED | ACTIVE | ACTIVE_HOSPITALIZED | PENDING_DISCHARGE | DISCHARGED | UNSEEN_HOSPITALIZED
   careStatus            String?
   providerBrief         String?
   closedReason          String?

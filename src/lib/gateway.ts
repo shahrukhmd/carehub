@@ -1,4 +1,5 @@
-// Patient Gateway: the pre-scheduling console shared by the data entry, VOB (verification of benefits) and scheduling teams.
+// Patient Gateway: the pre-scheduling console shared by the data entry (DSS), VOB (verification of benefits) and
+// PCC (patient care) teams.
 import type { IntakeCase } from "@prisma/client";
 import { rolesFor } from "@/lib/permissions";
 
@@ -9,6 +10,8 @@ export const intakeStageLabel: Record<string, string> = {
   PCC_REFERRAL: "Referral with PCC",
   SCHEDULING: "Ready to schedule",
   SCHEDULED: "Scheduled / in care",
+  // Shared by the VOB and PCC boards: the patient can't be taken (VOB denied) or couldn't be seen.
+  UNABLE_TO_SEE: "Unable to see",
   CLOSED: "Closed",
 };
 
@@ -18,15 +21,24 @@ export const OPEN_INTAKE_STAGES = ["DATA_ENTRY", "VERIFICATION", "AUTH_PENDING",
 export type GatewayTeam = "DATA_ENTRY" | "VERIFICATION" | "SCHEDULING";
 
 export const teamLabel: Record<GatewayTeam, string> = {
-  DATA_ENTRY: "Team 1 · Data entry",
-  VERIFICATION: "Team 2 · VOB",
-  SCHEDULING: "Team 3 · Scheduling",
+  DATA_ENTRY: "Data entry",
+  VERIFICATION: "VOB",
+  SCHEDULING: "Patient care",
 };
 
+// The stages each team works (and is answerable for). "Unable to see" belongs to both VOB and PCC.
 export const teamStages: Record<GatewayTeam, string[]> = {
   DATA_ENTRY: ["DATA_ENTRY"],
   VERIFICATION: ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"],
   SCHEDULING: ["SCHEDULING", "SCHEDULED"],
+};
+
+// The stages each team's view shows: its own, plus the shared hand-off columns (VOB sees Ready to schedule, where
+// its cases go next; both VOB and PCC see Unable to see).
+export const teamVisibleStages: Record<GatewayTeam, string[]> = {
+  DATA_ENTRY: ["DATA_ENTRY"],
+  VERIFICATION: ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL", "SCHEDULING", "UNABLE_TO_SEE"],
+  SCHEDULING: ["SCHEDULING", "SCHEDULED", "UNABLE_TO_SEE"],
 };
 
 export function teamForStage(stage: string): GatewayTeam | null {
@@ -35,6 +47,37 @@ export function teamForStage(stage: string): GatewayTeam | null {
   }
   return null;
 }
+
+// The teams that may act on a case at this stage: its owning team, or VOB and PCC both for "Unable to see".
+export function teamsForStage(stage: string): GatewayTeam[] {
+  if (stage === "UNABLE_TO_SEE") return ["VERIFICATION", "SCHEDULING"];
+  const team = teamForStage(stage);
+  return team ? [team] : [];
+}
+
+// The columns of the VOB and Patient care boards. A column is a stage, or (for scheduled patients) a stage and a
+// patient care status. "Ready to schedule" and "Unable to see" appear on both.
+export type BoardColumn = { key: string; label: string; stage: string; careStatus?: string; tone: string };
+
+export const VOB_BOARD: BoardColumn[] = [
+  { key: "vob-review", label: "VOB review", stage: "VERIFICATION", tone: "#2b8fd6" },
+  { key: "auth-pending", label: "Auth pending", stage: "AUTH_PENDING", tone: "#d99a1e" },
+  { key: "referral-pcc", label: "Referral with PCC", stage: "PCC_REFERRAL", tone: "#e07b2c" },
+  { key: "ready", label: "Ready to schedule", stage: "SCHEDULING", tone: "#2bb7b3" },
+  { key: "unable", label: "Unable to see", stage: "UNABLE_TO_SEE", tone: "#38bdf8" },
+];
+
+export const CARE_BOARD: BoardColumn[] = [
+  { key: "ready", label: "Ready to schedule", stage: "SCHEDULING", tone: "#2bb7b3" },
+  { key: "confirmed", label: "Confirmed", stage: "SCHEDULED", careStatus: "CONFIRMED", tone: "#8b5cf6" },
+  { key: "rescheduled", label: "Rescheduled", stage: "SCHEDULED", careStatus: "RESCHEDULED", tone: "#84cc16" },
+  { key: "active", label: "Active", stage: "SCHEDULED", careStatus: "ACTIVE", tone: "#10b981" },
+  { key: "active-hosp", label: "Active Pt Hospitalized", stage: "SCHEDULED", careStatus: "ACTIVE_HOSPITALIZED", tone: "#6b7280" },
+  { key: "pending-discharge", label: "Pending Discharge & Clinical Review", stage: "SCHEDULED", careStatus: "PENDING_DISCHARGE", tone: "#f97316" },
+  { key: "discharged", label: "Discharged", stage: "SCHEDULED", careStatus: "DISCHARGED", tone: "#e11d48" },
+  { key: "unable", label: "Unable to see", stage: "UNABLE_TO_SEE", tone: "#38bdf8" },
+  { key: "unseen-hosp", label: "Unseen Pt Hospitalized", stage: "SCHEDULED", careStatus: "UNSEEN_HOSPITALIZED", tone: "#fb923c" },
+];
 
 // Who can see the gateway, and who can work each team's section.
 export const GATEWAY_ROLES = rolesFor("gateway.work");
@@ -59,9 +102,9 @@ export function defaultTeamForRole(role: string): GatewayTeam | null {
   return null;
 }
 
-// Strict team scope: a gateway team role (data entry, verification, scheduling) sees only its own team — its
-// queue, its stages and the cases currently in them. Admins, front desk and clinicians work across teams and
-// see everything. The screens, the case page and every case action check this.
+// Strict team scope: a gateway team role (data entry / DSS, VOB, PCC) sees only its own team — its view, its
+// stages and the cases currently in them. Admins, front desk and clinicians work across teams and see everything.
+// The screens, the case page and every case action check this.
 export function gatewayTeamScope(role: string): GatewayTeam | null {
   return defaultTeamForRole(role);
 }
@@ -69,7 +112,12 @@ export function gatewayTeamScope(role: string): GatewayTeam | null {
 // The case stages this role may see; null means every stage.
 export function visibleGatewayStages(role: string): string[] | null {
   const team = gatewayTeamScope(role);
-  return team ? teamStages[team] : null;
+  return team ? teamVisibleStages[team] : null;
+}
+
+// May this role act on a case at this stage (owning team, or VOB / PCC for "Unable to see")?
+export function canActOnStage(role: string, stage: string) {
+  return teamsForStage(stage).some((team) => canWorkTeam(role, team));
 }
 
 export function canSeeGatewayCase(role: string, stage: string) {
@@ -124,12 +172,19 @@ export const referralAppStatusLabel: Record<string, string> = {
   NOT_NEEDED: "Not needed",
 };
 
+// Patient care status: where a scheduled patient is with the PCC (patient care) team. A case marked scheduled
+// starts at Confirmed. Discharged makes the patient inactive; every other status keeps them active.
 export const careStatusLabel: Record<string, string> = {
-  FOLLOW_UP: "Follow-up scheduling",
-  ACTIVE: "Active patient",
-  INACTIVE: "Inactive patient",
-  LIMITED: "Limited services only",
+  CONFIRMED: "Confirmed",
+  RESCHEDULED: "Rescheduled",
+  ACTIVE: "Active",
+  ACTIVE_HOSPITALIZED: "Active Pt Hospitalized",
+  PENDING_DISCHARGE: "Pending Discharge & Clinical Review",
+  DISCHARGED: "Discharged",
+  UNSEEN_HOSPITALIZED: "Unseen Pt Hospitalized",
 };
+
+export const DEFAULT_CARE_STATUS = "CONFIRMED";
 
 export const CONSENTS = [
   { key: "consentTreatment", label: "Consent to treat" },

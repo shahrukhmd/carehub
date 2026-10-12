@@ -18,6 +18,9 @@ import {
   GATEWAY_ROLES,
   OPEN_INTAKE_STAGES,
   authStatusLabel,
+  CARE_BOARD,
+  DEFAULT_CARE_STATUS,
+  canActOnStage,
   canSeeGatewayCase,
   canWorkTeam,
   careStatusLabel,
@@ -28,7 +31,6 @@ import {
   referralSourceTypeLabel,
   referralStatusLabel,
   schedulingGaps,
-  teamForStage,
   verificationStage,
   vobDecisionLabel,
   vobDenyReasonLabel,
@@ -145,8 +147,7 @@ export async function takeCase(caseId: string) {
   return guarded(caseId, async () => {
     const user = await requireUser(GATEWAY_ROLES);
     const c = await loadCase(user, caseId);
-    const team = teamForStage(c.stage);
-    if (team) requireTeam(user, team);
+    if (!canActOnStage(user.role, c.stage)) fail("Your role cannot work this team's queue");
     await prisma.intakeCase.update({ where: { id: c.id }, data: { ownerId: user.id } });
     await log(user, c, "ASSIGNED", `Taken by ${user.name}`);
     refresh(c.id, c.patientId);
@@ -390,7 +391,6 @@ export async function handOffCase(caseId: string, route: "VOB" | "DIRECT", fd: F
         vobDecisionSource: "DIRECT",
         vobDecisionNote: suggestion.reasons[0] ?? suggestion.headline,
         approvedForServiceAt: new Date(),
-        ...(scope === "APPROVED_LIMITED" ? { careStatus: "LIMITED" } : {}),
       });
       await prisma.vobDecision.create({
         data: {
@@ -406,7 +406,7 @@ export async function handOffCase(caseId: string, route: "VOB" | "DIRECT", fd: F
           decidedById: user.id,
         },
       });
-      label = `Taken directly to scheduling (${vobDecisionLabel[scope]}) — VOB review skipped: ${suggestion.reasons[0] ?? suggestion.headline}`;
+      label = `Taken directly to patient care (ready to schedule, ${vobDecisionLabel[scope]}) — VOB review skipped: ${suggestion.reasons[0] ?? suggestion.headline}`;
     } else {
       data.stage = "VERIFICATION";
     }
@@ -416,7 +416,7 @@ export async function handOffCase(caseId: string, route: "VOB" | "DIRECT", fd: F
     const note = text(fd, "note");
     await log(user, c, route === "DIRECT" ? "TAKEN_DIRECT" : "SEND_TO_VERIFICATION", [label, consents, note].filter(Boolean).join(" · "));
     refresh(c.id, c.patientId);
-    return [route === "DIRECT" ? "Patient taken directly — the case is now with scheduling" : "Case shared with the VOB team", consents].filter(Boolean).join(". ") + ".";
+    return [route === "DIRECT" ? "Patient taken directly — the case is now Ready to schedule with patient care" : "Case shared with the VOB team", consents].filter(Boolean).join(". ") + ".";
   });
 }
 
@@ -604,16 +604,15 @@ export async function decideVob(caseId: string, fd: FormData) {
       if (c.authRequired === "UNKNOWN") Object.assign(data, { authRequired: "NO", authStatus: "NOT_REQUIRED" });
       if (c.referralRequired === "UNKNOWN") Object.assign(data, { referralRequired: "NO", referralStatus: "NOT_REQUIRED" });
       data.approvedForServiceAt = new Date();
-      if (decision === "APPROVED_LIMITED") data.careStatus = "LIMITED";
-      else if (c.careStatus === "LIMITED") data.careStatus = null;
       nextStage = "SCHEDULING";
     } else if (decision === "DENIED") {
       denyReason = text(fd, "denyReason");
       if (!denyReason || !(denyReason in vobDenyReasonLabel)) fail("Choose why the patient is denied");
       if (denyReason === "OTHER" && !note) fail("Add a note explaining the denial");
       data.vobDenyReason = denyReason;
+      // A denied patient shows as "Unable to see" on the VOB and Patient care boards, with the reason kept.
       data.closedReason = `VOB denied: ${vobDenyReasonLabel[denyReason]}${note ? ` — ${note}` : ""}`;
-      nextStage = "CLOSED";
+      nextStage = "UNABLE_TO_SEE";
     } else {
       const holdAuth = fd.get("holdAuth") === "on";
       const holdReferral = fd.get("holdReferral") === "on";
@@ -670,8 +669,8 @@ export async function decideVob(caseId: string, fd: FormData) {
     return decision === "HOLD"
       ? `On hold — waiting for the ${detail}. The case comes back to VOB when it is decided.`
       : decision === "DENIED"
-        ? "Patient denied and the case closed."
-        : `${vobDecisionLabel[decision]} — the case is now with scheduling.`;
+        ? "Patient denied — the case is now Unable to see."
+        : `${vobDecisionLabel[decision]} — the case is now Ready to schedule with patient care.`;
   });
 }
 
@@ -689,7 +688,9 @@ export async function saveScheduling(caseId: string, fd: FormData) {
       boolean
     >;
     const allSigned = Object.values(consents).every(Boolean);
-    const careStatus = text(fd, "careStatus") ? oneOf(fd, "careStatus", careStatusLabel, "ACTIVE") : null;
+    // The patient care status applies once the patient is scheduled; before that the case is Ready to schedule.
+    const careStatus =
+      c.stage === "SCHEDULED" ? (text(fd, "careStatus") ? oneOf(fd, "careStatus", careStatusLabel, DEFAULT_CARE_STATUS) : (c.careStatus ?? DEFAULT_CARE_STATUS)) : c.careStatus;
 
     await prisma.intakeCase.update({
       where: { id: c.id },
@@ -704,9 +705,9 @@ export async function saveScheduling(caseId: string, fd: FormData) {
         providerBrief: text(fd, "providerBrief"),
       },
     });
-    // The ongoing care status drives whether the patient shows as active in the registry.
+    // The patient care status drives whether the patient shows as active in the registry: Discharged is inactive.
     if (careStatus && careStatus !== c.careStatus) {
-      const patientStatus = careStatus === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+      const patientStatus = careStatus === "DISCHARGED" ? "INACTIVE" : "ACTIVE";
       if (c.patient.status !== patientStatus && ["ACTIVE", "INACTIVE"].includes(c.patient.status)) {
         await prisma.patient.update({ where: { id: c.patientId }, data: { status: patientStatus } });
       }
@@ -718,13 +719,64 @@ export async function saveScheduling(caseId: string, fd: FormData) {
   });
 }
 
+// ---- Patient care status (the PCC team's dropdown on the case) ----
+
+// Moves the case to any column of the Patient care board: Ready to schedule, a patient care status (Confirmed,
+// Rescheduled, Active…) or Unable to see (with a reason). A patient who was not approved for service (e.g. denied by
+// VOB) has to go back through VOB before patient care can take them on.
+export async function setCareStatus(caseId: string, fd: FormData) {
+  return guarded(caseId, async () => {
+    const user = await requireUser(GATEWAY_ROLES);
+    requireTeam(user, "SCHEDULING");
+    const c = await loadCase(user, caseId);
+    if (!["SCHEDULING", "SCHEDULED", "UNABLE_TO_SEE"].includes(c.stage)) fail("The patient is not with patient care yet");
+    const column = CARE_BOARD.find((col) => col.key === text(fd, "status"));
+    if (!column) fail("Choose a status");
+    const note = text(fd, "note");
+
+    const data: Partial<IntakeCase> = { stage: column.stage };
+    if (column.stage === "UNABLE_TO_SEE") {
+      if (!note) fail("Say why the patient can't be seen");
+      data.closedReason = note;
+    } else {
+      if (c.stage === "UNABLE_TO_SEE" && !c.approvedForServiceAt) fail("This patient was not approved for service — VOB has to review the case again first");
+      data.closedReason = null;
+      if (column.stage === "SCHEDULED") {
+        data.careStatus = column.careStatus ?? DEFAULT_CARE_STATUS;
+        // Keeps the date it was first scheduled while the patient moves between care statuses.
+        data.scheduledAt = c.stage === "SCHEDULED" && c.scheduledAt ? c.scheduledAt : new Date();
+      } else {
+        // Back to ready to schedule: no appointment yet.
+        data.careStatus = null;
+        data.scheduledAt = null;
+      }
+    }
+
+    const sameColumn = data.stage === c.stage && (column.stage !== "SCHEDULED" || data.careStatus === (c.careStatus ?? DEFAULT_CARE_STATUS));
+    if (sameColumn && column.stage !== "UNABLE_TO_SEE") return "No change — the patient is already in that status.";
+    await prisma.intakeCase.update({ where: { id: c.id }, data: { ...data, stageChangedAt: new Date() } });
+    // Discharged makes the patient inactive in the registry; any other patient care status makes them active again.
+    if (column.stage === "SCHEDULED" && ["ACTIVE", "INACTIVE"].includes(c.patient.status)) {
+      const patientStatus = data.careStatus === "DISCHARGED" ? "INACTIVE" : "ACTIVE";
+      if (c.patient.status !== patientStatus) await prisma.patient.update({ where: { id: c.patientId }, data: { status: patientStatus } });
+    }
+    await log(user, c, "CARE_STATUS", `Patient care status: ${column.label}${note ? ` — ${note}` : ""}`);
+    refresh(c.id, c.patientId);
+    return `Status changed to ${column.label}.`;
+  });
+}
+
 // ---- Hand-offs between teams ----
 
+// "ANY": whichever team may act on the case's current stage (VOB or PCC both, for Unable to see).
 const MOVES: Record<string, { team: GatewayTeam | "ANY"; from: string[]; label: string }> = {
   RETURN_TO_DATA_ENTRY: { team: "VERIFICATION", from: ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"], label: "Returned to data entry" },
   RETURN_TO_VERIFICATION: { team: "SCHEDULING", from: ["SCHEDULING"], label: "Returned to verification" },
   MARK_SCHEDULED: { team: "SCHEDULING", from: ["SCHEDULING"], label: "Scheduled" },
-  CLOSE: { team: "ANY", from: OPEN_INTAKE_STAGES.concat("SCHEDULED"), label: "Closed" },
+  MARK_UNABLE_TO_SEE: { team: "ANY", from: ["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL", "SCHEDULING", "SCHEDULED"], label: "Unable to see" },
+  BACK_TO_VOB_REVIEW: { team: "VERIFICATION", from: ["UNABLE_TO_SEE"], label: "Back to VOB review" },
+  BACK_TO_READY: { team: "SCHEDULING", from: ["UNABLE_TO_SEE"], label: "Back to ready to schedule" },
+  CLOSE: { team: "ANY", from: OPEN_INTAKE_STAGES.concat("SCHEDULED", "UNABLE_TO_SEE"), label: "Closed" },
   REOPEN: { team: "DATA_ENTRY", from: ["CLOSED"], label: "Reopened" },
 };
 
@@ -735,8 +787,9 @@ export async function moveCase(caseId: string, move: string, fd: FormData) {
     if (!spec) fail("Unknown action");
     const c = await loadCase(user, caseId);
     if (!spec.from.includes(c.stage)) fail(`Cannot do that from ${intakeStageLabel[c.stage]}`);
-    const team = spec.team === "ANY" ? teamForStage(c.stage) : spec.team;
-    if (team) requireTeam(user, team);
+    if (spec.team === "ANY") {
+      if (!canActOnStage(user.role, c.stage)) fail("Your role cannot work this team's queue");
+    } else requireTeam(user, spec.team);
     const note = text(fd, "note");
 
     const data: Partial<IntakeCase> = {};
@@ -760,9 +813,27 @@ export async function moveCase(caseId: string, move: string, fd: FormData) {
         if (!upcoming) fail("Book the appointment on the schedule first");
         nextStage = "SCHEDULED";
         data.scheduledAt = new Date();
-        data.careStatus = c.careStatus ?? "ACTIVE";
+        // A newly scheduled patient starts on the Patient care board as Confirmed.
+        data.careStatus = DEFAULT_CARE_STATUS;
         break;
       }
+      case "MARK_UNABLE_TO_SEE":
+        if (!note) fail("Say why the patient can't be seen");
+        nextStage = "UNABLE_TO_SEE";
+        data.closedReason = note;
+        break;
+      case "BACK_TO_VOB_REVIEW":
+        // VOB looks at the patient again from the start of its review.
+        nextStage = "VERIFICATION";
+        Object.assign(data, { closedReason: null, vobDecision: null, vobDecisionAt: null, vobDecisionById: null, vobDecisionNote: null, vobDecisionSource: null, vobDenyReason: null, approvedForServiceAt: null });
+        break;
+      case "BACK_TO_READY":
+        // Only a patient approved for service (by VOB, or taken directly by data entry) goes straight back to patient
+        // care; a denied one has to be reviewed by VOB again.
+        if (!c.approvedForServiceAt) fail("This patient was not approved for service — VOB has to review the case again first");
+        nextStage = "SCHEDULING";
+        data.closedReason = null;
+        break;
       case "CLOSE":
         if (!note) fail("A reason is required to close the case");
         nextStage = "CLOSED";

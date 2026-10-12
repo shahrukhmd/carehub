@@ -355,7 +355,7 @@ export function DataEntrySteps({
               <div className="gw-actions">
                 {direct && (
                   <button className="btn" type="submit" formAction={handOffCase.bind(null, c.id, "DIRECT")} disabled={!ready}>
-                    Take patient directly → scheduling
+                    Take patient directly → patient care
                   </button>
                 )}
                 <button className={direct ? "btn secondary" : "btn"} type="submit" disabled={!ready}>

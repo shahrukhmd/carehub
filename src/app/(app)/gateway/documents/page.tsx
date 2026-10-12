@@ -52,7 +52,7 @@ export default async function PatientDocumentsPage({
       <div className="page-head" style={{ marginBottom: 0 }}>
         <div>
           <p className="muted">
-            <Link href="/?tab=data-entry">Patient Gateway</Link> · Data entry
+            <Link href="/?view=data-entry">Patient Gateway</Link> · Data entry
           </p>
           <h1>Patient documents</h1>
         </div>

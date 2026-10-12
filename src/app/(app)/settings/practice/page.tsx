@@ -204,8 +204,8 @@ export default async function PracticeSettingsPage({ searchParams }: { searchPar
           </p>
           <div className="st-checks">
             <label className="checkbox-inline">
-              <input type="checkbox" name="bookingRequiresGateway" defaultChecked={s.bookingRequiresGateway} /> Booking needs the Gateway case at scheduling
-              <span className="muted"> — no visit while the case is with data entry, VOB, authorization or PCC referral, or after a VOB denial</span>
+              <input type="checkbox" name="bookingRequiresGateway" defaultChecked={s.bookingRequiresGateway} /> Booking needs the Gateway case at Ready to schedule
+              <span className="muted"> — no visit while the case is with data entry, VOB, authorization or PCC referral, or marked Unable to see</span>
             </label>
             <label className="checkbox-inline">
               <input type="checkbox" name="bookingChecksCredentialing" defaultChecked={s.bookingChecksCredentialing} /> Booking needs an in-network provider

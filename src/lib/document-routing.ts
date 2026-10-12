@@ -54,7 +54,7 @@ export async function autoRouteDocument(documentId: string) {
   }
   let intakeCaseId = doc.intakeCaseId;
   if (patientId && !intakeCaseId) {
-    const open = await prisma.intakeCase.findFirst({ where: { practiceId: doc.practiceId, patientId, stage: { notIn: ["CLOSED", "SCHEDULED"] } }, orderBy: { createdAt: "desc" }, select: { id: true } });
+    const open = await prisma.intakeCase.findFirst({ where: { practiceId: doc.practiceId, patientId, stage: { notIn: ["CLOSED", "SCHEDULED", "UNABLE_TO_SEE"] } }, orderBy: { createdAt: "desc" }, select: { id: true } });
     intakeCaseId = open?.id ?? null;
   }
   if (matched || (intakeCaseId && intakeCaseId !== doc.intakeCaseId)) {

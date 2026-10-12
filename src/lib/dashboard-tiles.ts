@@ -119,7 +119,7 @@ export async function loadTile(key: string, user: User): Promise<TileData | null
       };
     }
     case "gateway": {
-      const cases = await prisma.intakeCase.groupBy({ by: ["stage"], where: { practiceId: p, stage: { notIn: ["CLOSED", "SCHEDULED"] } }, _count: { _all: true } });
+      const cases = await prisma.intakeCase.groupBy({ by: ["stage"], where: { practiceId: p, stage: { notIn: ["CLOSED", "SCHEDULED", "UNABLE_TO_SEE"] } }, _count: { _all: true } });
       const c = (s: string[]) => cases.filter((x) => s.includes(x.stage)).reduce((a, x) => a + x._count._all, 0);
       // A gateway team role sees only its own team's open cases.
       const ownTeam = gatewayTeamScope(user.role);
@@ -132,9 +132,9 @@ export async function loadTile(key: string, user: User): Promise<TileData | null
         sub: "open cases",
         href: "/",
         rows: [
-          { label: "Data entry", value: c(["DATA_ENTRY"]), href: "/?tab=data-entry" },
-          { label: "Verification / auth", value: c(["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"]), href: "/?tab=verification" },
-          { label: "Scheduling", value: c(["SCHEDULING"]), href: "/?tab=scheduling" },
+          { label: "Data entry", value: c(["DATA_ENTRY"]), href: "/?view=data-entry" },
+          { label: "VOB", value: c(["VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"]), href: "/?view=vob" },
+          { label: "Patient care · ready to schedule", value: c(["SCHEDULING"]), href: "/?view=care" },
         ],
       };
     }

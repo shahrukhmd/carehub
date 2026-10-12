@@ -14,7 +14,7 @@ export async function workflowRules(practiceId: string) {
 }
 
 // Stages where the Gateway has not cleared the patient for booking.
-const NOT_READY_STAGES = ["DATA_ENTRY", "VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL"];
+const NOT_READY_STAGES = ["DATA_ENTRY", "VERIFICATION", "AUTH_PENDING", "PCC_REFERRAL", "UNABLE_TO_SEE"];
 
 // Booking: the Gateway case must have reached scheduling and the VOB must not have denied the patient. A patient
 // with no case (walk-in, established patient) is not held.
@@ -22,7 +22,8 @@ export async function bookingBlockedByGateway(practiceId: string, patientId: str
   const c = await prisma.intakeCase.findFirst({ where: { practiceId, patientId }, orderBy: { createdAt: "desc" }, select: { stage: true, vobDecision: true } });
   if (!c) return null;
   if (c.vobDecision === "DENIED") return "The VOB team denied this patient — the case has to be reopened before a visit is booked.";
-  if (NOT_READY_STAGES.includes(c.stage)) return `The Gateway case is still with ${c.stage === "DATA_ENTRY" ? "data entry" : c.stage === "VERIFICATION" ? "the VOB team" : c.stage === "AUTH_PENDING" ? "authorization" : "the PCC referral"} — it has to reach scheduling before a visit is booked.`;
+  if (c.stage === "UNABLE_TO_SEE") return "The Gateway case is marked Unable to see — VOB or patient care has to move it back before a visit is booked.";
+  if (NOT_READY_STAGES.includes(c.stage)) return `The Gateway case is still with ${c.stage === "DATA_ENTRY" ? "data entry" : c.stage === "VERIFICATION" ? "the VOB team" : c.stage === "AUTH_PENDING" ? "authorization" : "the PCC referral"} — it has to reach Ready to schedule before a visit is booked.`;
   return null;
 }
 
