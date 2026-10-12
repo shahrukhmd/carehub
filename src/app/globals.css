@@ -10389,3 +10389,356 @@ table .btn.ghost {
 .app-shell .cn-filters {
   margin-bottom: 6px;
 }
+
+/* ---- Patient Gateway: the three team cards (Data entry, VOB, Patient care) ---- */
+.gw-team-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 4px 0 16px;
+}
+
+.gw-team-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  color: var(--body);
+}
+
+.gw-team-card span {
+  display: grid;
+  gap: 2px;
+}
+
+.gw-team-card strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.gw-team-card small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.gw-team-card em {
+  font-style: normal;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gw-team-card:hover {
+  border-color: var(--primary);
+}
+
+.gw-team-card.active {
+  border: 1.5px solid var(--primary);
+  background: var(--primary-light);
+}
+
+.gw-team-card.active strong,
+.gw-team-card.active em {
+  color: var(--primary);
+}
+
+/* ---- VOB and Patient care boards: view-only columns, each with its status colour along the top ---- */
+.status-board-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+
+.status-board .board-col {
+  flex: 0 0 260px;
+  border-top: 3px solid var(--col-tone, var(--line));
+  align-content: start;
+}
+
+.status-board .board-col header strong {
+  color: var(--col-tone, var(--ink));
+}
+
+.status-board .board-card {
+  display: grid;
+  gap: 3px;
+  color: var(--body);
+  border-left-color: var(--col-tone, var(--primary));
+}
+
+.status-board .board-card:hover {
+  border-color: var(--primary);
+  border-left-color: var(--col-tone, var(--primary));
+  box-shadow: var(--card-shadow);
+}
+
+.status-board .board-card strong {
+  color: var(--ink);
+}
+
+.status-board-empty,
+.status-board-more {
+  margin: 4px 2px;
+  font-size: 12px;
+}
+
+.gw-handoff-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---- Board layout switcher (Kanban | Table) and the table grouped by status ---- */
+.status-board-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+}
+
+.status-board-bar .status-board-hint {
+  margin: 0;
+}
+
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+}
+
+.view-switch a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.view-switch a:hover {
+  color: var(--ink);
+  background: var(--panel-alt);
+}
+
+.view-switch a.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.view-switch svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.status-table {
+  display: grid;
+  gap: 10px;
+}
+
+.status-table-group {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--col-tone, var(--line));
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+.status-table-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.status-table-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.status-table-group > summary strong {
+  color: var(--col-tone, var(--ink));
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.status-table-chev {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.15s ease;
+}
+
+.status-table-group[open] .status-table-chev {
+  transform: rotate(90deg);
+}
+
+.status-table-count {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--panel-alt);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-table-group table {
+  border-top: 1px solid var(--line);
+  /* Same column widths in every group, so the groups line up one under another. */
+  table-layout: fixed;
+  min-width: 900px;
+}
+
+.status-table-group th:nth-child(1) { width: 22%; }
+.status-table-group th:nth-child(2) { width: 15%; }
+.status-table-group th:nth-child(3) { width: 18%; }
+.status-table-group th:nth-child(4) { width: 23%; }
+.status-table-group th:nth-child(5) { width: 8%; }
+.status-table-group th:nth-child(6) { width: 14%; }
+.status-table-group th:nth-child(7) { width: 90px; }
+
+.status-table-group td {
+  overflow-wrap: anywhere;
+}
+
+.status-table-group th:first-child,
+.status-table-group td:first-child {
+  padding-left: 16px;
+}
+
+.status-table-group td {
+  vertical-align: middle;
+  font-size: 13px;
+}
+
+.status-table-patient {
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.status-table-hold {
+  color: var(--error);
+  font-size: 12px;
+}
+
+.status-table-empty,
+.status-table-more {
+  margin: 0;
+  padding: 10px 16px 14px;
+  font-size: 12px;
+}
+
+/* ---- Status controls in the gateway patient card (PCC status dropdown, VOB "Unable to see") ---- */
+.side-status-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.side-status-form select,
+.side-status-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.side-status-form .btn {
+  justify-self: start;
+  padding: 6px 14px;
+}
+
+.side-unable {
+  margin-top: 6px;
+}
+
+.side-unable > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--danger, #b42318);
+}
+
+/* ---- UltraMist tracker ------------------------------------------------------------------------------------- */
+.um-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: #9aa3ad;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+select.um-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  cursor: pointer;
+  padding-right: 22px;
+  background-image: linear-gradient(45deg, transparent 50%, #fff 50%), linear-gradient(135deg, #fff 50%, transparent 50%);
+  background-position: calc(100% - 12px) 55%, calc(100% - 8px) 55%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  min-height: 0;
+  height: auto;
+}
+select.um-pill option {
+  color: var(--text, #1f2933);
+  background: var(--card, #fff);
+}
+.inline-select {
+  margin: 0;
+  display: inline-block;
+}
+.um-table td {
+  vertical-align: top;
+}
+.um-table .um-plan {
+  max-width: 220px;
+  white-space: normal;
+}
+.um-flagged td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger, #d9434f);
+}
+.um-reason {
+  color: var(--danger, #d9434f);
+}
+.um-mist-row td {
+  background: color-mix(in srgb, var(--primary, #006fb5) 7%, transparent);
+}
+.um-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+.um-facts dt {
+  color: var(--muted, #6b7280);
+}
+.um-facts dd {
+  margin: 0;
+}

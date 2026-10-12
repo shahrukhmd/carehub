@@ -62,6 +62,7 @@ const MENU: { group: string; entries: Entry[] }[] = [
           { href: "/encounters", label: "Visit worklist", permission: "chart.worklist" },
           { href: "/orders", label: "Lab & imaging orders", permission: "orders.manage" },
           { href: "/referrals", label: "Referrals", permission: "referrals.work" },
+          { href: "/ultramist", label: "UltraMist tracker", permission: "ultramist.work" },
           { href: "/care-gaps", label: "Care gaps", permission: "caregaps.view" },
         ],
       },

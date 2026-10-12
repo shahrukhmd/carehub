@@ -263,6 +263,7 @@ export function PatientShell({ data, children }: { data: PatientShellData; child
             ...(ageFromDob(p.dob) < 20 && can(role, "chart.view") ? [{ href: `/patients/${p.id}/growth`, label: "Growth" }] : []),
             ...(can(role, "payments.take") ? [{ href: `/patients/${p.id}/claims`, label: "Claims & balance" }] : []),
             ...(can(role, "patients.alerts") ? [{ href: `/patients/${p.id}/alerts`, label: "Alerts" }] : []),
+            ...(can(role, "ultramist.work") ? [{ href: `/ultramist?patientId=${p.id}`, label: "UltraMist" }] : []),
             { href: `/patients/${p.id}/thread`, label: "Communication" },
             { href: `/patients/${p.id}/privacy`, label: "Privacy" },
           ]}

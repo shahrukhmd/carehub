@@ -67,18 +67,11 @@ export const JOBS: JobDef[] = [
     run: async () => summarize(await (await import("@/lib/report-catalog")).runMonitoring()),
   },
   {
-    key: "report-subscriptions",
-    label: "Report subscriptions",
-    cron: "30 6 * * *",
-    about: "Emails each user's scheduled reports as CSV (daily, Mondays, first of the month)",
-    run: async () => summarize(await (await import("@/lib/report-catalog")).runReportSubscriptions()),
-  },
-  {
-    key: "monitoring",
-    label: "Monitoring rules",
-    cron: "0 7 * * *",
-    about: "Runs every practice's data-quality checks and raises findings as tasks and emails",
-    run: async () => summarize(await (await import("@/lib/report-catalog")).runMonitoring()),
+    key: "ultramist",
+    label: "UltraMist tracker",
+    cron: "45 0 * * *",
+    about: "Refreshes UM visit counts from the scheduler, flags courses past the ordered or 18-visit limit, archives closed orders",
+    run: async () => summarize(await (await import("@/lib/ultramist")).runUltramistJob()),
   },
   {
     key: "alerts-expire",

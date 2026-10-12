@@ -111,6 +111,7 @@ model Practice {
   eraFiles          EraFile[]
   recalls           Recall[]
   careRules         CareRule[]
+  ultramistOrders   UltramistOrder[]
   prescriptions     Prescription[]
   immunizations     Immunization[]
   letterTemplates   LetterTemplate[]
@@ -229,6 +230,8 @@ model User {
   debridements     Debridement[]     @relation("DebridementPerformer")
   availability     ProviderAvailability[] @relation("ProviderAvailability")
   reservedTimes    ReservedTime[]         @relation("ProviderReservedTime")
+  ultramistAssigned UltramistOrder[]      @relation("UltramistAssignee")
+  ultramistOrdered  UltramistOrder[]      @relation("UltramistOrderingProvider")
   renderingProvider        RenderingProvider?
   enrollmentAssignments    ProviderEnrollment[] @relation("EnrollmentAssignee")
   enrollmentActivities     EnrollmentActivity[]
@@ -455,6 +458,7 @@ model Patient {
   claims          Claim[]
   recalls         Recall[]
   prescriptions   Prescription[]
+  ultramistOrders UltramistOrder[]
   immunizations   Immunization[]
   careOverrides   CareRuleOverride[]
   payments        PatientPayment[]
@@ -925,6 +929,7 @@ model Encounter {
   billingStatus       String    @default("OPEN")
   claims              Claim[]
   // Chart workflow (template set) used to document this visit; falls back to the practice default.
+  ultramistOrders     UltramistOrder[]
   workflowId          String?
   workflow            ChartWorkflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
   documents           EncounterDocument[]
@@ -3643,4 +3648,55 @@ model FindingPhrase {
   createdAt  DateTime @default(now())
 
   @@index([practiceId, kind, system])
+}
+
+// UltraMist (ultrasonic mist debridement) tracker: one row per UM order. The visit counts and dates are worked out
+// from the patient's MIST appointments (Provider / NP-WCN / Non-Provider Ultrasound Mist Therapy) and stored here as
+// a snapshot; the UM status and prior authorization live on the order itself.
+model UltramistOrder {
+  id                 String    @id @default(cuid())
+  practiceId         String
+  practice           Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  patientId          String
+  patient            Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  // The visit whose Physician Orders document ordered the therapy (null when added by hand).
+  encounterId        String?
+  encounter          Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+  orderingProviderId String?
+  orderingProvider   User?     @relation("UltramistOrderingProvider", fields: [orderingProviderId], references: [id], onDelete: SetNull)
+  orderingPhysician  String?
+  dateOrdered        DateTime?
+  // The order as written (e.g. "2x/week x 3 weeks or 6 treatments") and the number of treatments it allows.
+  seriesPlan         String?
+  plannedVisits      Int?
+  // RCM_CHECK_NEEDED | ELIGIBLE | READY_TO_SCHEDULE | SCHEDULED | HOLD | NOT_ELIGIBLE | ORDER_CANCELLED | DENIED | COMPLETED
+  umStatus           String    @default("RCM_CHECK_NEEDED")
+  // APPROVED | IN_PROCESS | DENIED | NOT_REQUIRED | NOT_COVERED (null = not checked yet)
+  priorAuthStatus    String?
+  priorAuthNumber    String?
+  priorAuthNotes     String?
+  notesOnMedicalNecessity String?
+  notes              String?
+  unableToSeeReason  String?
+  // Snapshot of the counts (refreshed on view and nightly).
+  numberOfMadeUmAppointments Int @default(0)
+  umAppointmentsSinceLastProviderVisit Int @default(0)
+  dateLastSeenByProvider DateTime?
+  dateOfNextUm       DateTime?
+  greaterThan18VisitFlag Boolean @default(false)
+  countsRefreshedAt  DateTime?
+  dateCompleted      DateTime?
+  // PCM / PCC owner of the order.
+  assignedToId       String?
+  assignedTo         User?     @relation("UltramistAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  isArchived         Boolean   @default(false)
+  archivedAt         DateTime?
+  createdById        String?
+  updatedById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([practiceId, umStatus])
+  @@index([patientId])
+  @@index([dateOfNextUm])
 }

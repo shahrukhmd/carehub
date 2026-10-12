@@ -9,6 +9,7 @@ import { logAudit } from "@/lib/audit";
 import { canEditClinical, visitStatusLabel } from "@/lib/visit-workflow";
 import { collectValues, parseFields } from "@/lib/chart-forms";
 import { getUploadedFile, saveUpload } from "@/lib/storage";
+import { applyPhysicianOrdersUltramist } from "@/lib/ultramist";
 
 class DocumentError extends Error {}
 
@@ -90,6 +91,12 @@ export async function saveDocument(encounterId: string, templateId: string, woun
     // Keep every distinct answer set (with the fields it was answered against) as a revision.
     if (!existing || existing.data !== json || existing.templateVersion !== template.version) {
       await prisma.documentRevision.create({ data: { documentId: saved.id, encounterId, templateVersion: template.version, fields: template.fields, data: json, status: data.status, savedById: user.id, savedByName: user.name } });
+    }
+    // A ticked Ultrasound Mist order opens the patient's UltraMist tracker; "Discontinue" closes it.
+    try {
+      await applyPhysicianOrdersUltramist({ encounterId, practiceId: user.practiceId, userId: user.id, templateKey: template.key, fields, values });
+    } catch (err) {
+      console.error("[ultramist] physician orders hook failed", err);
     }
     revalidatePath("/encounters");
     if (answered && missing.length) fail(`Saved as draft — still required: ${missing.join(", ")}`);

@@ -59,6 +59,8 @@ export const PERMISSIONS = {
   "immunizations.record": { label: "Record immunizations", group: "Clinical", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE"] },
   "immunizations.delete": { label: "Remove an immunization record", group: "Clinical", roles: ["ADMIN", "CLINICIAN"] },
   "immunizations.stock": { label: "Vaccine inventory", group: "Clinical", roles: ["ADMIN", "CLINICIAN"] },
+  "ultramist.work": { label: "UltraMist tracker (ultrasound mist debridement orders)", group: "Clinical", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "SCHEDULER", "VERIFICATION", "INTAKE", "BILLER", "CDS"] },
+  "ultramist.edit": { label: "Change UM status, prior auth and owner on UltraMist orders", group: "Clinical", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "SCHEDULER", "VERIFICATION", "BILLER"] },
   "caregaps.view": { label: "Care gaps and clinical reminders", group: "Clinical", roles: ["ADMIN", "CLINICIAN", "FRONT_DESK", "INTAKE", "CDS", "SCHEDULER"] },
   "careplan.edit": { label: "Care plan, goals and care team", group: "Clinical", roles: ["ADMIN", "CLINICIAN", "CDS"] },
   "careplan.team": { label: "Care team members on the care plan", group: "Clinical", roles: ["ADMIN", "CLINICIAN", "CDS", "FRONT_DESK", "INTAKE"] },
