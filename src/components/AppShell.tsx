@@ -258,7 +258,7 @@ export function AppShell({
           </div>
           <div className="topbar-right">
             {user.isMaster && (
-              <span className="pill pill-master" title="Consolidated view across all your practices">
+              <span className="pill pill-master" title="Master login: you can work in any of your practices — switch from the facility pill; each screen shows the selected practice only">
                 Master
               </span>
             )}

@@ -23,7 +23,7 @@ export default async function SelectFacilityPage() {
       title="Which facility are you working in?"
       subtitle={
         user.isMaster
-          ? "Master login: credentialing boards and reports include all your practices. You can switch facility any time from the top bar."
+          ? "Master login: every screen shows the facility you pick here, and only that one. You can switch facility any time from the top bar."
           : "You'll only see that facility's data. You can switch any time from the top bar."
       }
       icon={
