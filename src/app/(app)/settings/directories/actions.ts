@@ -252,11 +252,11 @@ async function writeProvider(user: Actor, providerId: string | null, formData: F
   if (existing?.isRendering && !provider.isRendering) {
     await prisma.providerEnrollment.updateMany({
       where: { renderingProviderId: provider.id, status: { in: OPEN_ENROLLMENT_STATUSES } },
-      data: { status: "NOT_APPLICABLE", statusChangedAt: new Date(), notes: "Closed: provider is no longer a rendering provider" },
+      data: { status: "PANEL_CLOSED", followsPayerId: null, statusChangedAt: new Date(), notes: "Closed: provider is no longer a rendering provider" },
     });
   } else if (existing && !existing.isRendering && provider.isRendering) {
     await prisma.providerEnrollment.updateMany({
-      where: { renderingProviderId: provider.id, status: "NOT_APPLICABLE" },
+      where: { renderingProviderId: provider.id, status: "PANEL_CLOSED", notes: "Closed: provider is no longer a rendering provider" },
       data: { status: "NOT_STARTED", statusChangedAt: new Date(), notes: null },
     });
   }

@@ -10,7 +10,60 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const STALE_FOLLOW_UP_DAYS = 14;
-const STALE_STATUSES = ["DOCUMENTS_PENDING", "SUBMITTED", "PAYER_FOLLOW_UP", "BLOCKED"];
+const STALE_STATUSES = ["DOCUMENTS_PENDING", "SUBMITTED"];
+const FOLLOW_UP_LOOKAHEAD_DAYS = 7;
+
+// "Approved — follows parent payer" mirrors the same provider's enrollment with the parent payer (same group):
+// the status shown everywhere is the parent's, and plain Approved when the parent has no enrollment yet.
+export type FollowSource = { id: string; status: string; followsPayerId: string | null; renderingProviderId: string; groupPayerEnrollment: { payerId: string; billingProviderId: string } };
+export type EffectiveStatus = { status: string; follows: string | null };
+
+export function effectiveStatuses<T extends FollowSource>(rows: T[], payerNames?: Map<string, string>): Map<string, EffectiveStatus> {
+  const index = new Map<string, T>();
+  for (const r of rows) index.set(`${r.renderingProviderId}:${r.groupPayerEnrollment.billingProviderId}:${r.groupPayerEnrollment.payerId}`, r);
+  const out = new Map<string, EffectiveStatus>();
+  for (const r of rows) {
+    if (r.status !== "FOLLOWS_PARENT") { out.set(r.id, { status: r.status, follows: null }); continue; }
+    let cur: T | undefined = r;
+    let status = "APPROVED";
+    for (let hop = 0; hop < 4 && cur; hop++) {
+      if (!cur.followsPayerId) break;
+      const parent = index.get(`${cur.renderingProviderId}:${cur.groupPayerEnrollment.billingProviderId}:${cur.followsPayerId}`);
+      if (!parent) break;
+      if (parent.status !== "FOLLOWS_PARENT") { status = parent.status; break; }
+      cur = parent;
+    }
+    out.set(r.id, { status, follows: r.followsPayerId ? (payerNames?.get(r.followsPayerId) ?? r.followsPayerId) : null });
+  }
+  return out;
+}
+
+// Group lines: a line that follows a parent payer shows the same group's line with that payer (same plan segment
+// first, else any segment).
+export type GroupFollowSource = { id: string; groupStatus: string; followsPayerId: string | null; billingProviderId: string; payerId: string; planSegment: string };
+
+export function effectiveGroupStatuses<T extends GroupFollowSource>(lines: T[], payerNames?: Map<string, string>): Map<string, EffectiveStatus> {
+  const out = new Map<string, EffectiveStatus>();
+  const find = (l: T) => lines.filter((x) => x.billingProviderId === l.billingProviderId && x.payerId === l.followsPayerId).sort((a, b) => (a.planSegment === l.planSegment ? -1 : 0) - (b.planSegment === l.planSegment ? -1 : 0))[0];
+  for (const l of lines) {
+    if (l.groupStatus !== "FOLLOWS_PARENT") { out.set(l.id, { status: l.groupStatus, follows: null }); continue; }
+    let cur: T | undefined = l;
+    let status = "APPROVED";
+    for (let hop = 0; hop < 4 && cur; hop++) {
+      if (!cur.followsPayerId) break;
+      const parent = find(cur);
+      if (!parent) break;
+      if (parent.groupStatus !== "FOLLOWS_PARENT") { status = parent.groupStatus; break; }
+      cur = parent;
+    }
+    out.set(l.id, { status, follows: l.followsPayerId ? (payerNames?.get(l.followsPayerId) ?? l.followsPayerId) : null });
+  }
+  return out;
+}
+
+export function effectiveStatusOf<T extends FollowSource>(row: T, rows: T[], payerNames?: Map<string, string>): EffectiveStatus {
+  return effectiveStatuses(rows, payerNames).get(row.id) ?? { status: row.status, follows: null };
+}
 
 export function daysBetween(from: Date, to: Date) {
   return Math.floor((to.getTime() - from.getTime()) / DAY_MS);
@@ -123,7 +176,7 @@ export async function getCredentialingAlerts(practiceIds: string[]): Promise<Cre
     prisma.providerEnrollment.findMany({
       where: {
         renderingProvider: { practiceId },
-        status: { in: [...OPEN_ENROLLMENT_STATUSES, ...ACTIVE_ENROLLMENT_STATUSES] },
+        OR: [{ status: { in: [...OPEN_ENROLLMENT_STATUSES, ...ACTIVE_ENROLLMENT_STATUSES] } }, { followUpDate: { not: null } }],
       },
       include: {
         renderingProvider: { include: { practice: true } },
@@ -137,6 +190,27 @@ export async function getCredentialingAlerts(practiceIds: string[]): Promise<Cre
   ]);
 
   const alerts: CredentialingAlert[] = [];
+  // A follow-up shows a week ahead of its date, whatever the status (a closed panel is re-checked on its date too).
+  const soon = new Date(endOfToday.getTime() + FOLLOW_UP_LOOKAHEAD_DAYS * DAY_MS);
+
+  const groupLines = await prisma.groupPayerEnrollment.findMany({
+    where: { billingProvider: { practiceId }, followUpDate: { not: null, lte: soon } },
+    include: { payer: true, billingProvider: { include: { practice: true } } },
+  });
+  for (const l of groupLines) {
+    const overdue = daysBetween(l.followUpDate!, now);
+    alerts.push({
+      key: `gfu-${l.id}`,
+      kind: "FOLLOW_UP",
+      severity: overdue > 0 ? "high" : "medium",
+      title: `Group follow-up ${overdue > 0 ? "overdue" : "due"} — ${l.billingProvider.name} / ${l.payer.name}`,
+      detail: overdue > 0 ? `Overdue by ${overdue} day(s)` : overdue === 0 ? "Due today" : `Due in ${-overdue} day(s)`,
+      href: `/credentialing/groups/${l.billingProviderId}`,
+      dueDate: l.followUpDate,
+      assignedToId: null,
+      practiceName: l.billingProvider.practice.name,
+    });
+  }
 
   for (const d of documents) {
     const days = daysBetween(now, d.expiryDate!);
@@ -156,16 +230,15 @@ export async function getCredentialingAlerts(practiceIds: string[]): Promise<Cre
   for (const e of enrollments) {
     const payer = e.groupPayerEnrollment.payer.name;
     const href = `/credentialing/enrollments/${e.id}`;
-    const isOpen = OPEN_ENROLLMENT_STATUSES.includes(e.status);
 
-    if (isOpen && e.followUpDate && e.followUpDate <= endOfToday) {
+    if (e.followUpDate && e.followUpDate <= soon) {
       const overdue = daysBetween(e.followUpDate, now);
       alerts.push({
         key: `fu-${e.id}`,
         kind: "FOLLOW_UP",
         severity: overdue > 0 ? "high" : "medium",
-        title: `Follow-up due — ${e.renderingProvider.name} / ${payer}`,
-        detail: overdue > 0 ? `Overdue by ${overdue} day(s)` : "Due today",
+        title: `Follow-up ${overdue > 0 ? "overdue" : "due"} — ${e.renderingProvider.name} / ${payer}`,
+        detail: overdue > 0 ? `Overdue by ${overdue} day(s)` : overdue === 0 ? "Due today" : `Due in ${-overdue} day(s)`,
         href,
         dueDate: e.followUpDate,
         assignedToId: e.assignedToId,
@@ -327,6 +400,15 @@ export async function networkStatusForPayer(
       },
     },
   });
+  // Rows that follow a parent payer read the parent's status (which may be with another payer line).
+  const followed = providers.flatMap((p) => p.enrollments).filter((e) => e.status === "FOLLOWS_PARENT" && e.followsPayerId);
+  const parents = followed.length
+    ? await prisma.providerEnrollment.findMany({
+        where: { renderingProviderId: { in: [...new Set(followed.map((e) => e.renderingProviderId))] }, groupPayerEnrollment: { payerId: { in: [...new Set(followed.map((e) => e.followsPayerId!))] } } },
+        include: { groupPayerEnrollment: true },
+      })
+    : [];
+  const effective = effectiveStatuses([...providers.flatMap((p) => p.enrollments), ...parents]);
 
   return providers
     .map((p) => {
@@ -341,9 +423,10 @@ export async function networkStatusForPayer(
         enrollmentId: null,
       };
       for (const e of p.enrollments) {
-        const network = ACTIVE_ENROLLMENT_STATUSES.includes(e.status)
+        const shown = effective.get(e.id)?.status ?? e.status;
+        const network = ACTIVE_ENROLLMENT_STATUSES.includes(shown)
           ? "IN_NETWORK"
-          : OPEN_ENROLLMENT_STATUSES.includes(e.status)
+          : OPEN_ENROLLMENT_STATUSES.includes(shown)
             ? "PENDING"
             : "NOT_ENROLLED";
         const better =
@@ -352,7 +435,7 @@ export async function networkStatusForPayer(
           best = {
             ...best,
             network,
-            status: e.status,
+            status: shown,
             planSegment: e.groupPayerEnrollment.planSegment,
             effectiveDate: e.effectiveDate,
             enrollmentId: e.id,

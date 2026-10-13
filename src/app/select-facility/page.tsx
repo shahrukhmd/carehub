@@ -40,16 +40,27 @@ export default async function SelectFacilityPage() {
         </div>
       }
     >
-      <form className="facility-choices" action={chooseFacility}>
-        {user.memberships.map((m) => (
-          <button key={m.practiceId} type="submit" name="practiceId" value={m.practiceId} autoFocus={m.practiceId === user.practiceId}>
-            <strong>{m.practice.name}</strong>
-            <small>
-              {m.practice.state ? `${m.practice.state} · ` : ""}
-              {roleLabel[m.role] ?? m.role}
-            </small>
-          </button>
-        ))}
+      <form className="stack facility-select" action={chooseFacility}>
+        <label>
+          Facility
+          <select name="practiceId" defaultValue={user.practiceId} autoFocus required aria-label="Facility">
+            {[...user.memberships]
+              .sort((a, b) => a.practice.name.localeCompare(b.practice.name))
+              .map((m) => (
+                <option key={m.practiceId} value={m.practiceId}>
+                  {m.practice.name}
+                  {m.practice.state ? ` · ${m.practice.state}` : ""}
+                  {` · ${roleLabel[m.role] ?? m.role}`}
+                </option>
+              ))}
+          </select>
+        </label>
+        <p className="muted facility-count">
+          {user.memberships.length} facilities. With the list open, type the first letters of a name to jump to it.
+        </p>
+        <button className="btn" type="submit">
+          Continue
+        </button>
       </form>
       <form action={logout}>
         <button className="btn ghost auth-signout" type="submit">

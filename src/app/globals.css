@@ -10742,3 +10742,25 @@ select.um-pill option {
 .um-facts dd {
   margin: 0;
 }
+
+/* Facility choice at sign-in: one dropdown instead of a tile per practice */
+.facility-select {
+  max-width: 420px;
+}
+.facility-select select {
+  min-height: 44px;
+  font-size: 15px;
+}
+.facility-count {
+  margin: -4px 0 4px;
+  font-size: 12px;
+}
+
+/* Enrollment grid: a cell that follows its parent payer */
+.scell-follow {
+  font-style: normal;
+  font-size: 9px;
+  margin-left: 1px;
+  vertical-align: super;
+  opacity: 0.8;
+}

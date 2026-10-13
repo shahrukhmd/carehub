@@ -204,14 +204,24 @@ export const roleLabel: Record<string, string> = {
   BD: "Business development",
 };
 
+// Group lines use the same statuses as provider enrollments.
 export const credentialingStatusLabel: Record<string, string> = {
   NOT_STARTED: "Not started",
-  IN_PROCESS: "In process",
+  DOCUMENTS_PENDING: "Additional docs required",
+  SUBMITTED: "Submitted / in process",
   APPROVED: "Approved",
+  FOLLOWS_PARENT: "Approved — follows parent payer",
   PANEL_CLOSED: "Panel closed",
-  FOLLOWS_MEDICARE: "Follows Medicare",
-  REMARKS: "Remarks",
-  DENIED: "Denied",
+};
+
+// Which dates each status asks for (enrollment record, grid cell editor, group line editor).
+export const STATUS_DATE_FIELDS: Record<string, { name: string; label: string }[]> = {
+  NOT_STARTED: [{ name: "followUpDate", label: "Follow-up date" }],
+  DOCUMENTS_PENDING: [{ name: "requestedDate", label: "Requested date" }, { name: "followUpDate", label: "Follow-up date" }],
+  SUBMITTED: [{ name: "submittedDate", label: "Submitted date" }, { name: "followUpDate", label: "Follow-up date" }],
+  APPROVED: [{ name: "effectiveDate", label: "Effective date" }],
+  FOLLOWS_PARENT: [{ name: "effectiveDate", label: "Effective date" }],
+  PANEL_CLOSED: [{ name: "inquiryDate", label: "Inquiry date" }, { name: "followUpDate", label: "Next follow-up date" }],
 };
 
 export const connectionStatusLabel: Record<string, string> = {
@@ -224,18 +234,16 @@ export const connectionStatusLabel: Record<string, string> = {
 // Provider-level enrollment lifecycle (workboard columns follow this order).
 export const enrollmentStatusLabel: Record<string, string> = {
   NOT_STARTED: "Not started",
-  DOCUMENTS_PENDING: "Documents pending",
+  DOCUMENTS_PENDING: "Additional docs required",
   SUBMITTED: "Submitted / in process",
-  PAYER_FOLLOW_UP: "Payer follow-up",
-  BLOCKED: "Blocked",
   APPROVED: "Approved",
-  FOLLOWS_PARENT: "Follows parent payer",
-  REVALIDATION_DUE: "Revalidation / recred due",
-  PANEL_CLOSED: "Panel closed / not offered",
-  DENIED: "Denied",
-  TERMED: "Termed",
-  NOT_APPLICABLE: "Not applicable",
+  FOLLOWS_PARENT: "Approved — follows parent payer",
+  PANEL_CLOSED: "Panel closed",
 };
+
+// Statuses a quick move (board card, bulk line update) may set: following a parent needs the parent payer, which
+// only the enrollment record and the grid cell editor ask for.
+export const QUICK_ENROLLMENT_STATUSES = ["NOT_STARTED", "DOCUMENTS_PENDING", "SUBMITTED", "APPROVED", "PANEL_CLOSED"];
 
 // Plan segments (lines of business) as used in the credentialing master sheet.
 export const planSegmentLabel: Record<string, string> = {
@@ -263,12 +271,13 @@ export const planSegmentFamily: Record<string, "MEDICARE" | "MEDICAID" | "COMMER
 export const statusShortCode: Record<string, string> = {
   NOT_STARTED: "NS",
   DOCUMENTS_PENDING: "DOC",
-  SUBMITTED: "SUB",
-  IN_PROCESS: "IP",
+  SUBMITTED: "INP",
+  IN_PROCESS: "INP",
   PAYER_FOLLOW_UP: "F/U",
   BLOCKED: "BLK",
   APPROVED: "APR",
-  FOLLOWS_PARENT: "FOL",
+  // Shown as approved on the grid; the tooltip names the parent payer.
+  FOLLOWS_PARENT: "APR",
   FOLLOWS_MEDICARE: "FM",
   REVALIDATION_DUE: "REV",
   PANEL_CLOSED: "PC",
@@ -279,16 +288,9 @@ export const statusShortCode: Record<string, string> = {
   NOT_ALLOWED: "NA",
 };
 
-export const OPEN_ENROLLMENT_STATUSES = [
-  "NOT_STARTED",
-  "DOCUMENTS_PENDING",
-  "SUBMITTED",
-  "PAYER_FOLLOW_UP",
-  "BLOCKED",
-  "REVALIDATION_DUE",
-];
+export const OPEN_ENROLLMENT_STATUSES = ["NOT_STARTED", "DOCUMENTS_PENDING", "SUBMITTED"];
 
-export const ACTIVE_ENROLLMENT_STATUSES = ["APPROVED", "FOLLOWS_PARENT", "REVALIDATION_DUE"];
+export const ACTIVE_ENROLLMENT_STATUSES = ["APPROVED", "FOLLOWS_PARENT"];
 
 export const providerCredentialLabel: Record<string, string> = {
   MD: "MD",

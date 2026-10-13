@@ -7,6 +7,7 @@ import { logAudit } from "@/lib/audit";
 import {
   ACTIVE_ENROLLMENT_STATUSES,
   OPEN_ENROLLMENT_STATUSES,
+  QUICK_ENROLLMENT_STATUSES,
   activityChannelLabel,
   connectionStatusLabel,
   credentialingPriorityLabel,
@@ -56,7 +57,7 @@ function refresh(...paths: string[]) {
 async function loadEnrollment(enrollmentId: string, practiceIds: string[]) {
   return prisma.providerEnrollment.findFirstOrThrow({
     where: { id: enrollmentId, renderingProvider: { practiceId: { in: practiceIds } } },
-    include: { renderingProvider: { select: { practiceId: true } } },
+    include: { renderingProvider: { select: { practiceId: true } }, groupPayerEnrollment: { select: { payer: { select: { id: true, name: true, parentPayerId: true } } } } },
   });
 }
 
@@ -67,8 +68,15 @@ async function loadProvider(providerId: string, practiceIds: string[]) {
 async function loadLine(lineId: string, practiceIds: string[]) {
   return prisma.groupPayerEnrollment.findFirstOrThrow({
     where: { id: lineId, billingProvider: { practiceId: { in: practiceIds } } },
-    include: { payer: true },
+    include: { payer: true, billingProvider: { select: { practiceId: true } } },
   });
+}
+
+// Dates the chosen status asks for; a field the form did not send is left as it is.
+function statusDates(formData: FormData) {
+  const out: Record<string, Date | null> = {};
+  for (const f of ["effectiveDate", "submittedDate", "requestedDate", "inquiryDate", "followUpDate"]) if (formData.has(f)) out[f] = optionalDate(formData, f);
+  return out;
 }
 
 // Assignees must work in the practice that owns the record.
@@ -109,6 +117,10 @@ export async function createGroupPayerEnrollment(billingProviderId: string, form
       payerGroupId: optional(formData, "payerGroupId"),
     },
   });
+  if (line.groupStatus === "FOLLOWS_PARENT") {
+    const parent = await prisma.payer.findFirst({ where: { id: payerId }, select: { parentPayerId: true } });
+    await prisma.groupPayerEnrollment.update({ where: { id: line.id }, data: { followsPayerId: parent?.parentPayerId ?? null } });
+  }
   const added = await ensureEnrollmentsForGroupPayer(line.id);
 
   await logAudit(user.practiceId, user.id, "CREATE_GROUP_PAYER_ENROLLMENT", "GroupPayerEnrollment", line.id, `${billingProvider.name}; ${added} provider row(s) opened`);
@@ -117,13 +129,16 @@ export async function createGroupPayerEnrollment(billingProviderId: string, form
 
 export async function updateGroupPayerEnrollment(lineId: string, formData: FormData) {
   const user = await requireUser(CREDENTIALING_ROLES);
-  await loadLine(lineId, credentialingPracticeIds(user));
+  const line = await loadLine(lineId, credentialingPracticeIds(user));
+  const groupStatus = oneOf(formData, "groupStatus", credentialingStatusLabel, "NOT_STARTED");
+  const followsPayerId = await parentPayerFor(groupStatus, optional(formData, "followsPayerId"), { followsPayerId: line.followsPayerId, groupPayerEnrollment: { payer: { parentPayerId: line.payer.parentPayerId } } }, line.billingProvider.practiceId);
 
   await prisma.groupPayerEnrollment.update({
     where: { id: lineId },
     data: {
       planType: optional(formData, "planType"),
-      groupStatus: oneOf(formData, "groupStatus", credentialingStatusLabel, "NOT_STARTED"),
+      groupStatus,
+      followsPayerId,
       ediStatus: oneOf(formData, "ediStatus", connectionStatusLabel, "NOT_STARTED"),
       eftStatus: oneOf(formData, "eftStatus", connectionStatusLabel, "NOT_STARTED"),
       effectiveDate: optionalDate(formData, "effectiveDate"),
@@ -141,11 +156,11 @@ export async function bulkSetLineStatus(lineId: string, formData: FormData) {
   const user = await requireUser(CREDENTIALING_ROLES);
   const line = await loadLine(lineId, credentialingPracticeIds(user));
   const status = oneOf(formData, "status", enrollmentStatusLabel, "");
-  if (!status) throw new Error("Choose a status");
+  if (!status || !QUICK_ENROLLMENT_STATUSES.includes(status)) throw new Error("Choose a status");
   const effectiveDate = optionalDate(formData, "effectiveDate");
 
   const rows = await prisma.providerEnrollment.findMany({
-    where: { groupPayerEnrollmentId: lineId, status: { notIn: ["TERMED", "NOT_APPLICABLE", status] } },
+    where: { groupPayerEnrollmentId: lineId, status: { not: status } },
   });
   const now = new Date();
   for (const row of rows) {
@@ -181,6 +196,7 @@ export async function updateProviderEnrollment(enrollmentId: string, formData: F
   const status = oneOf(formData, "status", enrollmentStatusLabel, current.status);
   const assignedToId = optional(formData, "assignedToId");
   await checkAssignee(assignedToId, practiceId);
+  const followsPayerId = await parentPayerFor(status, optional(formData, "followsPayerId"), current, practiceId);
 
   const letter = getUploadedFile(formData, "approvalLetter");
   const stored = letter ? await saveUpload(letter, practiceId) : null;
@@ -191,11 +207,14 @@ export async function updateProviderEnrollment(enrollmentId: string, formData: F
     where: { id: current.id },
     data: {
       status,
+      followsPayerId,
       priority: oneOf(formData, "priority", credentialingPriorityLabel, current.priority),
       assignedToId,
       state: optional(formData, "state"),
       planTypes: optional(formData, "planTypes"),
       submittedDate: optionalDate(formData, "submittedDate"),
+      requestedDate: optionalDate(formData, "requestedDate"),
+      inquiryDate: optionalDate(formData, "inquiryDate"),
       effectiveDate: optionalDate(formData, "effectiveDate"),
       termDate: optionalDate(formData, "termDate"),
       revalidationDate: optionalDate(formData, "revalidationDate"),
@@ -229,18 +248,29 @@ export async function updateProviderEnrollment(enrollmentId: string, formData: F
   refresh(`/credentialing/enrollments/${current.id}`);
 }
 
+// "Approved — follows parent payer" needs the parent payer: the one chosen, else the line payer's parent on file.
+async function parentPayerFor(status: string, chosen: string | null, current: { followsPayerId: string | null; groupPayerEnrollment: { payer: { parentPayerId: string | null } } }, practiceId: string) {
+  if (status !== "FOLLOWS_PARENT") return null;
+  const id = chosen || current.followsPayerId || current.groupPayerEnrollment.payer.parentPayerId;
+  if (!id) throw new Error("Pick the parent insurance this enrollment follows.");
+  const payer = await prisma.payer.findFirst({ where: { id, practiceId }, select: { id: true } });
+  if (!payer) throw new Error("Parent insurance not found in this practice.");
+  return payer.id;
+}
+
 // Quick move from a workboard card; only touches status so other fields stay intact.
 export async function moveEnrollment(enrollmentId: string, formData: FormData) {
   const user = await requireUser(CREDENTIALING_ROLES);
   const current = await loadEnrollment(enrollmentId, credentialingPracticeIds(user));
   const status = oneOf(formData, "status", enrollmentStatusLabel, current.status);
-  if (status === current.status) return;
+  if (status === current.status || !QUICK_ENROLLMENT_STATUSES.includes(status)) return;
 
   const now = new Date();
   await prisma.providerEnrollment.update({
     where: { id: current.id },
     data: {
       status,
+      followsPayerId: null,
       statusChangedAt: now,
       lastActivityAt: now,
       activities: {
@@ -391,7 +421,8 @@ export async function termProvider(providerId: string, formData: FormData) {
     await prisma.providerEnrollment.update({
       where: { id: row.id },
       data: {
-        status: "TERMED",
+        status: "PANEL_CLOSED",
+        followsPayerId: null,
         termDate,
         statusChangedAt: now,
         lastActivityAt: now,
@@ -446,16 +477,19 @@ export async function updateGridCell(enrollmentId: string, formData: FormData) {
   const user = await requireUser(CREDENTIALING_ROLES);
   const current = await loadEnrollment(enrollmentId, credentialingPracticeIds(user));
   const status = oneOf(formData, "status", enrollmentStatusLabel, current.status);
-  const effectiveDate = optionalDate(formData, "effectiveDate");
+  const followsPayerId = await parentPayerFor(status, optional(formData, "followsPayerId"), current, current.renderingProvider.practiceId);
+  const dates = statusDates(formData);
+  const effectiveDate = "effectiveDate" in dates ? dates.effectiveDate : current.effectiveDate;
   const remarks = optional(formData, "remarks");
   // Older callers don't send the number; leave it alone then.
   const number = formData.has("number") ? (optional(formData, "number")?.slice(0, 60) ?? null) : current.payerProviderId;
 
   const statusChanged = status !== current.status;
+  const followsChanged = followsPayerId !== current.followsPayerId;
   const remarksChanged = remarks !== current.notes;
-  const dateChanged = (effectiveDate?.getTime() ?? null) !== (current.effectiveDate?.getTime() ?? null);
+  const dateChanged = Object.entries(dates).some(([k, v]) => (v?.getTime() ?? null) !== ((current as unknown as Record<string, Date | null>)[k]?.getTime() ?? null));
   const numberChanged = number !== current.payerProviderId;
-  if (!statusChanged && !remarksChanged && !dateChanged && !numberChanged) return;
+  if (!statusChanged && !followsChanged && !remarksChanged && !dateChanged && !numberChanged) return;
 
   const now = new Date();
   const note = [
@@ -471,7 +505,8 @@ export async function updateGridCell(enrollmentId: string, formData: FormData) {
     where: { id: current.id },
     data: {
       status,
-      effectiveDate,
+      followsPayerId,
+      ...dates,
       notes: remarks,
       payerProviderId: number,
       lastActivityAt: now,
@@ -497,6 +532,7 @@ export async function updateGroupCell(lineId: string, field: string, formData: F
   const key = field as keyof typeof GROUP_FIELDS;
   const line = await loadLine(lineId, credentialingPracticeIds(user));
   const status = oneOf(formData, "status", GROUP_FIELDS[key], line[key]);
+  const followsPayerId = key === "groupStatus" ? await parentPayerFor(status, optional(formData, "followsPayerId"), { followsPayerId: line.followsPayerId, groupPayerEnrollment: { payer: { parentPayerId: line.payer.parentPayerId } } }, line.billingProvider.practiceId) : undefined;
 
   await prisma.groupPayerEnrollment.update({
     where: { id: line.id },
@@ -504,7 +540,8 @@ export async function updateGroupCell(lineId: string, field: string, formData: F
       [key]: status,
       ...(key === "groupStatus"
         ? {
-            effectiveDate: optionalDate(formData, "effectiveDate"),
+            followsPayerId,
+            ...statusDates(formData),
             notes: optional(formData, "remarks"),
             ...(formData.has("number") ? { payerGroupId: optional(formData, "number")?.slice(0, 60) ?? null } : {}),
           }

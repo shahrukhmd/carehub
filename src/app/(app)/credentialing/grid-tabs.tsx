@@ -11,6 +11,7 @@ import {
   statusShortCode,
 } from "@/lib/format";
 import { updateGridCell, updateGroupCell } from "./actions";
+import { effectiveGroupStatuses, effectiveStatuses } from "@/lib/credentialing";
 
 type SearchParams = Record<string, string | undefined>;
 
@@ -20,17 +21,29 @@ type LineWithEnrollments = {
   id: string;
   planSegment: string;
   groupStatus: string;
+  followsPayerId: string | null;
   ediStatus: string;
   eftStatus: string;
   effectiveDate: Date | null;
+  submittedDate: Date | null;
+  requestedDate: Date | null;
+  inquiryDate: Date | null;
+  followUpDate: Date | null;
   payerGroupId: string | null;
   notes: string | null;
+  payerId: string;
+  billingProviderId: string;
   payer: { name: string; payerCode: string | null };
   providerEnrollments: {
     id: string;
     renderingProviderId: string;
     status: string;
+    followsPayerId: string | null;
     effectiveDate: Date | null;
+    submittedDate: Date | null;
+    requestedDate: Date | null;
+    inquiryDate: Date | null;
+    followUpDate: Date | null;
     notes: string | null;
     payerProviderId: string | null;
   }[];
@@ -41,6 +54,10 @@ const payerKey = (name: string) => name.trim().toLowerCase();
 
 function toGridRows(lines: LineWithEnrollments[], sp: SearchParams): GridRow[] {
   const q = (sp.q ?? "").trim().toLowerCase();
+  const payerNames = new Map(lines.map((l) => [l.payerId, l.payer.name]));
+  const shown = effectiveStatuses(lines.flatMap((l) => l.providerEnrollments.map((e) => ({ ...e, groupPayerEnrollment: { payerId: l.payerId, billingProviderId: l.billingProviderId } }))), payerNames);
+  const shownGroup = effectiveGroupStatuses(lines, payerNames);
+  const iso = (d: Date | null) => d?.toISOString() ?? null;
   return lines
     .filter((l) => !sp.seg || planSegmentFamily[l.planSegment] === sp.seg)
     .filter((l) => !sp.payer || payerKey(l.payer.name) === sp.payer)
@@ -49,18 +66,23 @@ function toGridRows(lines: LineWithEnrollments[], sp: SearchParams): GridRow[] {
     .map((l) => ({
       lineId: l.id,
       payer: l.payer.name,
+      payerRecordId: l.payerId,
       segment: planSegmentLabel[l.planSegment] ?? l.planSegment,
       payerId: l.payer.payerCode,
-      groupStatus: l.groupStatus,
+      groupStatus: shownGroup.get(l.id)?.status ?? l.groupStatus,
+      groupRawStatus: l.groupStatus,
+      groupFollows: shownGroup.get(l.id)?.follows ?? null,
+      groupFollowsPayerId: l.followsPayerId,
       ediStatus: l.ediStatus,
       eftStatus: l.eftStatus,
-      groupEffectiveDate: l.effectiveDate?.toISOString() ?? null,
+      groupEffectiveDate: iso(l.effectiveDate),
+      groupDates: { submittedDate: iso(l.submittedDate), requestedDate: iso(l.requestedDate), inquiryDate: iso(l.inquiryDate), followUpDate: iso(l.followUpDate) },
       groupNumber: l.payerGroupId,
       groupRemarks: l.notes,
       cells: Object.fromEntries(
         l.providerEnrollments.map((e) => [
           e.renderingProviderId,
-          { id: e.id, status: e.status, effectiveDate: e.effectiveDate?.toISOString() ?? null, remarks: e.notes, payerProviderId: e.payerProviderId },
+          { id: e.id, status: shown.get(e.id)?.status ?? e.status, rawStatus: e.status, follows: shown.get(e.id)?.follows ?? null, followsPayerId: e.followsPayerId, effectiveDate: iso(e.effectiveDate), dates: { submittedDate: iso(e.submittedDate), requestedDate: iso(e.requestedDate), inquiryDate: iso(e.inquiryDate), followUpDate: iso(e.followUpDate) }, remarks: e.notes, payerProviderId: e.payerProviderId },
         ])
       ),
     }));
@@ -69,13 +91,10 @@ function toGridRows(lines: LineWithEnrollments[], sp: SearchParams): GridRow[] {
 function GridLegend() {
   const items = [
     ["APPROVED", "ok"],
-    ["FOLLOWS_PARENT", "ok"],
     ["SUBMITTED", "warn"],
-    ["PAYER_FOLLOW_UP", "warn"],
-    ["BLOCKED", "bad"],
+    ["DOCUMENTS_PENDING", "warn"],
     ["PANEL_CLOSED", "bad"],
     ["NOT_STARTED", "empty"],
-    ["TERMED", "mute"],
   ] as const;
   return (
     <div className="sgrid-legend">
@@ -86,12 +105,18 @@ function GridLegend() {
         </span>
       ))}
       <span>
+        <span className="scell tone-ok">
+          APR<i className="scell-follow">↗</i>
+        </span>
+        Follows parent payer (shows the parent&apos;s status)
+      </span>
+      <span>
         <span className="scell tone-empty">
           ·<i className="scell-dot" />
         </span>
         Has remarks
       </span>
-      <span>FM = group follows Medicare</span>
+      <span>Group, EDI and EFT columns use the same codes</span>
     </div>
   );
 }
@@ -229,10 +254,10 @@ export async function GridTab({ practiceIds, sp, multi }: { practiceIds: string[
         const cells = g.payerEnrollments
           .filter((l) => lineIds.has(l.id))
           .flatMap((l) => l.providerEnrollments)
-          .filter((e) => colIds.has(e.renderingProviderId) && e.status !== "NOT_APPLICABLE");
+          .filter((e) => colIds.has(e.renderingProviderId));
         const approved = cells.filter((e) => ACTIVE_ENROLLMENT_STATUSES.includes(e.status)).length;
         const open = cells.filter((e) => OPEN_ENROLLMENT_STATUSES.includes(e.status)).length;
-        const groupApproved = rows.filter((r) => ["APPROVED", "FOLLOWS_MEDICARE"].includes(r.groupStatus)).length;
+        const groupApproved = rows.filter((r) => ACTIVE_ENROLLMENT_STATUSES.includes(r.groupStatus)).length;
         const only = cols.length === 1 ? cols[0] : null;
         return (
           <details key={g.id} className="panel grid-section" open={sections.length === 1 || !multi || i === 0}>
@@ -267,6 +292,7 @@ export async function GridTab({ practiceIds, sp, multi }: { practiceIds: string[
             <div style={{ marginTop: "0.6rem" }}>
               <StatusGrid
                 rows={rows}
+                payerOptions={[...new Map(g.payerEnrollments.map((l) => [l.payerId, l.payer.name])).entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))}
                 providers={cols.map((p) => ({ id: p.id, name: p.name, credential: p.credential }))}
                 updateCell={updateGridCell}
                 updateGroup={updateGroupCell}

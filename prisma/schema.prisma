@@ -535,6 +535,8 @@ model Insurance {
 }
 
 model Payer {
+  followedByEnrollments ProviderEnrollment[] @relation("EnrollmentFollowsPayer")
+  followedByGroupLines  GroupPayerEnrollment[] @relation("GroupFollowsPayer")
   ruleSets     PayerRuleSet[]
   id           String      @id @default(cuid())
   practiceId   String
@@ -620,9 +622,18 @@ model GroupPayerEnrollment {
   planSegment       String          @default("COMMERCIAL")
   planType          String?
   groupStatus       String          @default("NOT_STARTED")
+  // "Approved — follows parent payer": the payer whose group line this one mirrors.
+  followsPayerId    String?
+  followsPayer      Payer?          @relation("GroupFollowsPayer", fields: [followsPayerId], references: [id], onDelete: SetNull)
   ediStatus         String          @default("NOT_STARTED")
   eftStatus         String          @default("NOT_STARTED")
+  // Dates by status: effective (approved), submitted + follow-up (submitted), requested + follow-up (docs required),
+  // inquiry + next follow-up (panel closed).
   effectiveDate     DateTime?
+  submittedDate     DateTime?
+  requestedDate     DateTime?
+  inquiryDate       DateTime?
+  followUpDate      DateTime?
   payerGroupId      String?
   notes             String?
   createdAt         DateTime        @default(now())
@@ -717,11 +728,17 @@ model ProviderEnrollment {
   assignedToId           String?
   assignedTo             User?                @relation("EnrollmentAssignee", fields: [assignedToId], references: [id])
   submittedDate          DateTime?
+  // Dates by status: requested (docs required) and inquiry (panel closed) sit beside submitted / effective / follow-up.
+  requestedDate          DateTime?
+  inquiryDate            DateTime?
   effectiveDate          DateTime?
   termDate               DateTime?
   revalidationDate       DateTime?
   followUpDate           DateTime?
   payerProviderId        String?
+  // "Approved — follows parent payer": the payer whose enrollment status this one mirrors.
+  followsPayerId         String?
+  followsPayer           Payer?               @relation("EnrollmentFollowsPayer", fields: [followsPayerId], references: [id], onDelete: SetNull)
   blockingReason         String?
   nextAction             String?
   approvalLetterPath     String?

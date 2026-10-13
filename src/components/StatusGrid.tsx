@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
+  STATUS_DATE_FIELDS,
   connectionStatusLabel,
   credentialingStatusLabel,
   enrollmentStatusLabel,
@@ -10,8 +11,13 @@ import {
 
 export type GridCell = {
   id: string;
+  // The status shown (a follower shows its parent payer's); rawStatus is what is stored.
   status: string;
+  rawStatus?: string;
+  follows?: string | null;
+  followsPayerId?: string | null;
   effectiveDate: string | null;
+  dates?: Record<string, string | null>;
   remarks: string | null;
   payerProviderId: string | null;
 };
@@ -19,12 +25,17 @@ export type GridCell = {
 export type GridRow = {
   lineId: string;
   payer: string;
+  payerRecordId?: string;
   segment: string;
   payerId: string | null;
   groupStatus: string;
+  groupRawStatus?: string;
+  groupFollows?: string | null;
+  groupFollowsPayerId?: string | null;
   ediStatus: string;
   eftStatus: string;
   groupEffectiveDate: string | null;
+  groupDates?: Record<string, string | null>;
   // The number the payer assigned to the group for this line.
   groupNumber: string | null;
   groupRemarks: string | null;
@@ -44,6 +55,8 @@ type Props = {
   providers: GridProvider[];
   updateCell: (enrollmentId: string, formData: FormData) => Promise<void>;
   updateGroup: (lineId: string, field: string, formData: FormData) => Promise<void>;
+  // Payers a cell may follow (same group); shown when "follows parent payer" is picked.
+  payerOptions?: { id: string; name: string }[];
   enrollmentBasePath?: string;
   // Provider column headings link to the provider's own file when set.
   providerBasePath?: string;
@@ -83,7 +96,7 @@ function shortName(name: string) {
   return parts.length > 1 ? `${parts[parts.length - 1]}, ${parts[0][0]}.` : name;
 }
 
-export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmentBasePath, providerBasePath }: Props) {
+export function StatusGrid({ rows, providers, updateCell, updateGroup, payerOptions = [], enrollmentBasePath, providerBasePath }: Props) {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [showDates, setShowDates] = useState(true);
   const [openOnly, setOpenOnly] = useState(false);
@@ -108,7 +121,7 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
   const visible = useMemo(() => {
     if (!openOnly) return rows;
     return rows.filter((r) =>
-      Object.values(r.cells).some((c) => !["APPROVED", "FOLLOWS_PARENT", "TERMED", "NOT_APPLICABLE"].includes(c.status))
+      Object.values(r.cells).some((c) => !["APPROVED", "FOLLOWS_PARENT", "PANEL_CLOSED"].includes(c.status))
     );
   }, [rows, openOnly]);
 
@@ -142,7 +155,14 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
         ? credentialingStatusLabel
         : connectionStatusLabel;
   const currentStatus =
-    editing?.kind === "cell" ? editing.cell.status : editing ? editing.row[editing.field] : "";
+    editing?.kind === "cell" ? (editing.cell.rawStatus ?? editing.cell.status) : editing?.field === "groupStatus" ? (editing.row.groupRawStatus ?? editing.row.groupStatus) : editing ? editing.row[editing.field] : "";
+  const dateValue = (name: string) => {
+    if (!editing) return "";
+    const v = editing.kind === "cell" ? (name === "effectiveDate" ? editing.cell.effectiveDate : editing.cell.dates?.[name]) : name === "effectiveDate" ? editing.row.groupEffectiveDate : editing.row.groupDates?.[name];
+    return v?.slice(0, 10) ?? "";
+  };
+  const [pickedStatus, setPickedStatus] = useState<string>("");
+  useEffect(() => setPickedStatus(currentStatus), [currentStatus]);
 
   // Keep the popover on screen: open below the cell, or above it near the bottom edge.
   const popoverStyle = editing
@@ -224,10 +244,11 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
                       <button
                         type="button"
                         className={`scell tone-${TONES[r[field]] ?? "info"}`}
-                        title={`${field === "groupStatus" ? credentialingStatusLabel[r[field]] : connectionStatusLabel[r[field]]}${field === "groupStatus" && r.groupNumber ? ` · group # ${r.groupNumber}` : ""}${field === "groupStatus" && r.groupRemarks ? ` — ${r.groupRemarks}` : ""}`}
+                        title={`${field === "groupStatus" ? (credentialingStatusLabel[r[field]] ?? r[field]) : connectionStatusLabel[r[field]]}${field === "groupStatus" && r.groupRawStatus === "FOLLOWS_PARENT" ? ` · follows ${r.groupFollows ?? "parent payer"}` : ""}${field === "groupStatus" && r.groupNumber ? ` · group # ${r.groupNumber}` : ""}${field === "groupStatus" && r.groupRemarks ? ` — ${r.groupRemarks}` : ""}`}
                         onClick={(e) => open(e, { kind: "group", row: r, field })}
                       >
                         {statusShortCode[r[field]] ?? r[field]}
+                        {field === "groupStatus" && r.groupRawStatus === "FOLLOWS_PARENT" && <i className="scell-follow">↗</i>}
                         {field === "groupStatus" && r.groupEffectiveDate && <small>{shortDate(r.groupEffectiveDate)}</small>}
                         {field === "groupStatus" && r.groupRemarks && <i className="scell-dot" />}
                       </button>
@@ -241,10 +262,11 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
                         <button
                           type="button"
                           className={`scell tone-${TONES[c.status] ?? "info"}`}
-                          title={`${p.name} · ${r.payer} ${r.segment}: ${enrollmentStatusLabel[c.status]}${c.payerProviderId ? ` · provider # ${c.payerProviderId}` : ""}${c.effectiveDate ? ` (eff. ${new Date(c.effectiveDate).toLocaleDateString("en-US", { timeZone: "UTC" })})` : ""}${c.remarks ? ` — ${c.remarks}` : ""}`}
+                          title={`${p.name} · ${r.payer} ${r.segment}: ${enrollmentStatusLabel[c.status] ?? c.status}${c.rawStatus === "FOLLOWS_PARENT" ? ` · follows ${c.follows ?? "parent payer"}` : ""}${c.payerProviderId ? ` · provider # ${c.payerProviderId}` : ""}${c.effectiveDate ? ` (eff. ${new Date(c.effectiveDate).toLocaleDateString("en-US", { timeZone: "UTC" })})` : ""}${c.remarks ? ` — ${c.remarks}` : ""}`}
                           onClick={(e) => open(e, { kind: "cell", row: r, provider: p, cell: c })}
                         >
                           {statusShortCode[c.status] ?? c.status}
+                          {c.rawStatus === "FOLLOWS_PARENT" && <i className="scell-follow">↗</i>}
                           {c.effectiveDate && <small>{shortDate(c.effectiveDate)}</small>}
                           {c.remarks && <i className="scell-dot" />}
                         </button>
@@ -290,7 +312,7 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
           </span>
           <label>
             Status
-            <select name="status" defaultValue={currentStatus} autoFocus>
+            <select name="status" defaultValue={currentStatus} autoFocus onChange={(e) => setPickedStatus(e.target.value)}>
               {Object.entries(statusOptions).map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -298,18 +320,29 @@ export function StatusGrid({ rows, providers, updateCell, updateGroup, enrollmen
               ))}
             </select>
           </label>
+          {(editing.kind === "cell" || editing.field === "groupStatus") && pickedStatus === "FOLLOWS_PARENT" && (
+            <label>
+              Parent insurance
+              <select name="followsPayerId" defaultValue={(editing.kind === "cell" ? editing.cell.followsPayerId : editing.row.groupFollowsPayerId) ?? ""} required>
+                <option value="">— pick the parent —</option>
+                {payerOptions
+                  .filter((o) => o.id !== editing.row.payerRecordId)
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           {(editing.kind === "cell" || editing.field === "groupStatus") && (
             <>
-              <label>
-                Effective date
-                <input
-                  name="effectiveDate"
-                  type="date"
-                  defaultValue={
-                    (editing.kind === "cell" ? editing.cell.effectiveDate : editing.row.groupEffectiveDate)?.slice(0, 10) ?? ""
-                  }
-                />
-              </label>
+              {(STATUS_DATE_FIELDS[pickedStatus] ?? STATUS_DATE_FIELDS.APPROVED).map((f) => (
+                <label key={f.name}>
+                  {f.label}
+                  <input name={f.name} type="date" defaultValue={dateValue(f.name)} />
+                </label>
+              ))}
               <label>
                 {editing.kind === "cell" ? "Payer provider number" : "Group number with this payer"}
                 <input

@@ -80,7 +80,7 @@ async function seedCredentialing(ctx: {
         billingProviderId: groupId,
         payerId: payers.aetna.id,
         planType: "Commercial, Medicare Advantage",
-        groupStatus: "IN_PROCESS",
+        groupStatus: "SUBMITTED",
         ediStatus: "IN_PROCESS",
         eftStatus: "NOT_STARTED",
       },
@@ -178,7 +178,7 @@ async function seedCredentialing(ctx: {
       activities: [{ days: -18, channel: "PORTAL", ref: "CR-100000609745", note: "Application submitted via Availity; confirmation received." }],
     },
     {
-      provider: jamesProvider.id, line: horizonLine.id, status: "PAYER_FOLLOW_UP", submitted: -40, followUp: 3,
+      provider: jamesProvider.id, line: horizonLine.id, status: "SUBMITTED", submitted: -40, followUp: 3,
       lastActivity: -4, statusChanged: -12,
       activities: [
         { days: -12, channel: "PHONE", ref: "PR-8243200", rep: "Kim", note: "Rep confirmed application in review; call back in 2 weeks." },
@@ -186,14 +186,14 @@ async function seedCredentialing(ctx: {
       ],
     },
     {
-      provider: jamesProvider.id, line: medicareLine.id, status: "BLOCKED", priority: "HIGH", submitted: -30,
+      provider: jamesProvider.id, line: medicareLine.id, status: "DOCUMENTS_PENDING", priority: "HIGH", submitted: -30,
       lastActivity: -20, statusChanged: -20, blockingReason: "DEA certificate required",
       nextAction: "Collect renewed DEA from provider and resubmit CMS-855I",
     },
     { provider: jamesProvider.id, line: aetnaLine.id, status: "PANEL_CLOSED", statusChanged: -60,
       activities: [{ days: -60, channel: "PHONE", rep: "Dana", note: "Panel closed for PA in this county; re-check in 6 months." }] },
     {
-      provider: lauraProvider.id, line: horizonLine.id, status: "BLOCKED", submitted: -35, lastActivity: -9,
+      provider: lauraProvider.id, line: horizonLine.id, status: "DOCUMENTS_PENDING", submitted: -35, lastActivity: -9,
       statusChanged: -9, blockingReason: "Supervising physician needs to be added to the license",
       nextAction: "Board of Nursing update for collaborating agreement with Dr. Chen",
     },

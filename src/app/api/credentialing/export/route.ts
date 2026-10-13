@@ -24,6 +24,7 @@ export async function GET(request: Request) {
     where: { renderingProvider: { practiceId: { in: practiceIds } } },
     include: {
       renderingProvider: { include: { practice: true } },
+      followsPayer: { select: { name: true } },
       assignedTo: true,
       groupPayerEnrollment: { include: { payer: true, billingProvider: true } },
     },
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
 
   const header = [
     "Practice", "Provider", "Credential", "NPI", "Group", "State", "Payer", "Plan segment", "Payer ID", "Plans included", "Status",
+      "Follows payer",
     "Payer provider #", "Submitted", "Effective", "Term", "Revalidation due", "Follow-up", "Blocking reason",
     "Next action", "Owner",
   ];
@@ -48,6 +50,7 @@ export async function GET(request: Request) {
       r.groupPayerEnrollment.payer.payerCode,
       r.planTypes,
       enrollmentStatusLabel[r.status] ?? r.status,
+      r.followsPayer?.name ?? null,
       r.payerProviderId,
       r.submittedDate,
       r.effectiveDate,

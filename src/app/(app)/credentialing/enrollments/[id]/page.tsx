@@ -12,7 +12,7 @@ import {
   formatDate,
   formatTime,
 } from "@/lib/format";
-import { daysBetween } from "@/lib/credentialing";
+import { daysBetween, effectiveStatusOf } from "@/lib/credentialing";
 import { logEnrollmentActivity, updateProviderEnrollment } from "../../actions";
 
 function dateInputValue(value: Date | null) {
@@ -47,6 +47,10 @@ export default async function EnrollmentPage({ params }: { params: Promise<{ id:
 
   const { renderingProvider: provider, groupPayerEnrollment: line } = enrollment;
   const daysInStatus = daysBetween(enrollment.statusChangedAt, new Date());
+  // Parent choices and the mirrored status when this enrollment follows a parent payer.
+  const payers = await prisma.payer.findMany({ where: { practiceId: provider.practiceId, active: true, NOT: { id: line.payerId } }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+  const siblings = await prisma.providerEnrollment.findMany({ where: { renderingProviderId: provider.id }, select: { id: true, status: true, followsPayerId: true, renderingProviderId: true, groupPayerEnrollment: { select: { payerId: true, billingProviderId: true } } } });
+  const shown = effectiveStatusOf(enrollment, siblings, new Map(payers.map((x) => [x.id, x.name])));
 
   return (
     <>
@@ -60,7 +64,8 @@ export default async function EnrollmentPage({ params }: { params: Promise<{ id:
             <span>{line.billingProvider.name}</span>
             <span>{enrollment.state ?? "No state"}</span>
             <span>Payer ID {line.payer.payerCode ?? "—"}</span>
-            <StatusBadge value={enrollment.status} />
+            <StatusBadge value={shown.status} label={enrollmentStatusLabel[shown.status]} />
+            {enrollment.status === "FOLLOWS_PARENT" && <span>follows {shown.follows ?? "parent payer"}</span>}
             <span>{daysInStatus} days in status</span>
           </p>
         </div>
@@ -91,6 +96,17 @@ export default async function EnrollmentPage({ params }: { params: Promise<{ id:
                 </select>
               </label>
               <label>
+                Parent insurance (when the status follows a parent payer)
+                <select name="followsPayerId" defaultValue={enrollment.followsPayerId ?? line.payer.parentPayerId ?? ""}>
+                  <option value="">— pick the parent —</option>
+                  {payers.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Priority
                 <select name="priority" defaultValue={enrollment.priority}>
                   {Object.entries(credentialingPriorityLabel).map(([v, l]) => (
@@ -112,11 +128,11 @@ export default async function EnrollmentPage({ params }: { params: Promise<{ id:
                 </select>
               </label>
               <label>
-                Next follow-up
+                Follow-up date <span className="muted">(shows on the work queue a week ahead)</span>
                 <input name="followUpDate" type="date" defaultValue={dateInputValue(enrollment.followUpDate)} />
               </label>
               <label style={{ gridColumn: "1 / -1" }}>
-                Blocking reason
+                What is holding it up (documents required, payer issue)
                 <input
                   name="blockingReason"
                   defaultValue={enrollment.blockingReason ?? ""}
@@ -142,12 +158,20 @@ export default async function EnrollmentPage({ params }: { params: Promise<{ id:
                 <input name="planTypes" defaultValue={enrollment.planTypes ?? ""} />
               </label>
               <label>
-                Submitted
+                Submitted date <span className="muted">(submitted / in process)</span>
                 <input name="submittedDate" type="date" defaultValue={dateInputValue(enrollment.submittedDate)} />
               </label>
               <label>
-                Effective
+                Requested date <span className="muted">(additional docs required)</span>
+                <input name="requestedDate" type="date" defaultValue={dateInputValue(enrollment.requestedDate)} />
+              </label>
+              <label>
+                Effective date <span className="muted">(approved)</span>
                 <input name="effectiveDate" type="date" defaultValue={dateInputValue(enrollment.effectiveDate)} />
+              </label>
+              <label>
+                Inquiry date <span className="muted">(panel closed)</span>
+                <input name="inquiryDate" type="date" defaultValue={dateInputValue(enrollment.inquiryDate)} />
               </label>
               <label>
                 Term date

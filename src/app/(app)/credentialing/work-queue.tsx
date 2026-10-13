@@ -46,7 +46,7 @@ const TAG: Record<Item["category"], string> = {
   GROUP: "Group enrollment",
   PLAN: "Plan to review",
 };
-const GROUP_DONE = ["APPROVED", "FOLLOWS_MEDICARE", "PANEL_CLOSED", "DENIED"];
+const GROUP_DONE = ["APPROVED", "FOLLOWS_PARENT", "PANEL_CLOSED"];
 const CONNECTION_DONE = ["APPROVED", "NOT_ALLOWED"];
 const LIST_LIMIT = 300;
 
@@ -93,18 +93,18 @@ export async function WorkQueue({
     seen.add(e.id);
     const mine = byEnrollment.get(e.id) ?? [];
     const late = mine.filter((a) => a.kind === "FOLLOW_UP" || a.kind === "STALE");
-    const reval = mine.some((a) => a.kind === "REVALIDATION") || e.status === "REVALIDATION_DUE";
+    const reval = mine.some((a) => a.kind === "REVALIDATION");
     const days = daysBetween(e.statusChangedAt, now);
     items.push({
       key: `enr-${e.id}`,
       category: reval ? "REVALIDATION" : late.length ? "FOLLOW_UP" : "APPLICATION",
-      urgent: mine.some((a) => a.severity === "high") || e.status === "BLOCKED",
+      urgent: mine.some((a) => a.severity === "high") || Boolean(e.blockingReason?.trim()),
       title: `${e.renderingProvider.name} / ${e.groupPayerEnrollment.payer.name}`,
       detail: [
         enrollmentStatusLabel[e.status] ?? e.status,
         `${days} day${days === 1 ? "" : "s"} in this status`,
         e.groupPayerEnrollment.billingProvider.name,
-        e.blockingReason ? `Blocked: ${e.blockingReason}` : null,
+        e.blockingReason ? `Holding: ${e.blockingReason}` : null,
         e.nextAction ? `Next: ${e.nextAction}` : null,
       ]
         .filter(Boolean)
@@ -140,8 +140,8 @@ export async function WorkQueue({
     const todo = [
       GROUP_DONE.includes(l.groupStatus) ? null : `Group: ${credentialingStatusLabel[l.groupStatus] ?? l.groupStatus}`,
       // EDI and EFT only matter once the group itself can be approved with the payer.
-      ["PANEL_CLOSED", "DENIED"].includes(l.groupStatus) || CONNECTION_DONE.includes(l.ediStatus) ? null : `EDI / ERA: ${connectionStatusLabel[l.ediStatus] ?? l.ediStatus}`,
-      ["PANEL_CLOSED", "DENIED"].includes(l.groupStatus) || CONNECTION_DONE.includes(l.eftStatus) ? null : `EFT: ${connectionStatusLabel[l.eftStatus] ?? l.eftStatus}`,
+      ["PANEL_CLOSED"].includes(l.groupStatus) || CONNECTION_DONE.includes(l.ediStatus) ? null : `EDI / ERA: ${connectionStatusLabel[l.ediStatus] ?? l.ediStatus}`,
+      ["PANEL_CLOSED"].includes(l.groupStatus) || CONNECTION_DONE.includes(l.eftStatus) ? null : `EFT: ${connectionStatusLabel[l.eftStatus] ?? l.eftStatus}`,
     ].filter((v): v is string => Boolean(v));
     if (todo.length === 0) continue;
     items.push({

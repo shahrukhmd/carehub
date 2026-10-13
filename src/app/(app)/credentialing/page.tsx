@@ -5,12 +5,13 @@ import { StatusBadge } from "@/components/StatusBadge";
 import {
   ACTIVE_ENROLLMENT_STATUSES,
   OPEN_ENROLLMENT_STATUSES,
+  QUICK_ENROLLMENT_STATUSES,
   connectionStatusLabel,
   credentialingStatusLabel,
   enrollmentStatusLabel,
   planSegmentLabel,
 } from "@/lib/format";
-import { STALE_FOLLOW_UP_DAYS, daysBetween, getCredentialingAlerts } from "@/lib/credentialing";
+import { STALE_FOLLOW_UP_DAYS, daysBetween, getCredentialingAlerts, effectiveStatuses } from "@/lib/credentialing";
 import { CREDENTIALING_ROLES, credentialingPractices, selectedPracticeIds } from "@/lib/scope";
 import { GridTab } from "./grid-tabs";
 import { WorkQueue } from "./work-queue";
@@ -35,16 +36,13 @@ const TABS = [
 // Old links keep working.
 const MOVED_TABS: Record<string, string> = { provider: "grid", numbers: "grid", providers: "grid", attention: "board", groups: "board" };
 
+// Columns follow the status that is shown: a row that follows a parent payer sits where its parent sits.
 const BOARD_COLUMNS = [
   { key: "NOT_STARTED", label: "Not started", statuses: ["NOT_STARTED"] },
-  { key: "DOCUMENTS_PENDING", label: "Documents pending", statuses: ["DOCUMENTS_PENDING"] },
+  { key: "DOCUMENTS_PENDING", label: "Additional docs required", statuses: ["DOCUMENTS_PENDING"] },
   { key: "SUBMITTED", label: "Submitted / in process", statuses: ["SUBMITTED"] },
-  { key: "PAYER_FOLLOW_UP", label: "Payer follow-up", statuses: ["PAYER_FOLLOW_UP"] },
-  { key: "BLOCKED", label: "Blocked", statuses: ["BLOCKED"] },
   { key: "APPROVED", label: "Approved", statuses: ["APPROVED", "FOLLOWS_PARENT"] },
-  { key: "REVALIDATION_DUE", label: "Revalidation / recred due", statuses: ["REVALIDATION_DUE"] },
-  { key: "CLOSED", label: "Closed / not offered", statuses: ["PANEL_CLOSED", "DENIED"] },
-  { key: "TERMED", label: "Termed", statuses: ["TERMED"] },
+  { key: "CLOSED", label: "Panel closed", statuses: ["PANEL_CLOSED"] },
 ];
 
 function dateInputValue(value: Date | null) {
@@ -190,7 +188,6 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
   const enrollments = await prisma.providerEnrollment.findMany({
     where: {
       renderingProvider: { practiceId },
-      status: { not: "NOT_APPLICABLE" },
       ...(sp.provider ? { renderingProviderId: sp.provider } : {}),
       ...(owner ? { assignedToId: owner } : {}),
       groupPayerEnrollment: {
@@ -209,11 +206,16 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
 
   const now = new Date();
   const overdueOnly = sp.overdue === "1";
+  // Followers mirror their parent's status; the parent rows may sit outside the current filters, so read them all.
+  const followSources = await prisma.providerEnrollment.findMany({ where: { renderingProvider: { practiceId } }, select: { id: true, status: true, followsPayerId: true, renderingProviderId: true, groupPayerEnrollment: { select: { payerId: true, billingProviderId: true } } } });
+  const payerNames = new Map((await prisma.payer.findMany({ where: { practiceId }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
+  const shownStatus = effectiveStatuses(followSources, payerNames);
+  const statusOf = (e: { id: string; status: string }) => shownStatus.get(e.id)?.status ?? e.status;
   const visible = enrollments.filter((e) => {
     if (!overdueOnly) return true;
     const followUpOverdue = e.followUpDate !== null && e.followUpDate < now;
     const stale = daysBetween(e.lastActivityAt ?? e.statusChangedAt, now) >= STALE_FOLLOW_UP_DAYS;
-    return OPEN_ENROLLMENT_STATUSES.includes(e.status) && (followUpOverdue || stale);
+    return OPEN_ENROLLMENT_STATUSES.includes(statusOf(e)) && (followUpOverdue || stale);
   });
   const states = [...new Set(enrollments.map((e) => e.state).filter(Boolean))].sort() as string[];
 
@@ -292,7 +294,7 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
 
       <div className="board">
         {BOARD_COLUMNS.map((col) => {
-          const cards = visible.filter((e) => col.statuses.includes(e.status));
+          const cards = visible.filter((e) => col.statuses.includes(statusOf(e)));
           return (
             <section key={col.key} className="board-col">
               <header>
@@ -302,7 +304,7 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
               {cards.map((e) => {
                 const days = daysBetween(e.statusChangedAt, now);
                 const followUpOverdue =
-                  OPEN_ENROLLMENT_STATUSES.includes(e.status) && e.followUpDate !== null && e.followUpDate < now;
+                  OPEN_ENROLLMENT_STATUSES.includes(statusOf(e)) && e.followUpDate !== null && e.followUpDate < now;
                 return (
                   <article key={e.id} className={`board-card${followUpOverdue ? " board-card-alert" : ""}`}>
                     <Link href={`/credentialing/enrollments/${e.id}`}>
@@ -317,7 +319,11 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
                       {e.planTypes ?? "Plan type —"}
                       {e.groupPayerEnrollment.payer.payerCode ? ` · ID ${e.groupPayerEnrollment.payer.payerCode}` : ""}
                     </div>
-                    {e.status === "FOLLOWS_PARENT" && <StatusBadge value="FOLLOWS_PARENT" />}
+                    {e.status === "FOLLOWS_PARENT" && (
+                      <div className="muted">
+                        Follows {shownStatus.get(e.id)?.follows ?? "parent payer"} · {enrollmentStatusLabel[statusOf(e)] ?? statusOf(e)}
+                      </div>
+                    )}
                     {e.blockingReason && <div className="board-card-reason">{e.blockingReason}</div>}
                     <div className="board-card-foot">
                       <span>{days}d in status</span>
@@ -325,8 +331,8 @@ async function Workboard({ practiceIds, userId, sp }: { practiceIds: string[]; u
                     </div>
                     {followUpOverdue && <div className="board-card-reason">Follow-up overdue</div>}
                     <form action={moveEnrollment.bind(null, e.id)} className="board-card-move">
-                      <select name="status" defaultValue={e.status} aria-label="Move to status">
-                        {Object.entries(enrollmentStatusLabel).map(([v, l]) => (
+                      <select name="status" defaultValue={e.status === "FOLLOWS_PARENT" ? "APPROVED" : e.status} aria-label="Move to status">
+                        {Object.entries(enrollmentStatusLabel).filter(([v]) => QUICK_ENROLLMENT_STATUSES.includes(v)).map(([v, l]) => (
                           <option key={v} value={v}>
                             {l}
                           </option>
@@ -416,7 +422,7 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
                     </td>
                     <td>
                       <select form={formId} name="groupStatus" defaultValue={e.groupStatus}>
-                        {Object.entries(credentialingStatusLabel).map(([v, l]) => (
+                        {Object.entries(credentialingStatusLabel).filter(([v]) => QUICK_ENROLLMENT_STATUSES.includes(v)).map(([v, l]) => (
                           <option key={v} value={v}>
                             {l}
                           </option>
@@ -462,7 +468,7 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
                           <option value="" disabled>
                             Set all providers…
                           </option>
-                          {Object.entries(enrollmentStatusLabel).map(([v, l]) => (
+                          {Object.entries(enrollmentStatusLabel).filter(([v]) => QUICK_ENROLLMENT_STATUSES.includes(v)).map(([v, l]) => (
                             <option key={v} value={v}>
                               {l}
                             </option>
@@ -519,7 +525,7 @@ async function Groups({ practiceIds }: { practiceIds: string[] }) {
             <label>
               Group status
               <select name="groupStatus" defaultValue="NOT_STARTED">
-                {Object.entries(credentialingStatusLabel).map(([v, l]) => (
+                {Object.entries(credentialingStatusLabel).filter(([v]) => QUICK_ENROLLMENT_STATUSES.includes(v)).map(([v, l]) => (
                   <option key={v} value={v}>
                     {l}
                   </option>
@@ -553,11 +559,15 @@ async function Dashboard({
   const now = new Date();
   const [enrollments, providers, lines, documents] = await Promise.all([
     prisma.providerEnrollment.findMany({
-      where: { renderingProvider: { practiceId }, status: { not: "NOT_APPLICABLE" } },
+      where: { renderingProvider: { practiceId } },
       include: {
         renderingProvider: { include: { practice: true } },
         groupPayerEnrollment: { include: { payer: true, billingProvider: true } },
       },
+    }).then((rows) => {
+      // Followers count as whatever their parent payer's enrollment shows.
+      const shown = effectiveStatuses(rows);
+      return rows.map((r) => ({ ...r, status: shown.get(r.id)?.status ?? r.status, rawStatus: r.status }));
     }),
     prisma.renderingProvider.findMany({
       where: { practiceId, status: "ACTIVE", isRendering: true },
@@ -575,14 +585,15 @@ async function Dashboard({
 
   const approved = enrollments.filter((e) => ACTIVE_ENROLLMENT_STATUSES.includes(e.status)).length;
   const open = enrollments.filter((e) => OPEN_ENROLLMENT_STATUSES.includes(e.status));
-  const blocked = enrollments.filter((e) => e.status === "BLOCKED").length;
-  const trackedForRate = enrollments.filter((e) => e.status !== "TERMED").length;
+  const isBlocked = (e: { status: string; blockingReason: string | null }) => OPEN_ENROLLMENT_STATUSES.includes(e.status) && Boolean(e.blockingReason?.trim());
+  const blocked = enrollments.filter(isBlocked).length;
+  const trackedForRate = enrollments.length;
 
   const byPayer = new Map<string, { open: number; blocked: number; approved: number; closed: number }>();
   for (const e of enrollments) {
     const name = e.groupPayerEnrollment.payer.name;
     const row = byPayer.get(name) ?? { open: 0, blocked: 0, approved: 0, closed: 0 };
-    if (e.status === "BLOCKED") row.blocked += 1;
+    if (isBlocked(e)) row.blocked += 1;
     else if (OPEN_ENROLLMENT_STATUSES.includes(e.status)) row.open += 1;
     else if (ACTIVE_ENROLLMENT_STATUSES.includes(e.status)) row.approved += 1;
     else row.closed += 1;
@@ -591,7 +602,7 @@ async function Dashboard({
 
   const bottlenecks = new Map<string, { count: number; totalDays: number }>();
   for (const e of open) {
-    const reason = e.blockingReason?.trim() || (e.status === "BLOCKED" ? "Blocked — reason not recorded" : "Awaiting payer");
+    const reason = e.blockingReason?.trim() || "Awaiting payer";
     const row = bottlenecks.get(reason) ?? { count: 0, totalDays: 0 };
     row.count += 1;
     row.totalDays += daysBetween(e.submittedDate ?? e.createdAt, now);
@@ -617,10 +628,10 @@ async function Dashboard({
     const name = e.renderingProvider.practice.name;
     const row = byPractice.get(name) ?? { providers: new Set(), approved: 0, open: 0, blocked: 0, total: 0 };
     row.providers.add(e.renderingProviderId);
-    if (e.status !== "TERMED") row.total += 1;
+    row.total += 1;
     if (ACTIVE_ENROLLMENT_STATUSES.includes(e.status)) row.approved += 1;
     if (OPEN_ENROLLMENT_STATUSES.includes(e.status)) row.open += 1;
-    if (e.status === "BLOCKED") row.blocked += 1;
+    if (isBlocked(e)) row.blocked += 1;
     byPractice.set(name, row);
   }
 
