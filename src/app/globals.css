@@ -10764,3 +10764,170 @@ select.um-pill option {
   vertical-align: super;
   opacity: 0.8;
 }
+
+/* ---- Provider form: one card per block instead of one long sheet ---- */
+.app-shell .panel.provider-form {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 14px;
+}
+.provider-form > .provider-types,
+.provider-form .provider-columns > section,
+.provider-form .role-section {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  padding: 0 18px 18px;
+  overflow: hidden;
+}
+.provider-form > .provider-types {
+  padding-top: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.provider-form .provider-types > label > span:first-child {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+/* Block titles become header strips; a second title inside the same card gets a divider. */
+.provider-form section > h3 {
+  margin: 0 -18px 14px;
+  padding: 11px 18px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+.provider-form section > h3:not(:first-child) {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.provider-form .provider-columns {
+  gap: 14px;
+}
+.provider-form .role-sections {
+  border-top: 0;
+  padding-top: 0;
+}
+.provider-form .role-section:empty {
+  display: none;
+}
+/* Save bar sits in its own strip at the bottom and stays in view on long forms. */
+.provider-form .form-actions {
+  position: sticky;
+  bottom: 12px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+.form-dialog .provider-form .form-actions {
+  position: static;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ---- Every multi-block form: blocks are cards, block titles are header strips (same look as the provider form) ---- */
+/* A form card that holds its own blocks turns transparent and lets the blocks be the cards. */
+.app-shell form.panel:not(.provider-form):has(> .panel-section),
+.app-shell form.panel:not(.provider-form):has(> section > h3) {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  display: grid;
+  gap: 14px;
+}
+.app-shell form.panel:not(.provider-form) > .panel-section,
+.app-shell form.panel:not(.provider-form) > section:has(> h3),
+.app-shell .panel:not(.print-doc) > .panel-section,
+.app-shell .panel:not(.print-doc) > form > .panel-section,
+.app-shell .panel:not(.print-doc) > div > .panel-section {
+  margin: 0;
+  padding: 0 18px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--card-radius);
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+.app-shell .panel:not(.print-doc) > .panel-section + .panel-section,
+.app-shell .panel:not(.print-doc) > form > .panel-section + .panel-section,
+.app-shell .panel:not(.print-doc) > div > .panel-section + .panel-section {
+  margin-top: 12px;
+}
+/* Block titles. */
+.app-shell form.panel:not(.provider-form) > h3,
+.app-shell form.panel:not(.provider-form) > .stack > h3,
+.app-shell form.panel:not(.provider-form) > section > h3,
+.app-shell .panel:not(.print-doc) > form > h3,
+.app-shell .panel:not(.print-doc) .panel-section > h3,
+.app-shell .reg-section > h3,
+.app-shell .reg-section > .stack > h3 {
+  display: block;
+  margin: 0 -18px 12px;
+  padding: 10px 18px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+/* A title that is not the first thing in its card gets a top rule as well. */
+.app-shell form.panel:not(.provider-form) > h3:not(:first-child),
+.app-shell form.panel:not(.provider-form) > .stack > h3:not(:first-child),
+.app-shell .reg-section > h3:not(:first-child),
+.app-shell .reg-section > .stack > h3:not(:first-child) {
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+}
+/* Titles directly inside a plain form card need the card's own padding to bleed into. */
+.app-shell form.panel:not(.provider-form):not(:has(> .panel-section)):not(:has(> section > h3)) > h3,
+.app-shell form.panel:not(.provider-form):not(:has(> .panel-section)):not(:has(> section > h3)) > .stack > h3 {
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+/* The save bar on a block form floats as a pill like the provider form's. */
+.app-shell form.panel:not(.provider-form):has(> .panel-section) > .form-actions,
+.app-shell form.panel:not(.provider-form):has(> section > h3) > .form-actions {
+  position: sticky;
+  bottom: 12px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+.app-shell .form-dialog .panel-section,
+.app-shell .form-dialog form.panel {
+  border: 0;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+/* Registration cards use the compact 16 px padding, so their strips bleed by 16 px. */
+.app-shell .reg-section > h3,
+.app-shell .reg-section > .stack > h3 {
+  margin-left: -16px;
+  margin-right: -16px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.app-shell .reg-section {
+  overflow: hidden;
+}
