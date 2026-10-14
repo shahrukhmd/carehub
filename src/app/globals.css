@@ -10836,3 +10836,30 @@ select.um-pill option {
 .th-states .checkbox-inline {
   margin: 0;
 }
+
+/* Scheduler: the visit list keeps its width, the booking panel is capped, and the action buttons never wrap. */
+.sc-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(24rem, 30rem);
+  align-items: start;
+}
+.sc-layout > .panel,
+.sc-layout > .stack {
+  min-width: 0;
+}
+.sc-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+.sc-actions .btn,
+.sc-actions summary {
+  white-space: nowrap;
+}
+@media (max-width: 1400px) {
+  .sc-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.sc-actions .stack {
+  width: max-content;
+  min-width: max-content;
+}

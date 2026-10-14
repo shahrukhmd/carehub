@@ -528,7 +528,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           </table>
         </section>
       ) : (
-        <div className="two-col">
+        <div className="two-col sc-layout">
           <section className="panel">
             <div className="gw-section-head">
               <h2>{view === "day" ? formatDate(anchor) : view === "list" ? "Upcoming (30 days)" : "This week"}</h2>
@@ -544,7 +544,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                   <th>Type</th>
                   <th>Status</th>
                   <th>Eligibility</th>
-                  <th></th>
+                  <th className="sc-actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -661,7 +661,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                           </form>
                         )}
                       </td>
-                      <td>
+                      <td className="sc-actions">
                         <div className="stack">
                           {["SCHEDULED", "CONFIRMED"].includes(a.status) && (
                             <form action={updateAppointmentStatus.bind(null, a.id, "CHECKED_IN")}>
