@@ -437,116 +437,130 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                 </button>
               </form>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Doctor</th>
-                  <th>Patient</th>
-                  <th>State</th>
-                  <th>Status</th>
-                  <th>Notes</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {reservations.map((r) => {
-                  const licensed = parseLicenses(r.provider.stateLicenses).includes(r.stateCode);
-                  const open = !["CANCELLED", "COMPLETED", "MISSED"].includes(r.status);
-                  const mayChange = open && (r.status !== "CONFIRMED" || canConfirm) && !r.appointment?.encounter;
-                  return (
-                    <tr key={r.id} className={r.status === "CANCELLED" ? "sc-cancelled" : undefined}>
-                      <td>
-                        {dateInZone(r.startsAt, r.timezone)}
-                        <div className="muted cn-small">
-                          {timeInZone(r.startsAt, r.timezone)}–{timeInZone(r.endsAt, r.timezone)} {zoneLabel(r.timezone)}
-                        </div>
-                      </td>
-                      <td>{doctorLabel(r.provider)}</td>
-                      <td>
-                        <Link href={`/patients/${r.patient.id}`}>{patientName(r.patient)}</Link>
-                        <div className="muted cn-small">{r.patient.mrn}</div>
-                      </td>
-                      <td>
-                        {r.stateCode}
-                        {!licensed && <div className="gw-missing cn-small">Not licensed</div>}
-                      </td>
-                      <td>
-                        <StatusBadge value={r.status} label={RESERVATION_STATUSES[r.status] ?? r.status} />
-                        <div className="muted cn-small">
-                          {r.reservedById && `Reserved by ${staff.get(r.reservedById) ?? "staff"}`}
-                          {r.confirmedById && ` · Confirmed by ${staff.get(r.confirmedById) ?? "staff"}`}
-                          {r.cancelReason && ` · ${r.cancelReason}`}
-                        </div>
-                      </td>
-                      <td>{r.notes}</td>
-                      <td>
-                        <div className="stack">
-                          {r.status === "RESERVED" && canConfirm && (
-                            <form action={confirmTelehealthReservation.bind(null, r.id)}>
-                              <button className="btn secondary gw-mini" type="submit">
-                                Confirm
-                              </button>
-                            </form>
-                          )}
-                          {r.appointment && (
-                            <Link className="muted cn-small" href={`/schedule?view=day&date=${dateKeyInZone(r.startsAt, r.timezone)}`}>
-                              On the calendar
-                            </Link>
-                          )}
-                          {mayChange && (
-                            <details className="sc-cancel">
-                              <summary>Move / edit</summary>
-                              <form action={moveTelehealthReservation.bind(null, r.id)} className="stack">
-                                <input name="time" type="time" step="1200" defaultValue={timeKeyInZone(r.startsAt, r.timezone)} aria-label={`New start (${zoneLabel(r.timezone)})`} />
-                                <select name="stateCode" defaultValue={r.stateCode} aria-label="State">
-                                  {US_STATES.map((s) => (
-                                    <option key={s} value={s}>
-                                      {s}
-                                    </option>
-                                  ))}
-                                </select>
-                                <input name="notes" defaultValue={r.notes} maxLength={150} aria-label="Notes" />
-                                <button className="btn ghost gw-mini" type="submit">
-                                  Save
-                                </button>
-                              </form>
-                            </details>
-                          )}
-                          {mayChange && (
-                            <details className="sc-cancel">
-                              <summary>Cancel</summary>
-                              <form action={cancelTelehealthReservation.bind(null, r.id)} className="stack">
-                                <input name="reason" placeholder="Reason" required aria-label="Reason" />
-                                <button className="btn ghost gw-mini" type="submit">
-                                  Cancel reservation
-                                </button>
-                              </form>
-                            </details>
-                          )}
-                          {open && r.endsAt <= now && (
-                            <form action={setTelehealthOutcome.bind(null, r.id)} className="vw-view-links">
-                              <select name="status" defaultValue="COMPLETED" aria-label="Outcome">
-                                <option value="COMPLETED">Completed</option>
-                                <option value="MISSED">Missed</option>
-                              </select>
-                              <button className="btn ghost gw-mini" type="submit">
-                                Set
-                              </button>
-                            </form>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {reservations.length === 0 && (
-                  <tr>
-                    <td colSpan={7}>No telehealth reservations{providerFilter ? " for this doctor" : ""}.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+            {reservations.length === 0 && <p className="muted">No telehealth reservations{providerFilter ? " for this doctor" : ""}.</p>}
+            {providers
+              .filter((p) => reservations.some((r) => r.providerId === p.id))
+              .map((p) => {
+                const list = reservations.filter((r) => r.providerId === p.id);
+                const live = list.filter((r) => !["CANCELLED", "COMPLETED", "MISSED"].includes(r.status));
+                const licenses = parseLicenses(p.stateLicenses);
+                return (
+                  <section key={p.id} className="th-group">
+                    <div className="th-group-head">
+                      <div>
+                        <h3>{doctorLabel(p)}</h3>
+                        <span className="muted cn-small">
+                          {p.specialty ?? p.user.specialty ?? "Telehealth"} · Licensed in {licenses.length ? licenses.join(", ") : "no states"}
+                        </span>
+                      </div>
+                      <span className="muted">
+                        {live.length} upcoming · {list.length} total
+                      </span>
+                    </div>
+                    <div className="th-cards">
+                      {list.map((r) => {
+                        const licensed = licenses.includes(r.stateCode);
+                        const open = !["CANCELLED", "COMPLETED", "MISSED"].includes(r.status);
+                        const mayChange = open && (r.status !== "CONFIRMED" || canConfirm) && !r.appointment?.encounter;
+                        return (
+                          <article key={r.id} className={`th-card th-card-${r.status.toLowerCase()}`}>
+                            <div className="th-card-head">
+                              <div>
+                                <strong>{dateInZone(r.startsAt, r.timezone)}</strong>
+                                <div className="muted cn-small">
+                                  {timeInZone(r.startsAt, r.timezone)}–{timeInZone(r.endsAt, r.timezone)} {zoneLabel(r.timezone)}
+                                </div>
+                              </div>
+                              <StatusBadge value={r.status} label={RESERVATION_STATUSES[r.status] ?? r.status} />
+                            </div>
+                            <dl className="th-card-facts">
+                              <div>
+                                <dt>Patient</dt>
+                                <dd>
+                                  <Link href={`/patients/${r.patient.id}`}>{patientName(r.patient)}</Link> <span className="muted cn-small">· {r.patient.mrn}</span>
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>State</dt>
+                                <dd>
+                                  {STATE_NAMES[r.stateCode] ?? r.stateCode} ({r.stateCode}){!licensed && <span className="gw-missing cn-small"> · Not licensed</span>}
+                                </dd>
+                              </div>
+                              <div>
+                                <dt>Notes</dt>
+                                <dd>{r.notes}</dd>
+                              </div>
+                              <div>
+                                <dt>Booked</dt>
+                                <dd className="muted cn-small">
+                                  {r.reservedById ? `Reserved by ${staff.get(r.reservedById) ?? "staff"}` : "Reserved"}
+                                  {r.confirmedById && ` · Confirmed by ${staff.get(r.confirmedById) ?? "staff"}`}
+                                  {r.cancelReason && ` · ${r.cancelReason}`}
+                                </dd>
+                              </div>
+                            </dl>
+                            <div className="th-card-actions">
+                              {r.status === "RESERVED" && canConfirm && (
+                                <form action={confirmTelehealthReservation.bind(null, r.id)}>
+                                  <button className="btn secondary gw-mini" type="submit">
+                                    Confirm
+                                  </button>
+                                </form>
+                              )}
+                              {r.appointment && (
+                                <Link className="btn ghost gw-mini" href={`/schedule?view=day&date=${dateKeyInZone(r.startsAt, r.timezone)}`}>
+                                  On the calendar
+                                </Link>
+                              )}
+                              {open && r.endsAt <= now && (
+                                <form action={setTelehealthOutcome.bind(null, r.id)} className="vw-view-links">
+                                  <select name="status" defaultValue="COMPLETED" aria-label="Outcome">
+                                    <option value="COMPLETED">Completed</option>
+                                    <option value="MISSED">Missed</option>
+                                  </select>
+                                  <button className="btn ghost gw-mini" type="submit">
+                                    Set
+                                  </button>
+                                </form>
+                              )}
+                            </div>
+                            {mayChange && (
+                              <div className="th-card-more">
+                                <details className="sc-cancel">
+                                  <summary>Move / edit</summary>
+                                  <form action={moveTelehealthReservation.bind(null, r.id)} className="stack">
+                                    <input name="time" type="time" step="1200" defaultValue={timeKeyInZone(r.startsAt, r.timezone)} aria-label={`New start (${zoneLabel(r.timezone)})`} />
+                                    <select name="stateCode" defaultValue={r.stateCode} aria-label="State">
+                                      {US_STATES.map((s) => (
+                                        <option key={s} value={s}>
+                                          {s}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input name="notes" defaultValue={r.notes} maxLength={150} aria-label="Notes" />
+                                    <button className="btn ghost gw-mini" type="submit">
+                                      Save
+                                    </button>
+                                  </form>
+                                </details>
+                                <details className="sc-cancel">
+                                  <summary>Cancel</summary>
+                                  <form action={cancelTelehealthReservation.bind(null, r.id)} className="stack">
+                                    <input name="reason" placeholder="Reason" required aria-label="Reason" />
+                                    <button className="btn ghost gw-mini" type="submit">
+                                      Cancel reservation
+                                    </button>
+                                  </form>
+                                </details>
+                              </div>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
           </section>
 
           {recents.length > 0 && (

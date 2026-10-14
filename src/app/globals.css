@@ -10863,3 +10863,83 @@ select.um-pill option {
   width: max-content;
   min-width: max-content;
 }
+
+/* Telehealth reservations: one group per doctor, reservations as cards */
+.th-group {
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  margin-top: 0.9rem;
+}
+.th-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.7rem;
+}
+.th-group-head h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--navy);
+}
+.th-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.8rem;
+}
+.th-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius-md);
+  background: var(--panel-alt);
+}
+.th-card-confirmed {
+  border-left-color: var(--accent);
+}
+.th-card-cancelled,
+.th-card-missed {
+  border-left-color: var(--muted);
+  opacity: 0.75;
+}
+.th-card-completed {
+  border-left-color: var(--accent-dark);
+}
+.th-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.th-card-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.8rem;
+  margin: 0;
+  font-size: var(--text-md);
+}
+.th-card-facts > div {
+  display: contents;
+}
+.th-card-facts dt {
+  color: var(--muted);
+}
+.th-card-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.th-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.th-card-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
