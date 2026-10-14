@@ -10943,3 +10943,31 @@ select.um-pill option {
   flex-wrap: wrap;
   gap: 0.4rem 1rem;
 }
+.th-group > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.th-group > summary::-webkit-details-marker {
+  display: none;
+}
+.th-group > summary > div:first-child::before {
+  content: "▶";
+  display: inline-block;
+  width: 1.1rem;
+  font-size: 0.7em;
+  color: var(--navy);
+  transition: transform 0.15s;
+}
+.th-group[open] > summary > div:first-child::before {
+  transform: rotate(90deg);
+}
+.th-group > summary > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+.th-group > summary > div:first-child .cn-small {
+  flex-basis: 100%;
+  padding-left: 1.3rem;
+}

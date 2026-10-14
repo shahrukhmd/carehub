@@ -445,8 +445,8 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                 const live = list.filter((r) => !["CANCELLED", "COMPLETED", "MISSED"].includes(r.status));
                 const licenses = parseLicenses(p.stateLicenses);
                 return (
-                  <section key={p.id} className="th-group">
-                    <div className="th-group-head">
+                  <details key={p.id} className="th-group" open>
+                    <summary className="th-group-head">
                       <div>
                         <h3>{doctorLabel(p)}</h3>
                         <span className="muted cn-small">
@@ -456,7 +456,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                       <span className="muted">
                         {live.length} upcoming · {list.length} total
                       </span>
-                    </div>
+                    </summary>
                     <div className="th-cards">
                       {list.map((r) => {
                         const licensed = licenses.includes(r.stateCode);
@@ -558,7 +558,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                         );
                       })}
                     </div>
-                  </section>
+                  </details>
                 );
               })}
           </section>
