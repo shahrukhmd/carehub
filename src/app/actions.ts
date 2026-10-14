@@ -19,6 +19,7 @@ import { RegistrationError, readCustomValues, readPatientForm, readPatientPhoto,
 import { ScanError, fileScan, saveScanFiles, uploadedFiles } from "@/lib/scans";
 import { rolesFor } from "@/lib/permissions";
 import { bookingBlockedByCredentialing, bookingBlockedByGateway, workflowRules } from "@/lib/workflow-rules";
+import { syncReservationsFromAppointments } from "@/lib/telehealth-server";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -341,6 +342,7 @@ export async function cancelAppointment(id: string, formData: FormData) {
     data: { status: "CANCELLED", cancelReason: full, cancelledAt: new Date() },
   });
   await recordFlow(targets.map((t) => t.id), "CANCELLED", user.id);
+  await syncReservationsFromAppointments(user.practiceId, targets.map((t) => t.id), "CANCELLED", user.id, full);
   await logAudit(user.practiceId, user.id, "CANCEL_APPOINTMENT", "Appointment", appt.id, `${full}${count > 1 ? ` (${count} visits in series)` : ""}`);
   revalidatePath("/schedule");
   revalidatePath("/");
@@ -350,6 +352,7 @@ export async function updateAppointmentStatus(id: string, status: string) {
   const user = await requireUser(rolesFor("schedule.view"));
   const { count } = await prisma.appointment.updateMany({ where: { id, practiceId: user.practiceId }, data: { status } });
   if (count) await recordFlow(id, status, user.id);
+  if (count) await syncReservationsFromAppointments(user.practiceId, [id], status, user.id);
   revalidatePath("/schedule");
   revalidatePath("/");
 }

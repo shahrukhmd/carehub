@@ -59,6 +59,9 @@ model Practice {
   treatmentSteps TreatmentStep[]
   woundTreatments WoundTreatment[]
   patientMessages PatientMessage[]
+  telehealthProviders TelehealthProvider[]
+  telehealthAvailability TelehealthAvailability[]
+  telehealthReservations TelehealthReservation[]
   id           String        @id @default(cuid())
   name         String
   slug         String        @unique
@@ -242,6 +245,7 @@ model User {
   encountersAsStaff        Encounter[]          @relation("EncounterClinicalStaff")
   encountersCoded          Encounter[]          @relation("EncounterCoder")
   appointmentsAsStaff      Appointment[]        @relation("AppointmentClinicalStaff")
+  telehealthProvider       TelehealthProvider?  @relation("TelehealthProviderUser")
   encounterSignatures      EncounterSignature[]
   encounterEvents          EncounterEvent[]
   claimEvents              ClaimEvent[]
@@ -324,6 +328,7 @@ model Session {
 
 model Patient {
   educationResources EducationResource[]
+  telehealthReservations TelehealthReservation[]
   paymentPlans PaymentPlan[]
   collectionsCases CollectionsCase[]
   // Statement delivery and hold (Claims & balance page).
@@ -887,6 +892,7 @@ model Appointment {
   bookingNote           String?
   // Copay expected at the visit (from eligibility or the insurance on file).
   copayDueCents         Int?
+  telehealthReservation TelehealthReservation?
 }
 
 model Encounter {
@@ -3716,4 +3722,81 @@ model UltramistOrder {
   @@index([practiceId, umStatus])
   @@index([patientId])
   @@index([dateOfNextUm])
+}
+
+// ---- Telehealth scheduler (Telehealth Initial Wound Care visits) ----
+// A doctor who takes telehealth visits: a CareHub clinician login plus the telehealth profile (suffix, specialty,
+// state licences, break rule). Availability windows and 20-minute reservations hang off it.
+model TelehealthProvider {
+  id                String   @id @default(cuid())
+  practiceId        String
+  practice          Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId            String   @unique
+  user              User     @relation("TelehealthProviderUser", fields: [userId], references: [id], onDelete: Cascade)
+  suffix            String   @default("Dr.")
+  specialty         String?
+  // JSON array of state codes the doctor is licensed in, e.g. ["TX","FL"].
+  stateLicenses     String   @default("[]")
+  // ACTIVE | INACTIVE
+  status            String   @default("ACTIVE")
+  // Break rule: after this many consecutive bookable blocks the next block is a break (null = no breaks), only
+  // in windows at least breakMinWindowMin long.
+  breakAfterBlocks  Int?
+  breakMinWindowMin Int      @default(300)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  availability      TelehealthAvailability[]
+  reservations      TelehealthReservation[]
+}
+
+// One contiguous window on one date in which the doctor is online. Stored in UTC with the IANA zone it was entered in.
+model TelehealthAvailability {
+  id           String             @id @default(cuid())
+  practiceId   String
+  practice     Practice           @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId   String
+  provider     TelehealthProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  startsAt     DateTime
+  endsAt       DateTime
+  timezone     String
+  createdById  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  reservations TelehealthReservation[]
+
+  @@unique([providerId, startsAt, endsAt])
+  @@index([practiceId, startsAt])
+}
+
+// A 20-minute booking for a patient inside a window. Mirrored by an Appointment so it shows on the calendar and charts.
+model TelehealthReservation {
+  id             String                 @id @default(cuid())
+  practiceId     String
+  practice       Practice               @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId     String
+  provider       TelehealthProvider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  availabilityId String
+  availability   TelehealthAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId  String?                @unique
+  appointment    Appointment?           @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  // Where the patient is located at the time of the visit.
+  stateCode      String
+  startsAt       DateTime
+  endsAt         DateTime
+  durationMin    Int                    @default(20)
+  timezone       String
+  // RESERVED | CONFIRMED | CANCELLED | COMPLETED | MISSED
+  status         String                 @default("RESERVED")
+  notes          String
+  cancelReason   String?
+  reservedById   String?
+  confirmedById  String?
+  confirmedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([providerId, startsAt])
+  @@index([practiceId, startsAt])
 }

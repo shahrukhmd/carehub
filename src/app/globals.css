@@ -10764,3 +10764,75 @@ select.um-pill option {
   vertical-align: super;
   opacity: 0.8;
 }
+
+/* ---- Telehealth scheduler (Telehealth Initial Wound Care) ---- */
+.th-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.4rem;
+}
+.th-block {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.th-block:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.th-block.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.th-block:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: var(--panel-alt);
+}
+.th-block.booked {
+  text-decoration: line-through;
+}
+.th-block.break {
+  font-style: italic;
+}
+.th-warn {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.th-ok {
+  margin: 0;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.th-error {
+  white-space: pre-line;
+}
+.th-window-status {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.th-states {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr));
+  gap: 0.15rem 0.5rem;
+}
+.th-states .checkbox-inline {
+  margin: 0;
+}

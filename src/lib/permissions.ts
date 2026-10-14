@@ -34,6 +34,8 @@ export const PERMISSIONS = {
   "eligibility.run": { label: "Run eligibility checks and the nightly batch", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "VERIFICATION", "BILLER", "INTAKE"] },
   "schedule.view": { label: "Scheduler calendar and booking", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
   "schedule.reserve": { label: "Reserved time on the calendar", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
+  "telehealth.setup": { label: "Telehealth scheduler: doctors and availability windows", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER"] },
+  "telehealth.confirm": { label: "Confirm telehealth reservations; change or cancel confirmed ones", group: "Front office", roles: ["ADMIN", "CDS", "SCHEDULER"] },
   "flow.work": { label: "Patient flow board (check-in, rooming)", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER", "INTAKE"] },
   "recalls.work": { label: "Recalls", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "CLINICIAN", "INTAKE"] },
   "checkout.work": { label: "Checkout, copays and receipts", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "BILLER", "SCHEDULER"] },
