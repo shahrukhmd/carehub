@@ -8,8 +8,6 @@ const ALLOWED_START_MINUTES = [0, 20, 40];
 const DAY_MS = 86_400_000;
 const asDate = (v: Date | string) => (v instanceof Date ? v : new Date(v));
 
-export const TELEHEALTH_SUFFIXES = ["Dr.", "MD", "DO", "NP", "PA", "CNRP", "RN", "CNM", "APRN", "DPM", "DDS", "PharmD", "PhD"];
-
 export const RESERVATION_STATUSES: Record<string, string> = {
   RESERVED: "Reserved",
   CONFIRMED: "Confirmed",
@@ -171,9 +169,8 @@ export function weekdaysBetween(from: string, to: string): string[] {
 
 // ---- Windows and blocks ----
 
-export type WindowLike = { startsAt: Date | string; endsAt: Date | string; timezone: string };
 export type ReservationLike = { id?: string; startsAt: Date | string; endsAt: Date | string; status: string };
-export type BreakRule = { breakAfterBlocks: number | null; breakMinWindowMin: number };
+export type WindowLike = { startsAt: Date | string; endsAt: Date | string; timezone: string; breakAfterBlocks?: number | null };
 
 export type Block = {
   id: string;
@@ -203,11 +200,10 @@ export function startsOnGrid(date: Date, tz: string) {
 }
 
 // The window split into 20-minute blocks: booked ones (any reservation that is not cancelled) and past ones cannot
-// be chosen, and the doctor's break rule turns every (N+1)th bookable block into a break in long windows.
+// be chosen, and the window's break rule turns every (N+1)th bookable block into a break.
 export function buildBlocks(
   window: WindowLike,
   reservations: ReservationLike[],
-  rule: BreakRule | null,
   opts: { now?: Date; excludeReservationId?: string | null } = {}
 ): Block[] {
   const tz = window.timezone;
@@ -242,12 +238,12 @@ export function buildBlocks(
 
   // Break rule: after N consecutive bookable blocks the next one is a break; the counter resets after each break and
   // the last block of the window is never a break.
-  const windowMin = (end.getTime() - asDate(window.startsAt).getTime()) / 60_000;
-  if (rule?.breakAfterBlocks && rule.breakAfterBlocks > 0 && windowMin >= rule.breakMinWindowMin) {
+  const breakAfter = window.breakAfterBlocks ?? null;
+  if (breakAfter && breakAfter > 0) {
     let run = 0;
     for (let i = 0; i < blocks.length; i++) {
       const b = blocks[i];
-      if (run >= rule.breakAfterBlocks && i < blocks.length - 1) {
+      if (run >= breakAfter && i < blocks.length - 1) {
         b.isBreak = true;
         b.isSelectable = false;
         run = 0;
@@ -288,9 +284,7 @@ export function windowsClash(a: { startsAt: Date; endsAt: Date }, b: { startsAt:
   return a.startsAt <= b.endsAt && a.endsAt >= b.startsAt;
 }
 
-// Doctor's display name: "MD Jane Doe" style from the source system, kept as "Jane Doe, MD" here.
-export function providerDisplayName(name: string, suffix: string) {
-  if (!suffix) return name;
-  if (suffix === "Dr.") return name.startsWith("Dr.") ? name : `Dr. ${name}`;
-  return name.includes(`, ${suffix}`) ? name : `${name}, ${suffix}`;
+// "Chen, Maya, MD" from the provider directory's name and credential.
+export function doctorName(p: { name: string; credential?: string | null }) {
+  return p.credential ? `${p.name}, ${p.credential}` : p.name;
 }

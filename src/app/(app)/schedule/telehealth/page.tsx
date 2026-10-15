@@ -4,15 +4,16 @@ import { requireUser } from "@/lib/auth";
 import { can, rolesFor } from "@/lib/permissions";
 import { formatDate, formatTime, patientName, US_STATES } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
+import { TELEHEALTH_DOCTOR_WHERE } from "@/lib/telehealth-server";
 import {
   RESERVATION_STATUSES,
   STATE_NAMES,
   STATE_ZONE,
-  TELEHEALTH_SUFFIXES,
   TELEHEALTH_ZONES,
   WINDOW_STATUS_LABEL,
   dateInZone,
   dateKeyInZone,
+  doctorName,
   parseLicenses,
   timeInZone,
   timeKeyInZone,
@@ -24,11 +25,9 @@ import {
   cancelTelehealthReservation,
   confirmTelehealthReservation,
   deleteTelehealthAvailability,
-  deleteTelehealthProvider,
   moveTelehealthReservation,
-  saveTelehealthProvider,
+  saveTelehealthDoctor,
   setTelehealthOutcome,
-  setTelehealthProviderStatus,
   updateTelehealthAvailability,
 } from "./actions";
 
@@ -39,39 +38,54 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
-type SearchParams = { tab?: string; provider?: string; edit?: string; error?: string; ok?: string };
+type SearchParams = { tab?: string; provider?: string; error?: string; ok?: string };
 const DAY = 86_400_000;
+const PROVIDERS_DIRECTORY = "/settings/directories?section=providers";
 
-// Telehealth scheduler admin: the doctors who take telehealth visits, the hours they are online (availability
-// windows) and every reservation booked into those hours. Booking itself happens on the scheduler when the
-// encounter type is Telehealth Initial Wound Care.
+// Telehealth scheduler admin. A telehealth doctor is a provider from the directory (Settings -> Directories ->
+// Providers) with the Rendering + Supervising types; this page holds their telehealth licences, the hours they are
+// online (availability windows, each with its own break rule) and every reservation booked into those hours. Booking
+// itself happens on the scheduler when the encounter type is Telehealth Initial Wound Care.
 export default async function TelehealthAdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requireUser(rolesFor("schedule.view"));
   const sp = await searchParams;
   const tab: Tab = (TABS.some(([t]) => t === sp.tab) ? sp.tab : "doctors") as Tab;
   const canSetup = can(user, "telehealth.setup");
   const canConfirm = can(user, "telehealth.confirm");
-  const isAdmin = can(user, "settings.admin");
   const now = new Date();
 
-  const [practice, providers, clinicians] = await Promise.all([
+  const [practice, directory] = await Promise.all([
     prisma.practice.findUnique({ where: { id: user.practiceId }, select: { state: true } }),
-    prisma.telehealthProvider.findMany({
-      where: { practiceId: user.practiceId },
-      include: { user: { select: { id: true, name: true, specialty: true } }, _count: { select: { reservations: { where: { status: { not: "CANCELLED" }, endsAt: { gt: now } } } } } },
-      orderBy: { user: { name: "asc" } },
+    prisma.renderingProvider.findMany({
+      where: { practiceId: user.practiceId, ...TELEHEALTH_DOCTOR_WHERE },
+      include: {
+        telehealthProfile: { include: { _count: { select: { reservations: { where: { status: { not: "CANCELLED" }, endsAt: { gt: now } } } } } } },
+        user: { select: { id: true, name: true } },
+      },
+      orderBy: { name: "asc" },
     }),
-    prisma.user.findMany({ where: { practiceId: user.practiceId, active: true, role: { in: ["CLINICIAN", "ADMIN"] } }, select: { id: true, name: true, specialty: true }, orderBy: { name: "asc" } }),
   ]);
-  const editing = sp.edit ? providers.find((p) => p.id === sp.edit) ?? null : null;
-  const providerFilter = sp.provider && providers.some((p) => p.id === sp.provider) ? sp.provider : "";
+  // One row per doctor, whether or not they have a telehealth profile yet.
+  const doctors = directory.map((rp) => ({
+    rpId: rp.id,
+    profileId: rp.telehealthProfile?.id ?? null,
+    name: doctorName(rp),
+    specialty: rp.specialty,
+    licenses: rp.telehealthProfile ? parseLicenses(rp.telehealthProfile.stateLicenses) : rp.licenseState ? [rp.licenseState] : [],
+    status: rp.telehealthProfile?.status ?? "ACTIVE",
+    hasLogin: Boolean(rp.userId),
+    upcoming: rp.telehealthProfile?._count.reservations ?? 0,
+  }));
+  const byProfile = new Map(doctors.filter((d) => d.profileId).map((d) => [d.profileId!, d]));
+  const providerFilter = sp.provider && doctors.some((d) => d.rpId === sp.provider) ? sp.provider : "";
+  const filterProfileId = providerFilter ? (doctors.find((d) => d.rpId === providerFilter)?.profileId ?? "none") : null;
   const defaultZone = (practice?.state && STATE_ZONE[practice.state]) || "America/New_York";
 
   const windows =
     tab === "availability"
       ? await prisma.telehealthAvailability.findMany({
-          where: { practiceId: user.practiceId, endsAt: { gte: new Date(now.getTime() - 7 * DAY) }, ...(providerFilter ? { providerId: providerFilter } : {}) },
-          include: { provider: { include: { user: { select: { name: true } } } }, reservations: { select: { id: true, startsAt: true, endsAt: true, status: true } } },
+          where: { practiceId: user.practiceId, endsAt: { gte: new Date(now.getTime() - 7 * DAY) }, ...(filterProfileId ? { providerId: filterProfileId } : {}) },
+          include: { reservations: { select: { id: true, startsAt: true, endsAt: true, status: true } } },
           orderBy: [{ startsAt: "asc" }],
           take: 400,
         })
@@ -80,8 +94,8 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
   const reservations =
     tab === "reservations"
       ? await prisma.telehealthReservation.findMany({
-          where: { practiceId: user.practiceId, endsAt: { gte: new Date(now.getTime() - 30 * DAY) }, ...(providerFilter ? { providerId: providerFilter } : {}) },
-          include: { patient: { select: { id: true, firstName: true, lastName: true, mrn: true } }, provider: { include: { user: { select: { name: true } } } }, appointment: { select: { id: true, status: true, encounter: { select: { id: true } } } } },
+          where: { practiceId: user.practiceId, endsAt: { gte: new Date(now.getTime() - 30 * DAY) }, ...(filterProfileId ? { providerId: filterProfileId } : {}) },
+          include: { patient: { select: { id: true, firstName: true, lastName: true, mrn: true } }, appointment: { select: { id: true, status: true, encounter: { select: { id: true } } } } },
           orderBy: { startsAt: "asc" },
           take: 400,
         })
@@ -90,7 +104,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
     tab === "reservations"
       ? await prisma.telehealthReservation.findMany({
           where: { practiceId: user.practiceId },
-          include: { patient: { select: { firstName: true, lastName: true } }, provider: { include: { user: { select: { name: true } } } } },
+          include: { patient: { select: { firstName: true, lastName: true } } },
           orderBy: { updatedAt: "desc" },
           take: 5,
         })
@@ -102,7 +116,24 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
     const q = new URLSearchParams({ tab: t, ...(providerFilter ? { provider: providerFilter } : {}), ...extra });
     return `/schedule/telehealth?${q.toString()}`;
   };
-  const doctorLabel = (p: { suffix: string; user: { name: string } }) => (p.suffix === "Dr." ? `Dr. ${p.user.name}` : `${p.user.name} (${p.suffix})`);
+  const nameOfProfile = (profileId: string) => byProfile.get(profileId)?.name ?? "Former doctor";
+
+  const doctorFilter = (t: Tab) => (
+    <form method="get" className="vw-view-links">
+      <input type="hidden" name="tab" value={t} />
+      <select name="provider" defaultValue={providerFilter} aria-label="Doctor">
+        <option value="">All doctors</option>
+        {doctors.map((d) => (
+          <option key={d.rpId} value={d.rpId}>
+            {d.name}
+          </option>
+        ))}
+      </select>
+      <button className="btn ghost gw-mini" type="submit">
+        Show
+      </button>
+    </form>
+  );
 
   return (
     <div className="stack">
@@ -132,146 +163,77 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
       )}
 
       {tab === "doctors" && (
-        <div className="two-col">
-          <section className="panel">
-            <div className="gw-section-head">
-              <h2>Telehealth doctors</h2>
-              <span className="muted">{providers.filter((p) => p.status === "ACTIVE").length} active</span>
-            </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Doctor</th>
-                  <th>Specialty</th>
-                  <th>Licensed states</th>
-                  <th>Break rule</th>
-                  <th>Status</th>
-                  <th></th>
+        <section className="panel">
+          <div className="gw-section-head">
+            <h2>Telehealth doctors</h2>
+            <span className="muted">{doctors.filter((d) => d.status === "ACTIVE").length} active</span>
+          </div>
+          <p className="muted">
+            Every provider in the directory with the <strong>Rendering + Supervising</strong> types is a telehealth doctor. Add or change providers under{" "}
+            <Link href={PROVIDERS_DIRECTORY}>Settings → Directories → Providers</Link>; here you keep their telehealth licences and whether they take telehealth visits.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Doctor</th>
+                <th>Specialty</th>
+                <th>Licensed states</th>
+                <th>Login</th>
+                <th>Telehealth</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {doctors.map((d) => (
+                <tr key={d.rpId}>
+                  <td>
+                    <strong>{d.name}</strong>
+                    {d.upcoming > 0 && <div className="muted cn-small">{d.upcoming} upcoming</div>}
+                  </td>
+                  <td>{d.specialty ?? "—"}</td>
+                  <td>{d.licenses.length ? d.licenses.join(", ") : <span className="gw-missing">None</span>}</td>
+                  <td>{d.hasLogin ? "Linked" : <span className="gw-missing">Not linked — can&apos;t be booked</span>}</td>
+                  <td>
+                    <StatusBadge value={d.status} />
+                  </td>
+                  <td>
+                    {canSetup && (
+                      <details className="sc-cancel">
+                        <summary>Edit</summary>
+                        <form action={saveTelehealthDoctor.bind(null, d.rpId)} className="stack">
+                          <select name="status" defaultValue={d.status} aria-label="Takes telehealth visits">
+                            <option value="ACTIVE">Takes telehealth visits</option>
+                            <option value="INACTIVE">Not available for telehealth</option>
+                          </select>
+                          <fieldset className="stack">
+                            <legend>State licences</legend>
+                            <div className="th-states">
+                              {US_STATES.map((s) => (
+                                <label key={s} className="checkbox-inline" title={STATE_NAMES[s]}>
+                                  <input type="checkbox" name="stateLicenses" value={s} defaultChecked={d.licenses.includes(s)} /> {s}
+                                </label>
+                              ))}
+                            </div>
+                          </fieldset>
+                          <button className="btn ghost gw-mini" type="submit">
+                            Save
+                          </button>
+                        </form>
+                      </details>
+                    )}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {providers.map((p) => {
-                  const licenses = parseLicenses(p.stateLicenses);
-                  return (
-                    <tr key={p.id}>
-                      <td>
-                        <strong>{doctorLabel(p)}</strong>
-                        {p._count.reservations > 0 && <div className="muted cn-small">{p._count.reservations} upcoming</div>}
-                      </td>
-                      <td>{p.specialty ?? p.user.specialty ?? "—"}</td>
-                      <td>{licenses.length ? licenses.join(", ") : <span className="gw-missing">None</span>}</td>
-                      <td>{p.breakAfterBlocks ? `Break after ${p.breakAfterBlocks} blocks (windows ≥ ${p.breakMinWindowMin} min)` : "—"}</td>
-                      <td>
-                        <StatusBadge value={p.status} />
-                      </td>
-                      <td>
-                        {canSetup && (
-                          <div className="stack">
-                            <Link className="btn ghost gw-mini" href={tabHref("doctors", { edit: p.id })}>
-                              Edit
-                            </Link>
-                            <form action={setTelehealthProviderStatus.bind(null, p.id, p.status === "ACTIVE" ? "INACTIVE" : "ACTIVE")}>
-                              <button className="btn ghost gw-mini" type="submit">
-                                {p.status === "ACTIVE" ? "Set inactive" : "Set active"}
-                              </button>
-                            </form>
-                            {isAdmin && (
-                              <form action={deleteTelehealthProvider.bind(null, p.id)}>
-                                <button className="btn ghost gw-mini" type="submit">
-                                  Remove
-                                </button>
-                              </form>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {providers.length === 0 && (
-                  <tr>
-                    <td colSpan={6}>No telehealth doctors yet. Add one on the right.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </section>
-
-          {canSetup && (
-            <form className="panel stack" action={saveTelehealthProvider}>
-              <h2>{editing ? `Edit ${editing.user.name}` : "Add doctor"}</h2>
-              <p className="muted">A telehealth doctor is one of the practice&apos;s clinician logins plus the licences the booking check uses.</p>
-              {editing && <input type="hidden" name="id" value={editing.id} />}
-              <label>
-                Clinician
-                <select name="userId" required defaultValue={editing?.userId ?? ""}>
-                  <option value="" disabled>
-                    Pick a clinician…
-                  </option>
-                  {clinicians
-                    .filter((c) => c.id === editing?.userId || !providers.some((p) => p.userId === c.id))
-                    .map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                        {c.specialty ? ` · ${c.specialty}` : ""}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <div className="form-grid">
-                <label>
-                  Professional suffix
-                  <select name="suffix" defaultValue={editing?.suffix ?? "Dr."}>
-                    {TELEHEALTH_SUFFIXES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Specialty
-                  <input name="specialty" defaultValue={editing?.specialty ?? ""} placeholder="Wound care" />
-                </label>
-                <label>
-                  Status
-                  <select name="status" defaultValue={editing?.status ?? "ACTIVE"}>
-                    <option value="ACTIVE">Active</option>
-                    <option value="INACTIVE">Inactive</option>
-                  </select>
-                </label>
-                <label>
-                  Break after (bookable blocks)
-                  <input name="breakAfterBlocks" type="number" min="0" max="24" defaultValue={editing?.breakAfterBlocks ?? ""} placeholder="None" />
-                </label>
-                <label>
-                  Breaks only in windows of at least (min)
-                  <input name="breakMinWindowMin" type="number" min="0" max="1440" step="10" defaultValue={editing?.breakMinWindowMin ?? 300} />
-                </label>
-              </div>
-              <fieldset className="stack">
-                <legend>State licences</legend>
-                <div className="th-states">
-                  {US_STATES.map((s) => (
-                    <label key={s} className="checkbox-inline" title={STATE_NAMES[s]}>
-                      <input type="checkbox" name="stateLicenses" value={s} defaultChecked={editing ? parseLicenses(editing.stateLicenses).includes(s) : false} /> {s}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <div className="vw-view-links">
-                <button className="btn" type="submit">
-                  {editing ? "Save doctor" : "Add doctor"}
-                </button>
-                {editing && (
-                  <Link className="btn ghost" href={tabHref("doctors")}>
-                    Cancel
-                  </Link>
-                )}
-              </div>
-            </form>
-          )}
-        </div>
+              ))}
+              {doctors.length === 0 && (
+                <tr>
+                  <td colSpan={6}>
+                    No providers with the Rendering + Supervising types yet. Set them up under <Link href={PROVIDERS_DIRECTORY}>Settings → Directories → Providers</Link>.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </section>
       )}
 
       {tab === "availability" && (
@@ -279,20 +241,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
           <section className="panel">
             <div className="gw-section-head">
               <h2>Online hours</h2>
-              <form method="get" className="vw-view-links">
-                <input type="hidden" name="tab" value="availability" />
-                <select name="provider" defaultValue={providerFilter} aria-label="Doctor">
-                  <option value="">All doctors</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {doctorLabel(p)}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn ghost gw-mini" type="submit">
-                  Show
-                </button>
-              </form>
+              {doctorFilter("availability")}
             </div>
             <table>
               <thead>
@@ -300,6 +249,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                   <th>Doctor</th>
                   <th>Date</th>
                   <th>Window</th>
+                  <th>Break rule</th>
                   <th>Booked</th>
                   <th>Status</th>
                   <th></th>
@@ -311,12 +261,15 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                   const live = w.reservations.filter((r) => r.status !== "CANCELLED").length;
                   return (
                     <tr key={w.id} className={w.endsAt < now ? "sc-cancelled" : undefined}>
-                      <td>{doctorLabel(w.provider)}</td>
+                      <td>{nameOfProfile(w.providerId)}</td>
                       <td>{dateInZone(w.startsAt, w.timezone)}</td>
                       <td>
                         {timeInZone(w.startsAt, w.timezone)}–{timeInZone(w.endsAt, w.timezone)} {zoneLabel(w.timezone)}
-                        <div className="muted cn-small">{s.durationMin} min · {s.availableMin} min free</div>
+                        <div className="muted cn-small">
+                          {s.durationMin} min · {s.availableMin} min free
+                        </div>
                       </td>
+                      <td>{w.breakAfterBlocks ? `Break after ${w.breakAfterBlocks} blocks` : "—"}</td>
                       <td>{live ? `${live} visit${live === 1 ? "" : "s"}` : "—"}</td>
                       <td>
                         <span className="th-window-status">{WINDOW_STATUS_LABEL[s.status]}</span>
@@ -337,6 +290,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                                     </option>
                                   ))}
                                 </select>
+                                <input name="breakAfterBlocks" type="number" min="0" max="24" defaultValue={w.breakAfterBlocks ?? ""} placeholder="Break after N blocks" aria-label="Break after (bookable blocks)" />
                                 <button className="btn ghost gw-mini" type="submit">
                                   Save
                                 </button>
@@ -355,7 +309,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                 })}
                 {windows.length === 0 && (
                   <tr>
-                    <td colSpan={6}>No online hours yet{providerFilter ? " for this doctor" : ""}. Add a window on the right.</td>
+                    <td colSpan={7}>No online hours yet{providerFilter ? " for this doctor" : ""}. Add a window on the right.</td>
                   </tr>
                 )}
               </tbody>
@@ -365,18 +319,21 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
           {canSetup && (
             <form className="panel stack" action={addTelehealthAvailability}>
               <h2>Add availability</h2>
-              <p className="muted">One window per date. Give a to-date to add the same hours on every weekday through it (weekends are skipped). Windows for a doctor may not overlap or touch; back-to-back hours go in as one window.</p>
+              <p className="muted">
+                One window per date. Give a to-date to add the same hours on every weekday through it (weekends are skipped). Windows for a doctor may not overlap or touch; back-to-back hours go in as one window.
+              </p>
               <label>
                 Doctor
-                <select name="providerId" required defaultValue={providerFilter}>
+                <select name="renderingProviderId" required defaultValue={providerFilter}>
                   <option value="" disabled>
                     Pick a doctor…
                   </option>
-                  {providers
-                    .filter((p) => p.status === "ACTIVE")
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {doctorLabel(p)}
+                  {doctors
+                    .filter((d) => d.status === "ACTIVE")
+                    .map((d) => (
+                      <option key={d.rpId} value={d.rpId}>
+                        {d.name}
+                        {d.hasLogin ? "" : " (no login — not bookable)"}
                       </option>
                     ))}
                 </select>
@@ -408,7 +365,12 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                   End time
                   <input name="endTime" type="time" defaultValue="17:00" required />
                 </label>
+                <label>
+                  Break after (bookable blocks)
+                  <input name="breakAfterBlocks" type="number" min="0" max="24" placeholder="None" />
+                </label>
               </div>
+              <p className="muted cn-small">Break rule: after that many consecutive bookable 20-minute blocks, the next block is kept free as a break (e.g. 6 = a break every 2 hours).</p>
               <button className="btn" type="submit">
                 Add availability
               </button>
@@ -422,35 +384,23 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
           <section className="panel">
             <div className="gw-section-head">
               <h2>Reservations</h2>
-              <form method="get" className="vw-view-links">
-                <input type="hidden" name="tab" value="reservations" />
-                <select name="provider" defaultValue={providerFilter} aria-label="Doctor">
-                  <option value="">All doctors</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {doctorLabel(p)}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn ghost gw-mini" type="submit">
-                  Show
-                </button>
-              </form>
+              {doctorFilter("reservations")}
             </div>
             {reservations.length === 0 && <p className="muted">No telehealth reservations{providerFilter ? " for this doctor" : ""}.</p>}
-            {providers
-              .filter((p) => reservations.some((r) => r.providerId === p.id))
-              .map((p) => {
-                const list = reservations.filter((r) => r.providerId === p.id);
+            {[...new Set(reservations.map((r) => r.providerId))]
+              .map((profileId) => ({ profileId, doctor: byProfile.get(profileId) ?? null }))
+              .sort((a, b) => (a.doctor?.name ?? "").localeCompare(b.doctor?.name ?? ""))
+              .map(({ profileId, doctor }) => {
+                const list = reservations.filter((r) => r.providerId === profileId);
                 const live = list.filter((r) => !["CANCELLED", "COMPLETED", "MISSED"].includes(r.status));
-                const licenses = parseLicenses(p.stateLicenses);
+                const licenses = doctor?.licenses ?? [];
                 return (
-                  <details key={p.id} className="th-group" open>
+                  <details key={profileId} className="th-group" open>
                     <summary className="th-group-head">
                       <div>
-                        <h3>{doctorLabel(p)}</h3>
+                        <h3>{doctor?.name ?? "Former doctor"}</h3>
                         <span className="muted cn-small">
-                          {p.specialty ?? p.user.specialty ?? "Telehealth"} · Licensed in {licenses.length ? licenses.join(", ") : "no states"}
+                          {doctor?.specialty ?? "Telehealth"} · Licensed in {licenses.length ? licenses.join(", ") : "no states"}
                         </span>
                       </div>
                       <span className="muted">
@@ -570,7 +520,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
                 {recents.map((r) => (
                   <li key={r.id}>
                     <span>
-                      {patientName(r.patient)} with {doctorLabel(r.provider)} · {dateInZone(r.startsAt, r.timezone)} {timeInZone(r.startsAt, r.timezone)} {zoneLabel(r.timezone)}
+                      {patientName(r.patient)} with {nameOfProfile(r.providerId)} · {dateInZone(r.startsAt, r.timezone)} {timeInZone(r.startsAt, r.timezone)} {zoneLabel(r.timezone)}
                     </span>
                     <span className="muted">
                       {RESERVATION_STATUSES[r.status] ?? r.status} · {formatDate(r.updatedAt)} {formatTime(r.updatedAt)}

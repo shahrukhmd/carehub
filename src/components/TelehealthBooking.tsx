@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PatientPicker } from "@/components/PatientPicker";
 import type { TelehealthBookingProvider } from "@/lib/telehealth-server";
-import { BLOCK_MIN, STATE_NAMES, WINDOW_STATUS_LABEL, blockLabel, buildBlocks, dateInZone, timeInZone, windowSummary, zoneLabel } from "@/lib/telehealth";
+import { BLOCK_MIN, STATE_NAMES, WINDOW_STATUS_LABEL, blockLabel, buildBlocks, dateInZone, doctorName, timeInZone, windowSummary, zoneLabel } from "@/lib/telehealth";
 
 type Patient = { id: string; name: string; mrn: string; state?: string | null };
 
@@ -37,7 +37,7 @@ export function TelehealthBooking({
   const [block, setBlock] = useState(defaults.block ?? "");
   const [notes, setNotes] = useState(defaults.notes ?? "");
 
-  const blocks = useMemo(() => (window && provider ? buildBlocks(window, window.reservations, provider) : []), [window, provider]);
+  const blocks = useMemo(() => (window ? buildBlocks(window, window.reservations) : []), [window]);
   const licensed = !state || !provider || provider.licenses.includes(state);
   const chosen = blocks.find((b) => b.startsAt === block && b.isSelectable) ?? null;
 
@@ -83,7 +83,7 @@ export function TelehealthBooking({
               <select value={providerId} onChange={(e) => pickProvider(e.target.value)} required>
                 {providers.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.suffix === "Dr." ? `Dr. ${p.name}` : `${p.name} (${p.suffix})`}
+                    {doctorName(p)}
                     {p.specialty ? ` · ${p.specialty}` : ""}
                   </option>
                 ))}
@@ -126,8 +126,7 @@ export function TelehealthBooking({
           {!licensed && provider && (
             <div className="th-warn" role="alert">
               <strong>
-                {provider.suffix === "Dr." ? "Dr. " : ""}
-                {provider.name} is not licensed in {STATE_NAMES[state] ?? state}.
+                {doctorName(provider)} is not licensed in {STATE_NAMES[state] ?? state}.
               </strong>
               <label className="checkbox-inline">
                 <input type="checkbox" name="acceptLicense" /> Book anyway

@@ -245,7 +245,6 @@ model User {
   encountersAsStaff        Encounter[]          @relation("EncounterClinicalStaff")
   encountersCoded          Encounter[]          @relation("EncounterCoder")
   appointmentsAsStaff      Appointment[]        @relation("AppointmentClinicalStaff")
-  telehealthProvider       TelehealthProvider?  @relation("TelehealthProviderUser")
   encounterSignatures      EncounterSignature[]
   encounterEvents          EncounterEvent[]
   claimEvents              ClaimEvent[]
@@ -705,6 +704,7 @@ model RenderingProvider {
   supervisingProviderId String?
   supervisingProvider   RenderingProvider?  @relation("Supervision", fields: [supervisingProviderId], references: [id])
   supervisees           RenderingProvider[] @relation("Supervision")
+  telehealthProfile     TelehealthProvider? @relation("TelehealthProfile")
   createdAt             DateTime  @default(now())
   enrollments           ProviderEnrollment[]
   documents             ProviderDocument[]
@@ -3725,28 +3725,23 @@ model UltramistOrder {
 }
 
 // ---- Telehealth scheduler (Telehealth Initial Wound Care visits) ----
-// A doctor who takes telehealth visits: a CareHub clinician login plus the telehealth profile (suffix, specialty,
-// state licences, break rule). Availability windows and 20-minute reservations hang off it.
+// A doctor who takes telehealth visits is a provider from the directory with the Rendering + Supervising types. This
+// row is the telehealth profile on top of it (state licences, opted in or out); availability windows and 20-minute
+// reservations hang off it. Booking needs the provider linked to a login (the appointment is filed under that user).
 model TelehealthProvider {
-  id                String   @id @default(cuid())
-  practiceId        String
-  practice          Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
-  userId            String   @unique
-  user              User     @relation("TelehealthProviderUser", fields: [userId], references: [id], onDelete: Cascade)
-  suffix            String   @default("Dr.")
-  specialty         String?
+  id                  String            @id @default(cuid())
+  practiceId          String
+  practice            Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  renderingProviderId String            @unique
+  renderingProvider   RenderingProvider @relation("TelehealthProfile", fields: [renderingProviderId], references: [id], onDelete: Cascade)
   // JSON array of state codes the doctor is licensed in, e.g. ["TX","FL"].
-  stateLicenses     String   @default("[]")
-  // ACTIVE | INACTIVE
-  status            String   @default("ACTIVE")
-  // Break rule: after this many consecutive bookable blocks the next block is a break (null = no breaks), only
-  // in windows at least breakMinWindowMin long.
-  breakAfterBlocks  Int?
-  breakMinWindowMin Int      @default(300)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  availability      TelehealthAvailability[]
-  reservations      TelehealthReservation[]
+  stateLicenses       String            @default("[]")
+  // ACTIVE | INACTIVE (opted out of telehealth)
+  status              String            @default("ACTIVE")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  availability        TelehealthAvailability[]
+  reservations        TelehealthReservation[]
 }
 
 // One contiguous window on one date in which the doctor is online. Stored in UTC with the IANA zone it was entered in.
@@ -3759,6 +3754,8 @@ model TelehealthAvailability {
   startsAt     DateTime
   endsAt       DateTime
   timezone     String
+  // Break rule for this window: after this many consecutive bookable blocks the next block is a break (null = none).
+  breakAfterBlocks Int?
   createdById  String?
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt

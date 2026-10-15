@@ -11,15 +11,15 @@ import { can, rolesFor } from "@/lib/permissions";
 import { stopBlock } from "@/lib/patient-alerts";
 import { runEligibilityCheck } from "@/lib/clearinghouse/service";
 import { bookingBlockedByCredentialing, bookingBlockedByGateway, workflowRules } from "@/lib/workflow-rules";
-import { appointmentStatusFor, telehealthLocationId } from "@/lib/telehealth-server";
+import { appointmentStatusFor, ensureTelehealthProfile, telehealthLocationId } from "@/lib/telehealth-server";
 import {
   BLOCK_MIN,
   STATE_NAMES,
-  TELEHEALTH_SUFFIXES,
   TELEHEALTH_VISIT_TYPE,
   buildBlocks,
   dateInZone,
   dateKeyInZone,
+  doctorName,
   isKnownZone,
   parseLicenses,
   timeInZone,
@@ -53,56 +53,26 @@ function refreshAll() {
   revalidatePath("/");
 }
 
-// ---- Function 1: doctors ----
+// Break rule field: blank or 0 = no breaks.
+function readBreakAfter(formData: FormData) {
+  const n = Number(formData.get("breakAfterBlocks") || 0);
+  return Number.isInteger(n) && n > 0 ? Math.min(n, 24) : null;
+}
 
-export async function saveTelehealthProvider(formData: FormData) {
+// ---- Function 1: doctors (providers from the directory with the Rendering + Supervising types) ----
+
+// Telehealth settings of a doctor: the states they are licensed in and whether they take telehealth visits.
+export async function saveTelehealthDoctor(renderingProviderId: string, formData: FormData) {
   const user = await requireUser(rolesFor("telehealth.setup"));
-  const id = text(formData, "id") || null;
-  const userId = required(formData, "userId");
-  const suffix = text(formData, "suffix") || "Dr.";
-  const specialty = text(formData, "specialty", 120) || null;
-  const status = text(formData, "status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+  const profile = await ensureTelehealthProfile(user.practiceId, renderingProviderId);
+  if (!profile) adminRedirect("doctors", { error: "That provider is not an active Rendering + Supervising provider." });
   const licenses = [...new Set(formData.getAll("stateLicenses").map(String).filter((s) => s in STATE_NAMES))];
-  const breakAfterRaw = Number(formData.get("breakAfterBlocks") || 0);
-  const breakAfterBlocks = Number.isInteger(breakAfterRaw) && breakAfterRaw > 0 ? Math.min(breakAfterRaw, 24) : null;
-  const breakMinRaw = Number(formData.get("breakMinWindowMin") || 300);
-  const breakMinWindowMin = Number.isFinite(breakMinRaw) && breakMinRaw >= 0 ? Math.min(Math.round(breakMinRaw), 1440) : 300;
-  if (!TELEHEALTH_SUFFIXES.includes(suffix)) adminRedirect("doctors", { error: "Pick a professional suffix from the list." });
-
-  const clinician = await prisma.user.findFirst({ where: { id: userId, practiceId: user.practiceId, active: true, role: { in: ["CLINICIAN", "ADMIN"] } } });
-  if (!clinician) adminRedirect("doctors", { error: "Pick an active clinician login for the doctor." });
-  const taken = await prisma.telehealthProvider.findUnique({ where: { userId } });
-  if (taken && taken.id !== id) adminRedirect("doctors", { error: `${clinician.name} is already set up as a telehealth doctor.` });
-
-  const data = { suffix, specialty, status, stateLicenses: JSON.stringify(licenses), breakAfterBlocks, breakMinWindowMin };
-  const saved = id
-    ? await prisma.telehealthProvider.update({ where: { id, practiceId: user.practiceId }, data: { ...data, userId } })
-    : await prisma.telehealthProvider.create({ data: { ...data, userId, practiceId: user.practiceId } });
-  await logAudit(user.practiceId, user.id, id ? "TELEHEALTH_PROVIDER_UPDATED" : "TELEHEALTH_PROVIDER_ADDED", "TelehealthProvider", saved.id, `${clinician.name}: ${licenses.join(", ") || "no licences"} · ${status}`);
+  const status = text(formData, "status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
+  await prisma.telehealthProvider.update({ where: { id: profile.id }, data: { stateLicenses: JSON.stringify(licenses), status } });
+  const rp = await prisma.renderingProvider.findUniqueOrThrow({ where: { id: renderingProviderId }, select: { name: true, credential: true } });
+  await logAudit(user.practiceId, user.id, "TELEHEALTH_DOCTOR_UPDATED", "TelehealthProvider", profile.id, `${doctorName(rp)}: ${licenses.join(", ") || "no licences"} · ${status}`);
   refreshAll();
-  adminRedirect("doctors", { ok: `${clinician.name} has been ${id ? "updated" : "added"} successfully.` });
-}
-
-export async function setTelehealthProviderStatus(id: string, status: "ACTIVE" | "INACTIVE") {
-  const user = await requireUser(rolesFor("telehealth.setup"));
-  const p = await prisma.telehealthProvider.findFirst({ where: { id, practiceId: user.practiceId }, include: { user: true } });
-  if (!p) throw new Error("Not found");
-  await prisma.telehealthProvider.update({ where: { id }, data: { status } });
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_PROVIDER_STATUS", "TelehealthProvider", id, `${p.user.name}: ${status}`);
-  refreshAll();
-}
-
-// Doctors with future bookings are retired (status Inactive), never deleted.
-export async function deleteTelehealthProvider(id: string) {
-  const user = await requireUser(rolesFor("settings.admin"));
-  const p = await prisma.telehealthProvider.findFirst({ where: { id, practiceId: user.practiceId }, include: { user: true } });
-  if (!p) throw new Error("Not found");
-  const future = await prisma.telehealthReservation.count({ where: { providerId: id, status: { notIn: ["CANCELLED"] }, endsAt: { gt: new Date() } } });
-  if (future) adminRedirect("doctors", { error: `${p.user.name} still has ${future} upcoming reservation${future === 1 ? "" : "s"}. Cancel or move them first, or set the doctor Inactive.` });
-  await prisma.telehealthProvider.delete({ where: { id } });
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_PROVIDER_DELETED", "TelehealthProvider", id, p.user.name);
-  refreshAll();
-  adminRedirect("doctors", { ok: `${p.user.name} removed from telehealth.` });
+  adminRedirect("doctors", { ok: `${doctorName(rp)} updated.` });
 }
 
 // ---- Function 2: availability windows ----
@@ -120,18 +90,20 @@ async function clashFor(db: Prisma.TransactionClient | typeof prisma, providerId
 
 export async function addTelehealthAvailability(formData: FormData) {
   const user = await requireUser(rolesFor("telehealth.setup"));
-  const providerId = required(formData, "providerId");
+  const renderingProviderId = required(formData, "renderingProviderId");
   const timezone = required(formData, "timezone");
   const startTime = required(formData, "startTime");
   const endTime = required(formData, "endTime");
   const date = text(formData, "date");
   const toDate = text(formData, "toDate");
+  const breakAfterBlocks = readBreakAfter(formData);
   // A "to" date makes it a batch: one window per weekday from the date through the to date.
   const mode = toDate ? "range" : "single";
   if (!isKnownZone(timezone)) adminRedirect("availability", { error: "Pick a time zone from the list." });
 
-  const provider = await prisma.telehealthProvider.findFirst({ where: { id: providerId, practiceId: user.practiceId }, include: { user: true } });
-  if (!provider) adminRedirect("availability", { error: "Pick the doctor." });
+  const profile = await ensureTelehealthProfile(user.practiceId, renderingProviderId);
+  if (!profile) adminRedirect("availability", { error: "Pick the doctor." });
+  const rp = await prisma.renderingProvider.findUniqueOrThrow({ where: { id: renderingProviderId }, select: { name: true, credential: true } });
 
   const dates = mode === "range" ? weekdaysBetween(date, toDate) : date ? [date] : [];
   if (dates.length === 0) adminRedirect("availability", { error: mode === "range" ? "The date range needs at least one weekday (Mon–Fri) and the to date must not be before the date." : "Enter the date." });
@@ -151,58 +123,65 @@ export async function addTelehealthAvailability(formData: FormData) {
   // Each date is checked against the doctor's existing windows and against the other dates in this batch; the batch
   // saves only when every row is clear.
   for (const w of windows) {
-    const clash = await clashFor(prisma, providerId, w);
+    const clash = await clashFor(prisma, profile.id, w);
     if (clash) problems.push(`${w.date}: conflicts with ${timeInZone(clash.startsAt, clash.timezone)}–${timeInZone(clash.endsAt, clash.timezone)} ${dateInZone(clash.startsAt, clash.timezone)}`);
     if (windows.some((o) => o !== w && windowsClash(o, w))) problems.push(`${w.date}: overlaps another date in this batch`);
   }
-  if (problems.length) adminRedirect("availability", { error: `Nothing saved — fix these and try again:\n${[...new Set(problems)].join("\n")}` });
+  if (problems.length) adminRedirect("availability", { error: `Nothing saved — fix these and try again:\n${[...new Set(problems)].join("\n")}`, provider: renderingProviderId });
 
   await prisma.telehealthAvailability.createMany({
-    data: windows.map((w) => ({ practiceId: user.practiceId, providerId, startsAt: w.startsAt, endsAt: w.endsAt, timezone, createdById: user.id })),
+    data: windows.map((w) => ({ practiceId: user.practiceId, providerId: profile.id, startsAt: w.startsAt, endsAt: w.endsAt, timezone, breakAfterBlocks, createdById: user.id })),
     skipDuplicates: true,
   });
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_AVAILABILITY_ADDED", "TelehealthProvider", providerId, `${provider.user.name}: ${windows.length} window(s) ${startTime}–${endTime} ${timezone}`);
+  await logAudit(user.practiceId, user.id, "TELEHEALTH_AVAILABILITY_ADDED", "TelehealthProvider", profile.id, `${doctorName(rp)}: ${windows.length} window(s) ${startTime}–${endTime} ${timezone}${breakAfterBlocks ? ` · break after ${breakAfterBlocks}` : ""}`);
   refreshAll();
-  adminRedirect("availability", { ok: `${windows.length} window${windows.length === 1 ? "" : "s"} added for ${provider.user.name}.`, provider: providerId });
+  adminRedirect("availability", { ok: `${windows.length} window${windows.length === 1 ? "" : "s"} added for ${doctorName(rp)}.`, provider: renderingProviderId });
 }
 
 export async function updateTelehealthAvailability(id: string, formData: FormData) {
   const user = await requireUser(rolesFor("telehealth.setup"));
   const w = await prisma.telehealthAvailability.findFirst({
     where: { id, practiceId: user.practiceId },
-    include: { reservations: { where: { status: { not: "CANCELLED" } } }, provider: { include: { user: true } } },
+    include: { reservations: { where: { status: { not: "CANCELLED" } } }, provider: { include: { renderingProvider: true } } },
   });
   if (!w) throw new Error("Not found");
+  const back = { provider: w.provider.renderingProviderId };
   const timezone = text(formData, "timezone") || w.timezone;
   const date = required(formData, "date");
   const startsAt = zonedToUtc(date, required(formData, "startTime"), timezone);
   const endsAt = zonedToUtc(date, required(formData, "endTime"), timezone);
-  if (!isKnownZone(timezone) || !startsAt || !endsAt || startsAt >= endsAt) adminRedirect("availability", { error: "Invalid schedule time range.", provider: w.providerId });
+  const breakAfterBlocks = readBreakAfter(formData);
+  if (!isKnownZone(timezone) || !startsAt || !endsAt || startsAt >= endsAt) adminRedirect("availability", { error: "Invalid schedule time range.", ...back });
 
   // The window may not clash with the doctor's other windows, and every live reservation must still fit inside it.
   const clash = await clashFor(prisma, w.providerId, { startsAt, endsAt }, id);
-  if (clash) adminRedirect("availability", { error: `Conflicts with the window ${timeInZone(clash.startsAt, clash.timezone)}–${timeInZone(clash.endsAt, clash.timezone)} on ${dateInZone(clash.startsAt, clash.timezone)}.`, provider: w.providerId });
+  if (clash) adminRedirect("availability", { error: `Conflicts with the window ${timeInZone(clash.startsAt, clash.timezone)}–${timeInZone(clash.endsAt, clash.timezone)} on ${dateInZone(clash.startsAt, clash.timezone)}.`, ...back });
   const outside = w.reservations.filter((r) => r.startsAt < startsAt || r.endsAt > endsAt);
-  if (outside.length) adminRedirect("availability", { error: `${outside.length} reservation${outside.length === 1 ? " falls" : "s fall"} outside the new times. Move or cancel them first.`, provider: w.providerId });
+  if (outside.length) adminRedirect("availability", { error: `${outside.length} reservation${outside.length === 1 ? " falls" : "s fall"} outside the new times. Move or cancel them first.`, ...back });
+  // A new break rule may not land on a block that is already booked.
+  const blocks = buildBlocks({ startsAt, endsAt, timezone, breakAfterBlocks }, [], { now: new Date(0) });
+  const onBreak = w.reservations.filter((r) => blocks.some((b) => b.isBreak && b.startsAt === r.startsAt.toISOString()));
+  if (onBreak.length) adminRedirect("availability", { error: `The break rule would fall on ${onBreak.length} booked block${onBreak.length === 1 ? "" : "s"}. Move them first or pick another rule.`, ...back });
 
-  await prisma.telehealthAvailability.update({ where: { id }, data: { startsAt, endsAt, timezone } });
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_AVAILABILITY_UPDATED", "TelehealthAvailability", id, `${w.provider.user.name}: ${date} ${timeInZone(startsAt, timezone)}–${timeInZone(endsAt, timezone)} ${timezone}`);
+  await prisma.telehealthAvailability.update({ where: { id }, data: { startsAt, endsAt, timezone, breakAfterBlocks } });
+  await logAudit(user.practiceId, user.id, "TELEHEALTH_AVAILABILITY_UPDATED", "TelehealthAvailability", id, `${doctorName(w.provider.renderingProvider)}: ${date} ${timeInZone(startsAt, timezone)}–${timeInZone(endsAt, timezone)} ${timezone}`);
   refreshAll();
-  adminRedirect("availability", { ok: "Window updated.", provider: w.providerId });
+  adminRedirect("availability", { ok: "Window updated.", ...back });
 }
 
 export async function deleteTelehealthAvailability(id: string) {
   const user = await requireUser(rolesFor("telehealth.setup"));
   const w = await prisma.telehealthAvailability.findFirst({
     where: { id, practiceId: user.practiceId },
-    include: { reservations: { where: { status: { not: "CANCELLED" }, endsAt: { gt: new Date() } } }, provider: { include: { user: true } } },
+    include: { reservations: { where: { status: { not: "CANCELLED" }, endsAt: { gt: new Date() } } }, provider: { include: { renderingProvider: true } } },
   });
   if (!w) throw new Error("Not found");
-  if (w.reservations.length) adminRedirect("availability", { error: `This window still has ${w.reservations.length} upcoming reservation${w.reservations.length === 1 ? "" : "s"}. Cancel or move them first.`, provider: w.providerId });
+  const back = { provider: w.provider.renderingProviderId };
+  if (w.reservations.length) adminRedirect("availability", { error: `This window still has ${w.reservations.length} upcoming reservation${w.reservations.length === 1 ? "" : "s"}. Cancel or move them first.`, ...back });
   await prisma.telehealthAvailability.delete({ where: { id } });
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_AVAILABILITY_DELETED", "TelehealthAvailability", id, `${w.provider.user.name}: ${dateInZone(w.startsAt, w.timezone)}`);
+  await logAudit(user.practiceId, user.id, "TELEHEALTH_AVAILABILITY_DELETED", "TelehealthAvailability", id, `${doctorName(w.provider.renderingProvider)}: ${dateInZone(w.startsAt, w.timezone)}`);
   refreshAll();
-  adminRedirect("availability", { ok: "Window removed.", provider: w.providerId });
+  adminRedirect("availability", { ok: "Window removed.", ...back });
 }
 
 // ---- Function 4: reservations ----
@@ -213,8 +192,7 @@ type BlockCheck = { ok: true } | { ok: false; error: string };
 // :00/:20/:40 grid, inside the window, not a break, and not overlapping another live reservation of the doctor.
 async function checkBlock(
   db: Prisma.TransactionClient,
-  window: { id: string; providerId: string; startsAt: Date; endsAt: Date; timezone: string },
-  rule: { breakAfterBlocks: number | null; breakMinWindowMin: number },
+  window: { id: string; providerId: string; startsAt: Date; endsAt: Date; timezone: string; breakAfterBlocks: number | null },
   startsAt: Date,
   endsAt: Date,
   excludeReservationId: string | null
@@ -226,7 +204,7 @@ async function checkBlock(
     where: { availabilityId: window.id, status: { not: "CANCELLED" }, ...(excludeReservationId ? { id: { not: excludeReservationId } } : {}) },
     select: { id: true, startsAt: true, endsAt: true, status: true },
   });
-  const block = buildBlocks(window, live, rule, { excludeReservationId }).find((b) => b.startsAt === startsAt.toISOString());
+  const block = buildBlocks(window, live, { excludeReservationId }).find((b) => b.startsAt === startsAt.toISOString());
   if (!block) return { ok: false, error: "Pick a block that starts at :00, :20 or :40." };
   if (block.isBreak) return { ok: false, error: "That block is the doctor's break." };
   // Double-booking guard across every window of the doctor (half-open overlap).
@@ -283,31 +261,34 @@ export async function reserveTelehealth(formData: FormData) {
 
   const [patient, provider, window, locationId] = await Promise.all([
     prisma.patient.findFirst({ where: { id: patientId, practiceId: user.practiceId } }),
-    prisma.telehealthProvider.findFirst({ where: { id: providerId, practiceId: user.practiceId }, include: { user: true } }),
+    prisma.telehealthProvider.findFirst({ where: { id: providerId, practiceId: user.practiceId }, include: { renderingProvider: true } }),
     prisma.telehealthAvailability.findFirst({ where: { id: availabilityId, practiceId: user.practiceId } }),
     telehealthLocationId(user.practiceId),
   ]);
   if (!patient) fail("Patient not found.");
-  if (!provider || provider.status !== "ACTIVE") fail("That doctor is not active for telehealth.");
+  const rp = provider?.renderingProvider;
+  if (!provider || provider.status !== "ACTIVE" || !rp || !rp.isRendering || !rp.isSupervising || rp.status !== "ACTIVE") fail("That doctor is not active for telehealth.");
+  if (!rp!.userId) fail(`${doctorName(rp!)} has no login linked in the provider directory, so visits can't be filed under them yet.`);
   if (!window || window.providerId !== provider!.id) fail("That window does not belong to the doctor.");
   if (!locationId) fail("Set up a site of service before booking.");
 
+  const name = doctorName(rp!);
   const licensed = parseLicenses(provider!.stateLicenses).includes(stateCode);
-  if (!licensed && !acceptLicense) fail(`${provider!.user.name} is not licensed in ${STATE_NAMES[stateCode]}. Tick "Book anyway" to reserve regardless.`);
+  if (!licensed && !acceptLicense) fail(`${name} is not licensed in ${STATE_NAMES[stateCode]}. Tick "Book anyway" to reserve regardless.`);
 
   // The same workflow gates as any other booking: stop alerts, Gateway clearance and credentialing.
   const rules = await workflowRules(user.practiceId);
   const blocked =
     (await stopBlock(user.practiceId, patient!.id, "schedule", user.id)) ??
     (rules.bookingRequiresGateway ? await bookingBlockedByGateway(user.practiceId, patient!.id) : null) ??
-    (rules.bookingChecksCredentialing ? await bookingBlockedByCredentialing(user.practiceId, patient!.id, provider!.userId) : null);
+    (rules.bookingChecksCredentialing ? await bookingBlockedByCredentialing(user.practiceId, patient!.id, rp!.userId!) : null);
   if (blocked) fail(`Not booked — ${blocked}`);
 
   const outcome: { error: string | null; reservationId: string | null } = { error: null, reservationId: null };
   await prisma.$transaction(async (tx) => {
     // Lock the window so two staff cannot take the same block at once.
     await tx.$queryRaw`SELECT "id" FROM "TelehealthAvailability" WHERE "id" = ${window!.id} FOR UPDATE`;
-    const check = await checkBlock(tx, window!, provider!, startsAt, endsAt, null);
+    const check = await checkBlock(tx, window!, startsAt, endsAt, null);
     if (!check.ok) {
       outcome.error = check.error;
       return;
@@ -316,7 +297,7 @@ export async function reserveTelehealth(formData: FormData) {
       data: {
         practiceId: user.practiceId,
         patientId: patient!.id,
-        providerId: provider!.userId,
+        providerId: rp!.userId!,
         locationId: locationId!,
         startsAt,
         endsAt,
@@ -324,8 +305,9 @@ export async function reserveTelehealth(formData: FormData) {
         status: "SCHEDULED",
         reason: notes,
         placeOfService: "02",
+        supervisingProviderId: rp!.id,
         createdById: user.id,
-        conflictNote: licensed ? null : `Booked with accepted warning: ${provider!.user.name} is not licensed in ${STATE_NAMES[stateCode]}`,
+        conflictNote: licensed ? null : `Booked with accepted warning: ${name} is not licensed in ${STATE_NAMES[stateCode]}`,
       },
     });
     const r = await tx.telehealthReservation.create({
@@ -350,7 +332,7 @@ export async function reserveTelehealth(formData: FormData) {
   if (outcome.error) fail(outcome.error);
   const reservationId = outcome.reservationId!;
 
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_RESERVED", "TelehealthReservation", reservationId, `${provider!.user.name} · ${STATE_NAMES[stateCode]} · ${dateInZone(startsAt, window!.timezone)} ${timeInZone(startsAt, window!.timezone)}${licensed ? "" : " · not licensed (accepted)"}`);
+  await logAudit(user.practiceId, user.id, "TELEHEALTH_RESERVED", "TelehealthReservation", reservationId, `${name} · ${STATE_NAMES[stateCode]} · ${dateInZone(startsAt, window!.timezone)} ${timeInZone(startsAt, window!.timezone)}${licensed ? "" : " · not licensed (accepted)"}`);
   const reservation = await prisma.telehealthReservation.findUnique({ where: { id: reservationId }, select: { appointmentId: true } });
   if (reservation?.appointmentId) await runEligibilityCheck({ practiceId: user.practiceId, patientId: patient!.id, appointmentId: reservation.appointmentId });
 
@@ -362,7 +344,7 @@ export async function reserveTelehealth(formData: FormData) {
 async function loadReservation(id: string, practiceId: string) {
   const r = await prisma.telehealthReservation.findFirst({
     where: { id, practiceId },
-    include: { provider: { include: { user: true } }, availability: true, appointment: { include: { encounter: { select: { id: true } } } }, patient: true },
+    include: { provider: { include: { renderingProvider: true } }, availability: true, appointment: { include: { encounter: { select: { id: true } } } }, patient: true },
   });
   if (!r) throw new Error("Reservation not found");
   return r;
@@ -380,7 +362,7 @@ export async function confirmTelehealthReservation(id: string) {
   if (r.status !== "RESERVED") adminRedirect("reservations", { error: `Only reserved visits can be confirmed (this one is ${r.status.toLowerCase()}).` });
   await prisma.telehealthReservation.update({ where: { id }, data: { status: "CONFIRMED", confirmedById: user.id, confirmedAt: new Date() } });
   await setAppointmentStatus(r.appointmentId, "CONFIRMED", user.id, { confirmedAt: new Date(), confirmedVia: "STAFF" });
-  await logAudit(user.practiceId, user.id, "TELEHEALTH_CONFIRMED", "TelehealthReservation", id, `${r.patient.lastName}, ${r.patient.firstName} with ${r.provider.user.name}`);
+  await logAudit(user.practiceId, user.id, "TELEHEALTH_CONFIRMED", "TelehealthReservation", id, `${r.patient.lastName}, ${r.patient.firstName} with ${doctorName(r.provider.renderingProvider)}`);
   refreshAll();
 }
 
@@ -434,7 +416,7 @@ export async function moveTelehealthReservation(id: string, formData: FormData) 
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "TelehealthAvailability" WHERE "id" = ${r.availability.id} FOR UPDATE`;
     if (startsAt.getTime() !== r.startsAt.getTime()) {
-      const check = await checkBlock(tx, r.availability, r.provider, startsAt, endsAt, r.id);
+      const check = await checkBlock(tx, r.availability, startsAt, endsAt, r.id);
       if (!check.ok) {
         outcome.error = check.error;
         return;
