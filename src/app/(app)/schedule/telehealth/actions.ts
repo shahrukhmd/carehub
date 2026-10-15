@@ -374,7 +374,8 @@ function guardConfirmed(user: { role: string; overrides?: Record<string, boolean
 export async function cancelTelehealthReservation(id: string, formData: FormData) {
   const user = await requireUser(rolesFor("schedule.view"));
   const r = await loadReservation(id, user.practiceId);
-  const reason = text(formData, "reason", 300);
+  // "reason" from the Reservations tab, or the calendar's cancellation reason + optional note.
+  const reason = text(formData, "reason", 300) || [text(formData, "cancelReason", 120), text(formData, "cancelNote", 200)].filter(Boolean).join(" — ").slice(0, 300);
   if (!reason) adminRedirect("reservations", { error: "Give the reason for cancelling." });
   if (["CANCELLED", "COMPLETED"].includes(r.status)) adminRedirect("reservations", { error: `This reservation is already ${r.status.toLowerCase()}.` });
   if (r.appointment?.encounter) adminRedirect("reservations", { error: "This visit has been started — it can't be cancelled from the schedule." });

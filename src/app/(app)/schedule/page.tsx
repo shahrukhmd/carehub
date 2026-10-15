@@ -21,7 +21,7 @@ import { can } from "@/lib/permissions";
 import { US_STATES } from "@/lib/format";
 import { VisitTypeSwitch } from "@/components/VisitTypeSwitch";
 import { TelehealthBooking } from "@/components/TelehealthBooking";
-import { reserveTelehealth } from "@/app/(app)/schedule/telehealth/actions";
+import { cancelTelehealthReservation, confirmTelehealthReservation, reserveTelehealth, setTelehealthOutcome } from "@/app/(app)/schedule/telehealth/actions";
 import { telehealthBookingData } from "@/lib/telehealth-server";
 import { RESERVATION_STATUSES, STATE_NAMES, TELEHEALTH_VISIT_TYPE, timeInZone, zoneLabel } from "@/lib/telehealth";
 
@@ -133,6 +133,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
   ]);
   // Telehealth Initial Wound Care books into doctors' availability windows (next 30 days) instead of the standard form.
   const telehealthOn = visitTypes.some((t) => t.code === TELEHEALTH_VISIT_TYPE);
+  const canConfirmTelehealth = can(user, "telehealth.confirm");
   const telehealthProviders = telehealthOn ? await telehealthBookingData(user.practiceId, startOfDay(new Date()), addDays(startOfDay(new Date()), 30)) : [];
 
   let rangeStart: Date;
@@ -670,7 +671,15 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                               </button>
                             </form>
                           )}
-                          {a.status === "SCHEDULED" && (
+                          {/* Telehealth visits confirm, miss and cancel through the telehealth reservation (role rules + audit). */}
+                          {a.status === "SCHEDULED" && a.telehealthReservation && a.telehealthReservation.status === "RESERVED" && canConfirmTelehealth && (
+                            <form action={confirmTelehealthReservation.bind(null, a.telehealthReservation.id)}>
+                              <button className="btn ghost" type="submit">
+                                Confirm
+                              </button>
+                            </form>
+                          )}
+                          {a.status === "SCHEDULED" && !a.telehealthReservation && (
                             <form action={updateAppointmentStatus.bind(null, a.id, "CONFIRMED")}>
                               <button className="btn ghost" type="submit">
                                 Confirm
@@ -684,7 +693,15 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                               </button>
                             </form>
                           )}
-                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && (
+                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && a.telehealthReservation && (
+                            <form action={setTelehealthOutcome.bind(null, a.telehealthReservation.id)}>
+                              <input type="hidden" name="status" value="MISSED" />
+                              <button className="btn ghost" type="submit">
+                                Mark missed
+                              </button>
+                            </form>
+                          )}
+                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && !a.telehealthReservation && (
                             <form action={updateAppointmentStatus.bind(null, a.id, "NO_SHOW")}>
                               <button className="btn ghost" type="submit">
                                 Mark missed
@@ -694,7 +711,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                           {!a.encounter && !["COMPLETED", "CANCELLED"].includes(a.status) && reasons.length > 0 && (
                             <details className="sc-cancel">
                               <summary>Cancel visit</summary>
-                              <form action={cancelAppointment.bind(null, a.id)} className="stack">
+                              <form action={a.telehealthReservation ? cancelTelehealthReservation.bind(null, a.telehealthReservation.id) : cancelAppointment.bind(null, a.id)} className="stack">
                                 <select name="cancelReason" required defaultValue="" aria-label="Cancellation reason">
                                   <option value="" disabled>
                                     Reason…
