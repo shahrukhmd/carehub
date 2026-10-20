@@ -36,7 +36,7 @@ All new tables carry `practiceId`. Names are prefixed `Gis`.
 
 - **RenderingProvider** (existing) gains `gisTitle` (NP | LPN | MA | CLINICAL_TEAM), `latitude`, `longitude`, `geocodedAt`, `geocodeError`, `gisActive`. Home address is the existing directory address. Title carries marker icon and colour.
 - **Patient** (existing) gains `fullAddress`, `latitude`, `longitude`, `geocodedAt`, `geocodeSource`, `geocodeError`, `weeklySchedule` (JSON weekdays), `gisNextVisit`, `gisNote` (500 chars, rejected when longer), `npProviderId`, `lpnProviderId`, `maProviderId` (to RenderingProvider). Status is not stored; it is read from the latest `IntakeCase` (stage and careStatus) through the Gateway's board columns. Home health and referral source come from existing fields.
-- **GisMap**: label, mapType PROVIDER | GENERAL, providerId (PROVIDER), maskId `MAP-XXXXXXXX` for the URL, centerLat, centerLng, zoom, ownerId, deletedAt.
+- **GisMap**: label, mapType PROVIDER | GENERAL, providerId (required on both types: every drive starts and ends at the clinician's home address, decided 21 Oct), maskId `MAP-XXXXXXXX` for the URL, centerLat, centerLng, zoom, ownerId, deletedAt.
 - **GisMapMember**: mapId, userId, role OWNER | ADMIN | EDITOR | VIEWER, addedById. Unique per map and user.
 - **GisMapPinStyle**: mapId, patientId, color. Unique per map and patient.
 - **GisMapRegion**: practiceId, name, geojson, active (county boundaries uploaded as KML or GeoJSON).

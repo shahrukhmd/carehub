@@ -24,7 +24,7 @@ export async function ownMap(user: Actor, mapId: string, min: MapRole) {
 
 async function fieldProvider(practiceId: string, id: string) {
   const p = await prisma.renderingProvider.findFirst({ where: { id, practiceId, ...FIELD_PROVIDER_WHERE, gisActive: true, gisTitle: { not: null } } });
-  if (!p) fail("Pick a field clinician (a directory provider with a GIS title)");
+  if (!p) fail("Pick the field clinician whose home address is the start and end of every route on this map");
   return p!;
 }
 
@@ -33,8 +33,9 @@ export async function createMap(fd: FormData) {
     const label = str(fd, "label").slice(0, 80);
     if (!label) fail("Name the map");
     const mapType = str(fd, "mapType") === "GENERAL" ? "GENERAL" : "PROVIDER";
-    const providerId = mapType === "PROVIDER" ? str(fd, "providerId") : "";
-    if (mapType === "PROVIDER") await fieldProvider(user.practiceId, providerId);
+    // Every drive starts and ends at the clinician's home address, so every map has a clinician.
+    const providerId = str(fd, "providerId");
+    await fieldProvider(user.practiceId, providerId);
     const map = await prisma.gisMap.create({
       data: { practiceId: user.practiceId, label, mapType, providerId: providerId || null, maskId: await newMaskId(), ownerId: user.id, members: { create: { userId: user.id, role: "OWNER", addedById: user.id } } },
     });
@@ -48,9 +49,9 @@ export async function updateMap(mapId: string, fd: FormData) {
     const { map } = await ownMap(user, mapId, "ADMIN");
     const label = str(fd, "label").slice(0, 80) || map.label;
     const mapType = str(fd, "mapType") === "GENERAL" ? "GENERAL" : "PROVIDER";
-    const providerId = mapType === "PROVIDER" ? str(fd, "providerId") : "";
-    if (mapType === "PROVIDER") await fieldProvider(user.practiceId, providerId);
-    await prisma.gisMap.update({ where: { id: map.id }, data: { label, mapType, providerId: providerId || null } });
+    const providerId = str(fd, "providerId");
+    await fieldProvider(user.practiceId, providerId);
+    await prisma.gisMap.update({ where: { id: map.id }, data: { label, mapType, providerId } });
     await logAudit(user.practiceId, user.id, "GIS_MAP_UPDATE", "GisMap", map.id, JSON.stringify({ before: { label: map.label, mapType: map.mapType, providerId: map.providerId }, after: { label, mapType, providerId: providerId || null } }));
     return "Map saved";
   });

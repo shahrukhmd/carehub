@@ -44,11 +44,12 @@ export default async function GisMapPage({ params, searchParams }: { params: Pro
 
   // Home base and origin text.
   const prov = map.provider;
+  // Every drive starts and ends at the clinician's home address.
   const base: GisPin | null =
-    map.mapType === "PROVIDER" && prov && prov.latitude != null && prov.longitude != null
-      ? { id: prov.id, lat: prov.latitude, lng: prov.longitude, color: GIS_TITLE_COLOR[(prov.gisTitle as GisTitle) ?? "NP"] ?? "#111827", label: "⌂", title: prov.name, lines: [`${gisTitleLabel(prov.gisTitle)} · home base`, fullAddress(prov)] }
+    prov && prov.latitude != null && prov.longitude != null
+      ? { id: prov.id, lat: prov.latitude, lng: prov.longitude, color: GIS_TITLE_COLOR[(prov.gisTitle as GisTitle) ?? "NP"] ?? "#111827", label: "⌂", title: prov.name, lines: [`${gisTitleLabel(prov.gisTitle)} · home base, start and end of every route`, fullAddress(prov)] }
       : null;
-  const origin = map.mapType === "PROVIDER" && prov ? `${prov.name} · ${fullAddress(prov) || "no address"}${prov.latitude == null ? " (not geocoded)" : ""}` : "First stop of each layer";
+  const origin = prov ? `${prov.name} · ${fullAddress(prov) || "no address in the directory"}${prov.latitude == null ? " (not geocoded yet: no directions until it is)" : ""}` : "No clinician on this map: set one in Settings";
 
   // The sidebar: patients for the chosen quick filter. A PROVIDER map's role filters follow its clinician; a
   // GENERAL map's show every patient assigned in that role.
@@ -113,7 +114,6 @@ export default async function GisMapPage({ params, searchParams }: { params: Pro
       )}
       <GisWorkspace
         mapId={map.id}
-        mapType={map.mapType}
         origin={origin}
         base={base}
         layers={layers}

@@ -54,7 +54,7 @@ export default async function GisMapSettingsPage({ params, searchParams }: { par
               </label>
               <label>
                 Provider
-                <select name="providerId" defaultValue={map.providerId ?? ""}>
+                <select name="providerId" required defaultValue={map.providerId ?? ""}>
                   <option value="">—</option>
                   {clinicians.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -72,7 +72,7 @@ export default async function GisMapSettingsPage({ params, searchParams }: { par
           </form>
         ) : (
           <p className="muted">
-            {map.mapType === "PROVIDER" ? `Provider map for ${map.provider?.name ?? "—"}` : "General map"}. Only the map&apos;s Admins change these.
+            Routes start and end at {map.provider?.name ?? "the clinician"}&apos;s home address. Only the map&apos;s Admins change these.
           </p>
         )}
       </section>

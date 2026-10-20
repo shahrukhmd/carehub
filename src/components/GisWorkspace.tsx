@@ -30,7 +30,6 @@ type Drag = { kind: "patient"; patientId: string } | { kind: "stop"; stopId: str
 // updates local state first so the map redraws at once, then persists and refreshes.
 export function GisWorkspace({
   mapId,
-  mapType,
   origin,
   base,
   layers: initialLayers,
@@ -45,7 +44,6 @@ export function GisWorkspace({
   regions = [],
 }: {
   mapId: string;
-  mapType: string;
   origin: string;
   base: GisPin | null;
   layers: Layer[];
@@ -399,7 +397,7 @@ export function GisWorkspace({
               <span className="gis-dot" style={{ background: "#16a34a" }}>
                 D
               </span>
-              Destination: {mapType === "PROVIDER" ? origin : (l.stops[l.stops.length - 1]?.address ?? "last stop")}
+              Destination: {origin}
             </div>
           </section>
         ))}

@@ -22,7 +22,7 @@ export function SharedRoutes({ mapLabel, origin, base, layers, phones, expires }
   const stepLayer = steps ? layers.find((l) => l.id === steps) : null;
 
   return (
-    <div className="share-page">
+    <div className={`share-page${stepLayer?.directions ? " with-steps" : ""}`}>
       <aside className="pp-card share-routes">
         <h1 className="share-title">Routes</h1>
         <p className="pp-muted cn-small">

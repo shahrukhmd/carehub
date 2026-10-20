@@ -120,13 +120,13 @@ async function routeWithStops(routeId: string) {
   return prisma.gisRoute.findUnique({ where: { id: routeId }, include: { map: { include: { provider: true } }, stops: { orderBy: { index: "asc" }, include: { patient: { select: { id: true, latitude: true, longitude: true } } } } } });
 }
 
-// Points for a layer: home base (PROVIDER map with a geocoded clinician) -> placed stops -> home base; on a GENERAL
-// map the first and last stops are the ends.
+// Points for a layer: the clinician's home base -> placed stops -> home base. The start and end of every drive is
+// the map's provider address; without a geocoded home base there are no directions.
 function drivePoints(r: NonNullable<Awaited<ReturnType<typeof routeWithStops>>>) {
   const placed = r.stops.filter((s) => s.patient.latitude != null && s.patient.longitude != null);
-  const home: Point | null = r.map.mapType === "PROVIDER" && r.map.provider?.latitude != null && r.map.provider?.longitude != null ? { lat: r.map.provider.latitude, lng: r.map.provider.longitude } : null;
+  const home: Point | null = r.map.provider?.latitude != null && r.map.provider?.longitude != null ? { lat: r.map.provider.latitude, lng: r.map.provider.longitude } : null;
   const stopPoints = placed.map((s) => ({ lat: s.patient.latitude!, lng: s.patient.longitude! }));
-  return { placed, home, points: home ? [home, ...stopPoints, home] : stopPoints };
+  return { placed, home, points: home && stopPoints.length ? [home, ...stopPoints, home] : [] };
 }
 
 // Recomputes and stores a layer's directions (called after every stop change). Returns null when there is nothing
@@ -158,7 +158,8 @@ export async function optimizeRouteOrder(routeId: string) {
   const { placed, home, points } = drivePoints(r);
   if (placed.length < 3) return r.stops.map((s) => s.id);
   const order = await optimize(r.map.practiceId, points);
-  const placedOrder = order.filter((i) => (home ? i > 0 && i < points.length - 1 : true)).map((i) => placed[home ? i - 1 : i].id);
+  if (!home) throw new Error("The map's clinician has no geocoded home address yet");
+  const placedOrder = order.filter((i) => i > 0 && i < points.length - 1).map((i) => placed[i - 1].id);
   const unplaced = r.stops.filter((s) => !placed.some((p) => p.id === s.id)).map((s) => s.id);
   const ids = [...placedOrder, ...unplaced];
   await prisma.$transaction(ids.map((id, index) => prisma.gisRouteStop.update({ where: { id }, data: { index } })));

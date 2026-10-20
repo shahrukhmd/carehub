@@ -134,6 +134,10 @@ export function GisMapView({
         for (const c of extent) bounds.extend(c);
         map.fitBounds(bounds, { padding: 60, maxZoom: 13, duration: 0 });
       }
+      // The container's size settles after layout (grid columns, panels opening): keep the canvas in step.
+      const ro = new ResizeObserver(() => map?.resize());
+      ro.observe(el.current);
+      map.once("remove", () => ro.disconnect());
       let timer: ReturnType<typeof setTimeout> | null = null;
       map.on("moveend", () => {
         if (!onView.current || !map) return;

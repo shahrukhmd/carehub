@@ -72,13 +72,13 @@ export default async function GisHome({ searchParams }: { searchParams: Promise<
             <label>
               Type
               <select name="mapType" defaultValue="PROVIDER">
-                <option value="PROVIDER">Provider map (routes start and end at the clinician&apos;s home)</option>
-                <option value="GENERAL">General map (first and last stop are the ends)</option>
+                <option value="PROVIDER">Provider map (one clinician&apos;s territory)</option>
+                <option value="GENERAL">General map (shared workspace; drives still start and end at the clinician&apos;s home)</option>
               </select>
             </label>
             <label>
-              Provider (for a provider map)
-              <select name="providerId" defaultValue="">
+              Clinician (start and end of every route)
+              <select name="providerId" required defaultValue="">
                 <option value="">—</option>
                 {clinicians.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -135,7 +135,7 @@ export default async function GisHome({ searchParams }: { searchParams: Promise<
                 <span className="sa-chip">{MAP_ROLE_LABEL[m.myRole]}</span>
               </div>
               <div className="muted cn-small">
-                {m.mapType === "PROVIDER" ? (m.provider ? `${m.provider.name} · ${gisTitleLabel(m.provider.gisTitle)}` : "Provider map") : "General map"}
+                {m.provider ? `${m.provider.name} · ${gisTitleLabel(m.provider.gisTitle)}` : "No clinician"}{m.mapType === "GENERAL" ? " · general map" : ""}
               </div>
               <div className="muted cn-small">
                 {m._count.routes} layer{m._count.routes === 1 ? "" : "s"} · {m.memberCount} member{m.memberCount === 1 ? "" : "s"} · {m.maskId}

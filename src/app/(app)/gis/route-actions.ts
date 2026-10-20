@@ -200,5 +200,5 @@ export async function redrawDirections(routeId: string): Promise<ActionResult> {
   if (!o.ok) return fail(o.error);
   const d = await refreshDirections(routeId);
   done(o.map.id);
-  return d ? { ok: true, message: "Directions refreshed" } : fail("No directions: the layer needs at least two placed points (home base or stops with coordinates)");
+  return d ? { ok: true, message: "Directions refreshed" } : fail("No directions: the drive starts and ends at the clinician's home address, so the map's clinician needs a geocoded address and the layer at least one stop with coordinates");
 }

@@ -11375,20 +11375,29 @@ select.um-pill option {
 .gis-steps ol {
   padding-left: 1.2rem;
 }
-/* GIS public share page. */
+/* GIS public share page: full width, routes panel left, map centre, step-by-step right. */
+.pp-main-wide {
+  max-width: none;
+  padding: 1rem 1.2rem 1.5rem;
+}
 .share-page {
   display: grid;
-  grid-template-columns: 20rem minmax(0, 1fr);
+  grid-template-columns: 22rem minmax(0, 1fr);
   gap: 1rem;
-  min-height: 80vh;
+  height: calc(100vh - 9rem);
+  min-height: 32rem;
 }
 .share-page.with-steps {
-  grid-template-columns: 20rem minmax(0, 1fr) 20rem;
+  grid-template-columns: 22rem minmax(0, 1fr) 22rem;
 }
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
   .share-page,
   .share-page.with-steps {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .share-map {
+    height: 60vh;
   }
 }
 .share-title {
@@ -11397,11 +11406,14 @@ select.um-pill option {
 }
 .share-routes,
 .share-steps {
-  max-height: 85vh;
   overflow: auto;
+  min-height: 0;
 }
 .share-map {
-  min-height: 60vh;
+  min-height: 0;
+}
+.share-map .gis-map {
+  height: 100%;
 }
 .share-layer {
   border-left: 4px solid;

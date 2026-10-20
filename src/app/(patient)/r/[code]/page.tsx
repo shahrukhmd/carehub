@@ -28,9 +28,10 @@ export default async function SharedRoutePage({ params }: { params: Promise<{ co
     );
   }
   const prov = link.map.provider;
+  // The drive starts and ends at the clinician's home address.
   const base: GisPin | null =
-    link.map.mapType === "PROVIDER" && prov && prov.latitude != null && prov.longitude != null
-      ? { id: prov.id, lat: prov.latitude, lng: prov.longitude, color: GIS_TITLE_COLOR[(prov.gisTitle as GisTitle) ?? "NP"] ?? "#111827", label: "⌂", title: prov.name, lines: [`${gisTitleLabel(prov.gisTitle)} · home base`, fullAddress(prov)] }
+    prov && prov.latitude != null && prov.longitude != null
+      ? { id: prov.id, lat: prov.latitude, lng: prov.longitude, color: GIS_TITLE_COLOR[(prov.gisTitle as GisTitle) ?? "NP"] ?? "#111827", label: "⌂", title: prov.name, lines: [`${gisTitleLabel(prov.gisTitle)} · start and end of the route`, fullAddress(prov)] }
       : null;
   const layers: Layer[] = routes.map((r) => ({
     id: r.id,
@@ -46,8 +47,8 @@ export default async function SharedRoutePage({ params }: { params: Promise<{ co
   }));
   const phones = Object.fromEntries(routes.flatMap((r) => r.stops.map((s) => [s.id, s.patient.phone ?? ""])));
   return (
-    <PortalShell brand={brand} fallbackName={practice.name}>
-      <SharedRoutes mapLabel={link.map.label} origin={base ? `${prov!.name} · ${fullAddress(prov!)}` : "First stop of each route"} base={base} layers={layers} phones={phones} expires={toDateParam(link.expiresAt)} />
+    <PortalShell brand={brand} fallbackName={practice.name} wide>
+      <SharedRoutes mapLabel={link.map.label} origin={prov ? `${prov.name} · ${fullAddress(prov)}` : "the clinician's home address"} base={base} layers={layers} phones={phones} expires={toDateParam(link.expiresAt)} />
     </PortalShell>
   );
 }
