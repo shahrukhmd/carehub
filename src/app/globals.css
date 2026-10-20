@@ -10930,4 +10930,750 @@ select.um-pill option {
 }
 .app-shell .reg-section {
   overflow: hidden;
+/* ---- Telehealth scheduler (Telehealth Initial Wound Care) ---- */
+.th-blocks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.4rem;
+}
+.th-block {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--field);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.th-block:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.th-block.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.th-block:disabled {
+  cursor: not-allowed;
+  color: var(--muted);
+  background: var(--panel-alt);
+}
+.th-block.booked {
+  text-decoration: line-through;
+}
+.th-block.break {
+  font-style: italic;
+}
+.th-warn {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  align-items: center;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-md);
+  border-left: 4px solid var(--amber);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.th-ok {
+  margin: 0;
+  padding: 0.55rem 0.8rem;
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-weight: 600;
+}
+.th-error {
+  white-space: pre-line;
+}
+.th-window-status {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.th-states {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.2rem, 1fr));
+  gap: 0.15rem 0.5rem;
+}
+.th-states .checkbox-inline {
+  margin: 0;
+}
+
+/* Scheduler: the visit list keeps its width, the booking panel is capped, and the action buttons never wrap. */
+.sc-layout {
+  grid-template-columns: minmax(0, 1fr) minmax(24rem, 30rem);
+  align-items: start;
+}
+.sc-layout > .panel,
+.sc-layout > .stack {
+  min-width: 0;
+}
+.sc-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+.sc-actions .btn,
+.sc-actions summary {
+  white-space: nowrap;
+}
+@media (max-width: 1400px) {
+  .sc-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.sc-actions .stack {
+  width: max-content;
+  min-width: max-content;
+}
+
+/* Telehealth reservations: one group per doctor, reservations as cards */
+.th-group {
+  padding: 0.9rem 0 0;
+  border-top: 1px solid var(--line);
+  margin-top: 0.9rem;
+}
+.th-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.7rem;
+}
+.th-group-head h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--navy);
+}
+.th-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: 0.8rem;
+}
+.th-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius-md);
+  background: var(--panel-alt);
+}
+.th-card-confirmed {
+  border-left-color: var(--accent);
+}
+.th-card-cancelled,
+.th-card-missed {
+  border-left-color: var(--muted);
+  opacity: 0.75;
+}
+.th-card-completed {
+  border-left-color: var(--accent-dark);
+}
+.th-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+.th-card-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.8rem;
+  margin: 0;
+  font-size: var(--text-md);
+}
+.th-card-facts > div {
+  display: contents;
+}
+.th-card-facts dt {
+  color: var(--muted);
+}
+.th-card-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.th-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.th-card-more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+.th-group > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.th-group > summary::-webkit-details-marker {
+  display: none;
+}
+.th-group > summary > div:first-child::before {
+  content: "▶";
+  display: inline-block;
+  width: 1.1rem;
+  font-size: 0.7em;
+  color: var(--navy);
+  transition: transform 0.15s;
+}
+.th-group[open] > summary > div:first-child::before {
+  transform: rotate(90deg);
+}
+.th-group > summary > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 0.2rem;
+  flex-wrap: wrap;
+}
+.th-group > summary > div:first-child .cn-small {
+  flex-basis: 100%;
+  padding-left: 1.3rem;
+}
+
+/* ---- GIS (field routing) ---- */
+.fr-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
+  align-items: end;
+}
+.fr-filters label {
+  display: grid;
+  gap: 0.2rem;
+  font-size: var(--text-sm);
+}
+.fr-filters input,
+.fr-filters select {
+  min-width: 8rem;
+}
+.fr-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.fr-board td {
+  vertical-align: top;
+}
+.fr-board .inline-select select {
+  max-width: 11rem;
+}
+.fr-row-edit {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 14rem;
+}
+.fr-days {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+.fr-days label {
+  font-size: var(--text-xs);
+  display: inline-flex;
+  gap: 0.15rem;
+  align-items: center;
+}
+.fr-export {
+  margin: 0.4rem 0 0.8rem;
+}
+.gis-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.gis-card {
+  display: grid;
+  gap: 0.25rem;
+  color: inherit;
+  text-decoration: none;
+}
+.gis-card:hover {
+  border-color: var(--accent);
+}
+.gis-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gis-map {
+  width: 100%;
+  min-height: 20rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--panel);
+}
+.gis-map .maplibregl-popup-content {
+  color: #1f2937;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+}
+.gis-map .maplibregl-popup-content .muted {
+  color: #6b7280;
+}
+.gis-map-stop {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.gis-map-btn {
+  margin-top: 0.4rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+}
+.gis-map-link {
+  font-size: 0.8rem;
+}
+.gis-map-page {
+  display: grid;
+  gap: var(--space-3);
+}
+.gis-map-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.gis-panes {
+  display: grid;
+  grid-template-columns: 18rem minmax(0, 1fr);
+  gap: var(--space-3);
+  min-height: 70vh;
+}
+.gis-panes.with-sidebar {
+  grid-template-columns: 18rem 16rem minmax(0, 1fr);
+}
+.gis-pane-left,
+.gis-pane-mid {
+  overflow: auto;
+  max-height: 80vh;
+}
+.gis-pane-map {
+  min-height: 70vh;
+}
+@media (max-width: 1100px) {
+  .gis-panes,
+  .gis-panes.with-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gis-pane-map {
+    min-height: 60vh;
+  }
+}
+/* GIS map workspace: three panes. */
+.gis-work {
+  display: grid;
+  grid-template-columns: 19rem 17rem minmax(0, 1fr);
+  gap: var(--space-3);
+  min-height: 76vh;
+  position: relative;
+}
+@media (max-width: 1200px) {
+  .gis-work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.gis-toast {
+  position: fixed;
+  right: 1.2rem;
+  bottom: 1.2rem;
+  z-index: 50;
+  padding: 0.6rem 0.9rem;
+  border-radius: var(--radius-md);
+  color: #fff;
+  background: #16a34a;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.gis-toast.err {
+  background: #dc2626;
+}
+.gis-h {
+  margin: 0.9rem 0 0.3rem;
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.gis-origin,
+.gis-dest {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.3rem 0;
+}
+.gis-dot {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.72rem;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.gis-quick {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+.gis-quick a {
+  display: block;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+.gis-quick a.active {
+  background: var(--accent);
+  color: #fff;
+}
+.gis-layer {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.6rem;
+  margin: 0.5rem 0;
+}
+.gis-layer.over {
+  outline: 2px solid var(--accent);
+}
+.gis-layer-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.gis-layer-head .btn {
+  padding: 0 0.4rem;
+}
+.gis-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+.gis-layer-form {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.4rem 0;
+}
+.gis-colors {
+  display: flex;
+  gap: 0.6rem;
+  font-size: var(--text-xs);
+  align-items: center;
+}
+.gis-colors input {
+  width: 2rem;
+  height: 1.4rem;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.gis-optimize {
+  margin: 0.3rem 0;
+}
+.gis-stops {
+  list-style: none;
+  margin: 0.3rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.gis-stop {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  align-items: start;
+  padding: 0.3rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.6);
+  cursor: grab;
+}
+.gis-stop.over {
+  outline: 2px solid var(--accent);
+}
+.gis-stop.dragging {
+  opacity: 0.5;
+}
+.gis-stop-text {
+  display: grid;
+  min-width: 0;
+}
+.gis-stop-text a {
+  color: inherit;
+  font-weight: 600;
+}
+.gis-stop-sub {
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gis-x,
+.gis-layer-menu .btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+}
+.gis-x:hover {
+  color: #dc2626;
+  opacity: 1;
+}
+.gis-addrow {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+.gis-addrow .btn {
+  padding: 0.15rem 0.5rem;
+  font-size: var(--text-xs);
+}
+.gis-layer-foot {
+  margin-top: 0.3rem;
+  opacity: 0.85;
+}
+.gis-mid-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.gis-mid-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 0.2rem;
+}
+.gis-mid-tools .btn {
+  padding: 0.1rem 0.4rem;
+}
+.gis-mid-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.3rem;
+  margin: 0.5rem 0;
+}
+.gis-rows {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+.gis-row {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: grab;
+  background: var(--panel);
+}
+.gis-row.on-layer {
+  opacity: 0.6;
+}
+.gis-row input {
+  width: auto;
+}
+.gis-grip {
+  color: var(--muted);
+}
+.gis-row-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gis-badge {
+  color: #fff;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.gis-pane-map {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+}
+.gis-foot {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  font-size: var(--text-sm);
+}
+.gis-steps {
+  max-height: 18rem;
+  overflow: auto;
+}
+.gis-steps ol {
+  padding-left: 1.2rem;
+}
+/* GIS public share page: full width, routes panel left, map centre, step-by-step right. */
+.pp-main-wide {
+  max-width: none;
+  padding: 1rem 1.2rem 1.5rem;
+}
+.share-page {
+  display: grid;
+  grid-template-columns: 22rem minmax(0, 1fr);
+  gap: 1rem;
+  height: calc(100vh - 9rem);
+  min-height: 32rem;
+}
+.share-page.with-steps {
+  grid-template-columns: 22rem minmax(0, 1fr) 22rem;
+}
+@media (max-width: 1000px) {
+  .share-page,
+  .share-page.with-steps {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+  .share-map {
+    height: 60vh;
+  }
+}
+.share-title {
+  margin: 0 0 0.2rem;
+  font-size: 1.1rem;
+}
+.share-routes,
+.share-steps {
+  overflow: auto;
+  min-height: 0;
+}
+.share-map {
+  min-height: 0;
+}
+.share-map .gis-map {
+  height: 100%;
+}
+.share-layer {
+  border-left: 4px solid;
+  padding: 0.4rem 0.6rem;
+  margin: 0.6rem 0;
+}
+.share-stops {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.share-stops li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+.share-leg {
+  margin: 0.5rem 0;
+}
+.share-leg ol {
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}
+.gis-share-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+}
+.gis-share-box {
+  width: min(34rem, 92vw);
+}
+.gis-share-url {
+  display: flex;
+  gap: 0.4rem;
+}
+.gis-share-url input {
+  flex: 1;
+}
+.gis-foot-btn {
+  margin-left: auto;
+}
+.gis-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 0.4rem;
+  color: #fff;
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+.gis-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.gis-chip {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: var(--text-xs);
+}
+.gis-chip.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+.gis-picker {
+  background: var(--panel-alt);
+}
+.gis-picker-table {
+  max-height: 24rem;
+  overflow: auto;
+}
+.gis-map-home {
+  width: 2.1rem;
+  height: 2.1rem;
+  font-size: 1.05rem;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px #111827, 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+.gis-legend-home {
+  display: inline-grid;
+  width: 1.3rem;
+  height: 1.3rem;
+  font-size: 0.75rem;
+  border-width: 2px;
+  box-shadow: 0 0 0 1px #111827;
+  vertical-align: middle;
+  cursor: default;
 }

@@ -17,6 +17,13 @@ import { addDays, DAY_ABBR, parseDateParam, startOfDay, startOfWeek, toDateParam
 import { getSchedulerSettings, getVisitTypes, visitTypeNames } from "@/lib/scheduler-setup";
 import { CALENDAR_STATUSES, PREVIEW_FIELDS, parseJson, parseOfficeHours, timeLabel, type ColorPair } from "@/lib/scheduler";
 import { visitStatusLabel } from "@/lib/visit-workflow";
+import { can } from "@/lib/permissions";
+import { US_STATES } from "@/lib/format";
+import { VisitTypeSwitch } from "@/components/VisitTypeSwitch";
+import { TelehealthBooking } from "@/components/TelehealthBooking";
+import { cancelTelehealthReservation, confirmTelehealthReservation, reserveTelehealth, setTelehealthOutcome } from "@/app/(app)/schedule/telehealth/actions";
+import { telehealthBookingData } from "@/lib/telehealth-server";
+import { RESERVATION_STATUSES, STATE_NAMES, TELEHEALTH_VISIT_TYPE, timeInZone, zoneLabel } from "@/lib/telehealth";
 
 const ALL_VIEWS = ["day", "week", "list", "capacity"] as const;
 type View = (typeof ALL_VIEWS)[number];
@@ -51,6 +58,13 @@ type SearchParams = {
   bookCollab?: string;
   bookAcct?: string;
   bookRes?: string;
+  // Telehealth booking panel: the error and choices carried back after a failed reservation.
+  teleError?: string;
+  teleProvider?: string;
+  teleWindow?: string;
+  teleState?: string;
+  teleBlock?: string;
+  teleNotes?: string;
 };
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -96,7 +110,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
 
   const [bookingPatient, providers, locations, collaborators, resources] = await Promise.all([
     // The booking form searches for the patient; only a pre-chosen one (from the Gateway or a retry) is loaded here.
-    sp.patientId ? prisma.patient.findFirst({ where: { id: sp.patientId, practiceId: user.practiceId }, select: { id: true, firstName: true, lastName: true, mrn: true } }) : Promise.resolve(null),
+    sp.patientId ? prisma.patient.findFirst({ where: { id: sp.patientId, practiceId: user.practiceId }, select: { id: true, firstName: true, lastName: true, mrn: true, state: true } }) : Promise.resolve(null),
     prisma.user.findMany({ where: { practiceId: user.practiceId, role: "CLINICIAN" }, orderBy: { name: "asc" } }),
     prisma.location.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
     prisma.renderingProvider.findMany({ where: { practiceId: user.practiceId, isRendering: true, status: "ACTIVE" }, orderBy: { name: "asc" } }),
@@ -117,6 +131,10 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
     }),
     prisma.cancellationReason.findMany({ where: { practiceId: user.practiceId, active: true }, orderBy: { name: "asc" } }),
   ]);
+  // Telehealth Initial Wound Care books into doctors' availability windows (next 30 days) instead of the standard form.
+  const telehealthOn = visitTypes.some((t) => t.code === TELEHEALTH_VISIT_TYPE);
+  const canConfirmTelehealth = can(user, "telehealth.confirm");
+  const telehealthProviders = telehealthOn ? await telehealthBookingData(user.practiceId, startOfDay(new Date()), addDays(startOfDay(new Date()), 30)) : [];
 
   let rangeStart: Date;
   let rangeEnd: Date;
@@ -161,6 +179,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
         resource: true,
         intakeCase: true,
         eligibilityChecks: { orderBy: { checkedAt: "desc" }, take: 1 },
+        telehealthReservation: true,
       },
       orderBy: { startsAt: "asc" },
     }),
@@ -329,6 +348,11 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           <Link className="btn secondary" href="/schedule/availability">
             Manage availability
           </Link>
+          {telehealthOn && can(user, "telehealth.setup") && (
+            <Link className="btn secondary" href="/schedule/telehealth">
+              Telehealth
+            </Link>
+          )}
           {user.role === "ADMIN" && (
             <Link className="btn ghost" href="/settings/scheduling">
               Scheduler admin
@@ -505,7 +529,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           </table>
         </section>
       ) : (
-        <div className="two-col">
+        <div className="two-col sc-layout">
           <section className="panel">
             <div className="gw-section-head">
               <h2>{view === "day" ? formatDate(anchor) : view === "list" ? "Upcoming (30 days)" : "This week"}</h2>
@@ -521,7 +545,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                   <th>Type</th>
                   <th>Status</th>
                   <th>Eligibility</th>
-                  <th></th>
+                  <th className="sc-actions"></th>
                 </tr>
               </thead>
               <tbody>
@@ -568,6 +592,11 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                         <Link href={`/patients/${a.patientId}`}>{patientName(a.patient)}</Link>
                         {a.reason && <div className="muted">{a.reason}</div>}
                         {a.cancelReason && <div className="gw-missing">Cancelled: {a.cancelReason}</div>}
+                        {a.telehealthReservation && (
+                          <div className="muted cn-small">
+                            Telehealth · {STATE_NAMES[a.telehealthReservation.stateCode] ?? a.telehealthReservation.stateCode} · {timeInZone(a.telehealthReservation.startsAt, a.telehealthReservation.timezone)} {zoneLabel(a.telehealthReservation.timezone)} · {RESERVATION_STATUSES[a.telehealthReservation.status] ?? a.telehealthReservation.status}
+                          </div>
+                        )}
                         {details.length > 0 && (
                           <details className="sc-preview">
                             <summary>Visit info</summary>
@@ -633,7 +662,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                           </form>
                         )}
                       </td>
-                      <td>
+                      <td className="sc-actions">
                         <div className="stack">
                           {["SCHEDULED", "CONFIRMED"].includes(a.status) && (
                             <form action={updateAppointmentStatus.bind(null, a.id, "CHECKED_IN")}>
@@ -642,7 +671,15 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                               </button>
                             </form>
                           )}
-                          {a.status === "SCHEDULED" && (
+                          {/* Telehealth visits confirm, miss and cancel through the telehealth reservation (role rules + audit). */}
+                          {a.status === "SCHEDULED" && a.telehealthReservation && a.telehealthReservation.status === "RESERVED" && canConfirmTelehealth && (
+                            <form action={confirmTelehealthReservation.bind(null, a.telehealthReservation.id)}>
+                              <button className="btn ghost" type="submit">
+                                Confirm
+                              </button>
+                            </form>
+                          )}
+                          {a.status === "SCHEDULED" && !a.telehealthReservation && (
                             <form action={updateAppointmentStatus.bind(null, a.id, "CONFIRMED")}>
                               <button className="btn ghost" type="submit">
                                 Confirm
@@ -656,7 +693,15 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                               </button>
                             </form>
                           )}
-                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && (
+                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && a.telehealthReservation && (
+                            <form action={setTelehealthOutcome.bind(null, a.telehealthReservation.id)}>
+                              <input type="hidden" name="status" value="MISSED" />
+                              <button className="btn ghost" type="submit">
+                                Mark missed
+                              </button>
+                            </form>
+                          )}
+                          {["SCHEDULED", "CONFIRMED"].includes(a.status) && !a.telehealthReservation && (
                             <form action={updateAppointmentStatus.bind(null, a.id, "NO_SHOW")}>
                               <button className="btn ghost" type="submit">
                                 Mark missed
@@ -666,7 +711,7 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                           {!a.encounter && !["COMPLETED", "CANCELLED"].includes(a.status) && reasons.length > 0 && (
                             <details className="sc-cancel">
                               <summary>Cancel visit</summary>
-                              <form action={cancelAppointment.bind(null, a.id)} className="stack">
+                              <form action={a.telehealthReservation ? cancelTelehealthReservation.bind(null, a.telehealthReservation.id) : cancelAppointment.bind(null, a.id)} className="stack">
                                 <select name="cancelReason" required defaultValue="" aria-label="Cancellation reason">
                                   <option value="" disabled>
                                     Reason…
@@ -704,8 +749,26 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
           </section>
 
           <div className="stack">
-            <form className="panel stack" action={createAppointment} id="book">
+            <section className="panel stack" id="book">
               <h2>Schedule encounter</h2>
+              <VisitTypeSwitch
+                types={visitTypes.map((t) => ({ code: t.code, name: t.name, durationMin: t.durationMin, billable: t.billable }))}
+                defaultValue={sp.bookType ?? visitTypes.find((t) => t.code === "EST_WOUND")?.code ?? visitTypes[0]?.code ?? ""}
+                telehealthCode={TELEHEALTH_VISIT_TYPE}
+                standardAction={createAppointment}
+                telehealth={
+                  <TelehealthBooking
+                    providers={telehealthProviders}
+                    states={US_STATES}
+                    action={reserveTelehealth}
+                    initialPatient={bookingPatient ? { id: bookingPatient.id, name: patientName(bookingPatient), mrn: bookingPatient.mrn, state: bookingPatient.state } : null}
+                    defaults={{ providerId: sp.teleProvider, windowId: sp.teleWindow, state: sp.teleState, block: sp.teleBlock, notes: sp.teleNotes, error: sp.teleError }}
+                    returnTo={sp.returnTo}
+                    canSetup={can(user, "telehealth.setup")}
+                  />
+                }
+                standard={
+                  <>
               {sp.patientId && <HandoffHeader practiceId={user.practiceId} patientId={sp.patientId} providerId={sp.bookWith ?? null} audience="booking" />}
               {sp.conflicts && (
                 <div className="gw-error" role="alert">
@@ -733,30 +796,6 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
                 <label>
                   Length (min)
                   <input name="durationMinutes" type="number" min="5" max="480" step="5" defaultValue={sp.bookLen ?? ""} placeholder="From encounter type" />
-                </label>
-                <label>
-                  Encounter type
-                  <select name="visitType" defaultValue={sp.bookType ?? visitTypes.find((t) => t.code === "EST_WOUND")?.code ?? visitTypes[0]?.code}>
-                    {visitTypes
-                      .filter((t) => t.billable)
-                      .map((t) => (
-                        <option key={t.code} value={t.code}>
-                          {t.name}
-                          {t.durationMin ? ` (${t.durationMin} min)` : ""}
-                        </option>
-                      ))}
-                    {visitTypes.some((t) => !t.billable) && (
-                      <optgroup label="Non-billable interactions">
-                        {visitTypes
-                          .filter((t) => !t.billable)
-                          .map((t) => (
-                            <option key={t.code} value={t.code}>
-                              {t.name}
-                            </option>
-                          ))}
-                      </optgroup>
-                    )}
-                  </select>
                 </label>
                 <label>
                   Physician
@@ -891,7 +930,10 @@ export default async function SchedulePage({ searchParams }: { searchParams: Pro
               <button className="btn" type="submit">
                 Create
               </button>
-            </form>
+                  </>
+                }
+              />
+            </section>
 
             <form className="panel stack" action={createReservedTime}>
               <h2>Schedule reserved time</h2>

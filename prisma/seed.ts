@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/password";
 import { seedGateway } from "./seed-gateway";
 import { seedVisits } from "./seed-visits";
+import { seedTelehealth } from "./seed-telehealth";
 
 const prisma = new PrismaClient();
 const DEMO_PASSWORD_HASH = hashPassword("carehub123");
@@ -1038,6 +1039,7 @@ async function main() {
 
   await seedGateway(prisma, riverside.id, DEMO_PASSWORD_HASH);
   await seedVisits(prisma, riverside.id, DEMO_PASSWORD_HASH);
+  await seedTelehealth(prisma, riverside.id);
 
   console.log("Seeded 2 demo practices.");
   console.log({

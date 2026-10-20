@@ -59,6 +59,15 @@ model Practice {
   treatmentSteps TreatmentStep[]
   woundTreatments WoundTreatment[]
   patientMessages PatientMessage[]
+  telehealthProviders TelehealthProvider[]
+  telehealthAvailability TelehealthAvailability[]
+  telehealthReservations TelehealthReservation[]
+  gisSettings  GisSettings?
+  gisMaps      GisMap[]
+  gisShareLinks GisShareLink[]
+  gisGroups    GisGroup[]
+  gisRegions   GisRegion[]
+  gisNotifications GisNotification[]
   id           String        @id @default(cuid())
   name         String
   slug         String        @unique
@@ -205,6 +214,9 @@ model User {
   alertsAssigned  PatientAlert[] @relation("AlertAssignee")
   alertAcks       AlertAcknowledgement[]
   woundTreatments WoundTreatment[]
+  gisMapMemberships GisMapMember[]
+  gisGroupMemberships GisGroupMember[]
+  gisNotifications GisNotification[]
   id          String        @id @default(cuid())
   practiceId  String
   practice    Practice      @relation(fields: [practiceId], references: [id], onDelete: Cascade)
@@ -324,6 +336,7 @@ model Session {
 
 model Patient {
   educationResources EducationResource[]
+  telehealthReservations TelehealthReservation[]
   paymentPlans PaymentPlan[]
   collectionsCases CollectionsCase[]
   // Statement delivery and hold (Claims & balance page).
@@ -480,6 +493,28 @@ model Patient {
   consentRecordedById String?
   // Values of the practice's custom fields (JSON { key: value }).
   customFields      String?
+  // ---- GIS (field routing) ----
+  // Home address coordinates from the geocoding job; cleared when the address changes. No coordinates, no pin.
+  latitude          Float?
+  longitude         Float?
+  geocodedAt        DateTime?
+  // CENSUS | GOOGLE | MANUAL
+  geocodeSource     String?
+  geocodeError      String?
+  // GIS board: weekly schedule (JSON weekdays 0-6), next visit, a 500-character note, and the three field
+  // assignments to directory providers (NP, LPN, MA). Status comes from the Patient Gateway care board.
+  weeklySchedule    String?
+  gisNextVisit      DateTime?
+  gisNote           String?
+  npProviderId      String?
+  npProvider        RenderingProvider? @relation("GisNp", fields: [npProviderId], references: [id], onDelete: SetNull)
+  lpnProviderId     String?
+  lpnProvider       RenderingProvider? @relation("GisLpn", fields: [lpnProviderId], references: [id], onDelete: SetNull)
+  maProviderId      String?
+  maProvider        RenderingProvider? @relation("GisMa", fields: [maProviderId], references: [id], onDelete: SetNull)
+  gisRouteStops     GisRouteStop[]
+  gisPinStyles      GisMapPinStyle[]
+  gisGroups         GisGroupPatient[]
   disclosures       Disclosure[]
   amendmentRequests AmendmentRequest[]
   emergencyAccesses EmergencyAccess[]
@@ -700,6 +735,21 @@ model RenderingProvider {
   supervisingProviderId String?
   supervisingProvider   RenderingProvider?  @relation("Supervision", fields: [supervisingProviderId], references: [id])
   supervisees           RenderingProvider[] @relation("Supervision")
+  telehealthProfile     TelehealthProvider? @relation("TelehealthProfile")
+  // ---- GIS (field routing) ----
+  // Field clinician title: NP | LPN | MA | CLINICAL_TEAM. Null = not a field clinician in GIS.
+  gisTitle              String?
+  gisActive             Boolean   @default(true)
+  // Home base, geocoded from the directory address: route origin and destination for this provider's maps.
+  latitude              Float?
+  longitude             Float?
+  geocodedAt            DateTime?
+  geocodeError          String?
+  gisMaps               GisMap[]  @relation("GisMapProvider")
+  gisGroups             GisGroupProvider[] @relation("GisGroupProvider")
+  gisPatientsAsNp       Patient[] @relation("GisNp")
+  gisPatientsAsLpn      Patient[] @relation("GisLpn")
+  gisPatientsAsMa       Patient[] @relation("GisMa")
   createdAt             DateTime  @default(now())
   enrollments           ProviderEnrollment[]
   documents             ProviderDocument[]
@@ -887,6 +937,7 @@ model Appointment {
   bookingNote           String?
   // Copay expected at the visit (from eligibility or the insurance on file).
   copayDueCents         Int?
+  telehealthReservation TelehealthReservation?
 }
 
 model Encounter {
@@ -1864,6 +1915,245 @@ model DocumentationView {
 }
 
 // Facility setup - general settings (claim pay-to, statement addresses, billing rules, clearinghouse).
+// ---- GIS (field routing): maps, routes and stops ----
+
+// A map board: a workspace of route layers for one field clinician (PROVIDER) or none (GENERAL), shared with
+// colleagues by role. The mask id is the short public id in the URL.
+model GisMap {
+  id          String             @id @default(cuid())
+  practiceId  String
+  practice    Practice           @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  label       String
+  // PROVIDER | GENERAL
+  mapType     String             @default("PROVIDER")
+  providerId  String?
+  provider    RenderingProvider? @relation("GisMapProvider", fields: [providerId], references: [id], onDelete: SetNull)
+  maskId      String             @unique
+  ownerId     String
+  // Where the map was last left (saved as it is panned; viewers don't save).
+  centerLat   Float?
+  centerLng   Float?
+  zoom        Float?
+  deletedAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  members     GisMapMember[]
+  routes      GisRoute[]
+  pinStyles   GisMapPinStyle[]
+  shareLinks  GisShareLink[]
+
+  @@index([practiceId])
+}
+
+// Who can open a map and what they may do: OWNER | ADMIN | EDITOR | VIEWER.
+model GisMapMember {
+  id        String   @id @default(cuid())
+  mapId     String
+  map       GisMap   @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String
+  addedById String?
+  createdAt DateTime @default(now())
+
+  @@unique([mapId, userId])
+}
+
+// A pin colour chosen for a patient on one map (wins over group and default colours).
+model GisMapPinStyle {
+  id        String   @id @default(cuid())
+  mapId     String
+  map       GisMap   @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  color     String
+  createdAt DateTime @default(now())
+
+  @@unique([mapId, patientId])
+}
+
+// A route layer on a map: one dated trip with ordered stops and cached driving directions.
+model GisRoute {
+  id             String        @id @default(cuid())
+  mapId          String
+  map            GisMap        @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  label          String
+  visitDate      DateTime
+  note           String?
+  markerColor    String        @default("#2563eb")
+  layerColor     String        @default("#dbeafe")
+  layerTextColor String        @default("#1e3a8a")
+  optimize       Boolean       @default(false)
+  // Directions from the routing provider, JSON (see src/lib/gis/directions.ts); null when stops changed.
+  directions     String?
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  stops          GisRouteStop[]
+
+  @@index([mapId, visitDate])
+}
+
+// One stop on a route layer. `index` is the order of the day.
+model GisRouteStop {
+  id        String   @id @default(cuid())
+  routeId   String
+  route     GisRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  index     Int
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([routeId, patientId])
+  @@index([routeId, index])
+}
+
+// A reusable list: patients (PATIENT) or field clinicians (PROVIDER), with a colour and icon, owned by a user and
+// shared with colleagues by role. Loaded onto any map in one click in the group colour.
+model GisGroup {
+  id          String            @id @default(cuid())
+  practiceId  String
+  practice    Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  color       String            @default("#2563eb")
+  // HEART | STETHOSCOPE | CALENDAR | ACTIVITY | USERS | TRENDING | MEDICATION | LOCATION
+  icon        String            @default("USERS")
+  // PATIENT | PROVIDER
+  groupType   String            @default("PATIENT")
+  // PRIVATE | SHARED
+  visibility  String            @default("PRIVATE")
+  // Sort field for the group's patient list: name | mrn | dob | status | zip | lastVisit
+  sortBy      String            @default("name")
+  showAge     Boolean           @default(true)
+  active      Boolean           @default(true)
+  ownerId     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     GisGroupMember[]
+  patients    GisGroupPatient[]
+  providers   GisGroupProvider[]
+
+  @@index([practiceId])
+}
+
+// Who can open a group and what they may do (OWNER | ADMIN | EDITOR | VIEWER), and whether it shows on their maps.
+model GisGroupMember {
+  id           String   @id @default(cuid())
+  groupId      String
+  group        GisGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         String
+  visibleOnMap Boolean  @default(true)
+  addedById    String?
+  createdAt    DateTime @default(now())
+
+  @@unique([groupId, userId])
+}
+
+model GisGroupPatient {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     GisGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  addedById String?
+  createdAt DateTime @default(now())
+
+  @@unique([groupId, patientId])
+}
+
+model GisGroupProvider {
+  id                  String            @id @default(cuid())
+  groupId             String
+  group               GisGroup          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  renderingProviderId String
+  provider            RenderingProvider @relation("GisGroupProvider", fields: [renderingProviderId], references: [id], onDelete: Cascade)
+  addedById           String?
+  createdAt           DateTime          @default(now())
+
+  @@unique([groupId, renderingProviderId])
+}
+
+// A boundary overlay (county lines, territories) uploaded as KML, KMZ or GeoJSON and drawn on every map of the
+// practice when active.
+model GisRegion {
+  id          String   @id @default(cuid())
+  practiceId  String
+  practice    Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  name        String
+  // GeoJSON FeatureCollection text.
+  geojson     String
+  color       String   @default("#1f2937")
+  featureCount Int     @default(0)
+  active      Boolean  @default(true)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([practiceId])
+}
+
+// An in-app notification for one user: a map or group shared with them, a geocoding run finished, a share link
+// opened.
+model GisNotification {
+  id         String    @id @default(cuid())
+  practiceId String
+  practice   Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // INFO | SUCCESS | WARNING
+  kind       String    @default("INFO")
+  title      String
+  message    String
+  href       String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, readAt])
+  @@index([practiceId, createdAt])
+}
+
+// A public share link for one or more route layers: opens without login at /r/<code> for the field clinician.
+// The code is kept hashed; `codeHint` is what the admin list shows.
+model GisShareLink {
+  id          String    @id @default(cuid())
+  practiceId  String
+  practice    Practice  @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  mapId       String
+  map         GisMap    @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  codeHash    String    @unique
+  codeHint    String
+  // JSON list of GisRoute ids shared by this link.
+  routeIds    String
+  expiresAt   DateTime
+  maxAccess   Int       @default(100)
+  accessCount Int       @default(0)
+  lastOpenedAt DateTime?
+  // Set when an admin expires the link by hand.
+  expiredAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([practiceId, createdAt])
+  @@index([mapId])
+}
+
+// GIS (field routing) settings for a practice: map provider key, patient name display and share link defaults.
+model GisSettings {
+  id               String   @id @default(cuid())
+  practiceId       String   @unique
+  practice         Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  // Google Maps Platform key (Maps JavaScript, Geocoding, Directions). Blank = free stack (MapLibre, Census, OSRM).
+  googleMapsKey    String?
+  // STANDARD "First Last" | FORMAL "Last, First" | CASUAL "First" | MEDICAL "LAST, First"
+  nameFormat       String   @default("FORMAL")
+  shareLinkDays    Int      @default(14)
+  shareLinkMaxOpens Int     @default(100)
+  updatedAt        DateTime @updatedAt
+}
+
 model PracticeSettings {
   // Specialty packs turned on (comma list, see src/lib/specialties.ts): WOUND_CARE, PRIMARY_CARE...
   specialties      String   @default("WOUND_CARE")
@@ -3716,4 +4006,78 @@ model UltramistOrder {
   @@index([practiceId, umStatus])
   @@index([patientId])
   @@index([dateOfNextUm])
+}
+
+// ---- Telehealth scheduler (Telehealth Initial Wound Care visits) ----
+// A doctor who takes telehealth visits is a provider from the directory with the Rendering + Supervising types. This
+// row is the telehealth profile on top of it (state licences, opted in or out); availability windows and 20-minute
+// reservations hang off it. Booking needs the provider linked to a login (the appointment is filed under that user).
+model TelehealthProvider {
+  id                  String            @id @default(cuid())
+  practiceId          String
+  practice            Practice          @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  renderingProviderId String            @unique
+  renderingProvider   RenderingProvider @relation("TelehealthProfile", fields: [renderingProviderId], references: [id], onDelete: Cascade)
+  // JSON array of state codes the doctor is licensed in, e.g. ["TX","FL"].
+  stateLicenses       String            @default("[]")
+  // ACTIVE | INACTIVE (opted out of telehealth)
+  status              String            @default("ACTIVE")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  availability        TelehealthAvailability[]
+  reservations        TelehealthReservation[]
+}
+
+// One contiguous window on one date in which the doctor is online. Stored in UTC with the IANA zone it was entered in.
+model TelehealthAvailability {
+  id           String             @id @default(cuid())
+  practiceId   String
+  practice     Practice           @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId   String
+  provider     TelehealthProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  startsAt     DateTime
+  endsAt       DateTime
+  timezone     String
+  // Break rule for this window: after this many consecutive bookable blocks the next block is a break (null = none).
+  breakAfterBlocks Int?
+  createdById  String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  reservations TelehealthReservation[]
+
+  @@unique([providerId, startsAt, endsAt])
+  @@index([practiceId, startsAt])
+}
+
+// A 20-minute booking for a patient inside a window. Mirrored by an Appointment so it shows on the calendar and charts.
+model TelehealthReservation {
+  id             String                 @id @default(cuid())
+  practiceId     String
+  practice       Practice               @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  providerId     String
+  provider       TelehealthProvider     @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  availabilityId String
+  availability   TelehealthAvailability @relation(fields: [availabilityId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId  String?                @unique
+  appointment    Appointment?           @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  // Where the patient is located at the time of the visit.
+  stateCode      String
+  startsAt       DateTime
+  endsAt         DateTime
+  durationMin    Int                    @default(20)
+  timezone       String
+  // RESERVED | CONFIRMED | CANCELLED | COMPLETED | MISSED
+  status         String                 @default("RESERVED")
+  notes          String
+  cancelReason   String?
+  reservedById   String?
+  confirmedById  String?
+  confirmedAt    DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([providerId, startsAt])
+  @@index([practiceId, startsAt])
 }

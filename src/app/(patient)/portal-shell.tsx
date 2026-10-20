@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 type Brand = { displayName: string | null; brandColor: string; accentColor: string; logo: string | null; supportPhone: string | null } | null;
 
 // Branded frame for every patient page (Patient Connect settings: name, colours, logo, phone).
-export function PortalShell({ brand, fallbackName, children }: { brand: Brand; fallbackName: string; children: ReactNode }) {
+export function PortalShell({ brand, fallbackName, children, wide = false }: { brand: Brand; fallbackName: string; children: ReactNode; wide?: boolean }) {
   const name = brand?.displayName || fallbackName;
   const style = { "--pp-brand": brand?.brandColor ?? "#171342", "--pp-accent": brand?.accentColor ?? "#4f9c60" } as React.CSSProperties;
   return (
@@ -17,7 +17,7 @@ export function PortalShell({ brand, fallbackName, children }: { brand: Brand; f
         )}
         <strong>{name}</strong>
       </header>
-      <main className="pp-main">{children}</main>
+      <main className={`pp-main${wide ? " pp-main-wide" : ""}`}>{children}</main>
       <footer className="pp-footer">
         {brand?.supportPhone ? `Questions? Call ${brand.supportPhone}. ` : ""}Your information is sent securely and kept private.
       </footer>

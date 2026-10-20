@@ -13,12 +13,14 @@ import { assertChartEditable } from "@/lib/visit-guard";
 import { runEligibilityCheck } from "@/lib/clearinghouse/service";
 import { placeOfServiceLabel } from "@/lib/superbill";
 import { buildOccurrences, findConflicts } from "@/lib/schedule-conflicts";
+import { addressChanged, CLEAR_GEOCODE } from "@/lib/gis/geocode";
 import { PATIENT_EDIT_ROLES, canWorkTeam } from "@/lib/gateway";
 import { fillCaseFromDocuments, openIntakeCase } from "@/lib/intake";
 import { RegistrationError, readCustomValues, readPatientForm, readPatientPhoto, saveInsuranceBlocks } from "@/lib/patient-registration";
 import { ScanError, fileScan, saveScanFiles, uploadedFiles } from "@/lib/scans";
 import { rolesFor } from "@/lib/permissions";
 import { bookingBlockedByCredentialing, bookingBlockedByGateway, workflowRules } from "@/lib/workflow-rules";
+import { syncReservationsFromAppointments } from "@/lib/telehealth-server";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -105,7 +107,9 @@ export async function updatePatient(patientId: string, formData: FormData) {
     const data = await readPatientForm(formData, user.practiceId);
     const photoPath = await readPatientPhoto(formData, user.practiceId);
     const customFields = await readCustomValues(formData, user.practiceId, patient.customFields);
-    await prisma.patient.update({ where: { id: patient.id }, data: { ...data, customFields, ...(photoPath === undefined ? {} : { photoPath }) } });
+    // GIS: a moved patient loses the old pin; the geocoding job places the new address.
+    const moved = addressChanged(patient, data) ? CLEAR_GEOCODE : {};
+    await prisma.patient.update({ where: { id: patient.id }, data: { ...data, ...moved, customFields, ...(photoPath === undefined ? {} : { photoPath }) } });
     await saveInsuranceBlocks(patient.id, user.practiceId, formData);
     await logAudit(user.practiceId, user.id, "UPDATE_PATIENT", "Patient", patient.id, `${data.firstName} ${data.lastName}`);
   } catch (err) {
@@ -341,6 +345,7 @@ export async function cancelAppointment(id: string, formData: FormData) {
     data: { status: "CANCELLED", cancelReason: full, cancelledAt: new Date() },
   });
   await recordFlow(targets.map((t) => t.id), "CANCELLED", user.id);
+  await syncReservationsFromAppointments(user.practiceId, targets.map((t) => t.id), "CANCELLED", user.id, full);
   await logAudit(user.practiceId, user.id, "CANCEL_APPOINTMENT", "Appointment", appt.id, `${full}${count > 1 ? ` (${count} visits in series)` : ""}`);
   revalidatePath("/schedule");
   revalidatePath("/");
@@ -350,6 +355,7 @@ export async function updateAppointmentStatus(id: string, status: string) {
   const user = await requireUser(rolesFor("schedule.view"));
   const { count } = await prisma.appointment.updateMany({ where: { id, practiceId: user.practiceId }, data: { status } });
   if (count) await recordFlow(id, status, user.id);
+  if (count) await syncReservationsFromAppointments(user.practiceId, [id], status, user.id);
   revalidatePath("/schedule");
   revalidatePath("/");
 }

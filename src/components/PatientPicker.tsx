@@ -2,11 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Hit = { id: string; name: string; mrn: string; dob: string; payer: string | null; status: string };
+type Hit = { id: string; name: string; mrn: string; dob: string; payer: string | null; status: string; state?: string | null };
 
 // A patient field that searches as you type (last name, "Last, First", MRN, or a date of birth) instead of a
 // dropdown of every patient. The chosen patient's id goes in the hidden input the form reads.
-export function PatientPicker({ name = "patientId", initial, required = true, placeholder = "Type last name, \"Last, First\", MRN or DOB" }: { name?: string; initial: { id: string; name: string; mrn: string } | null; required?: boolean; placeholder?: string }) {
+export function PatientPicker({
+  name = "patientId",
+  initial,
+  required = true,
+  placeholder = "Type last name, \"Last, First\", MRN or DOB",
+  onChoose,
+}: {
+  name?: string;
+  initial: { id: string; name: string; mrn: string; state?: string | null } | null;
+  required?: boolean;
+  placeholder?: string;
+  // Told which patient was picked (the telehealth panel defaults the visit state from it).
+  onChoose?: (patient: { id: string; name: string; mrn: string; state: string | null }) => void;
+}) {
   const [chosen, setChosen] = useState(initial);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
@@ -93,7 +106,7 @@ export function PatientPicker({ name = "patientId", initial, required = true, pl
               {!busy && hits.length === 0 && <li className="muted">No patient matches. Try the last name, &ldquo;Last, First&rdquo;, the MRN or the date of birth.</li>}
               {hits.map((h) => (
                 <li key={h.id} role="option" aria-selected="false">
-                  <button type="button" onClick={() => { setChosen({ id: h.id, name: h.name, mrn: h.mrn }); setOpen(false); }}>
+                  <button type="button" onClick={() => { setChosen({ id: h.id, name: h.name, mrn: h.mrn }); setOpen(false); onChoose?.({ id: h.id, name: h.name, mrn: h.mrn, state: h.state ?? null }); }}>
                     <strong>{h.name}</strong> <span className="muted">· {h.mrn} · DOB {h.dob}{h.payer ? ` · ${h.payer}` : ""}{h.status !== "ACTIVE" ? ` · ${h.status.toLowerCase()}` : ""}</span>
                   </button>
                 </li>

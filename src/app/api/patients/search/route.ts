@@ -58,6 +58,7 @@ export async function GET(request: Request) {
     dob: p.dob.toISOString().slice(0, 10),
     phone: p.phone,
     status: p.status,
+    state: p.state,
     payer: p.insurances[0]?.payer.name ?? null,
     next: p.appointments[0]?.startsAt.toISOString() ?? null,
   }));
