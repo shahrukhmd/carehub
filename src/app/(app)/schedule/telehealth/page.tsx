@@ -43,7 +43,7 @@ const DAY = 86_400_000;
 const PROVIDERS_DIRECTORY = "/settings/directories?section=providers";
 
 // Telehealth scheduler admin. A telehealth doctor is a provider from the directory (Settings -> Directories ->
-// Providers) with the Rendering + Supervising types; this page holds their telehealth licences, the hours they are
+// Providers) with the Rendering type, physicians and NPs alike; this page holds their telehealth licences, the hours they are
 // online (availability windows, each with its own break rule) and every reservation booked into those hours. Booking
 // itself happens on the scheduler when the encounter type is Telehealth Initial Wound Care.
 export default async function TelehealthAdminPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -169,7 +169,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
             <span className="muted">{doctors.filter((d) => d.status === "ACTIVE").length} active</span>
           </div>
           <p className="muted">
-            Every provider in the directory with the <strong>Rendering + Supervising</strong> types is a telehealth doctor. Add or change providers under{" "}
+            Every active provider in the directory with the <strong>Rendering</strong> type is a telehealth doctor, nurse practitioners included. Add or change providers under{" "}
             <Link href={PROVIDERS_DIRECTORY}>Settings → Directories → Providers</Link>; here you keep their telehealth licences and whether they take telehealth visits.
           </p>
           <table>
@@ -227,7 +227,7 @@ export default async function TelehealthAdminPage({ searchParams }: { searchPara
               {doctors.length === 0 && (
                 <tr>
                   <td colSpan={6}>
-                    No providers with the Rendering + Supervising types yet. Set them up under <Link href={PROVIDERS_DIRECTORY}>Settings → Directories → Providers</Link>.
+                    No Rendering providers yet. Set them up under <Link href={PROVIDERS_DIRECTORY}>Settings → Directories → Providers</Link>.
                   </td>
                 </tr>
               )}

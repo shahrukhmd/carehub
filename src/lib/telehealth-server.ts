@@ -3,8 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { getSchedulerSettings } from "@/lib/scheduler-setup";
 import { parseLicenses } from "@/lib/telehealth";
 
-// A telehealth doctor is a provider from the directory with the Rendering + Supervising types.
-export const TELEHEALTH_DOCTOR_WHERE = { isRendering: true, isSupervising: true, status: "ACTIVE" } as const;
+// A telehealth doctor is any active Rendering provider from the directory: supervising physicians and nurse
+// practitioners alike (NPs are Rendering without Supervising).
+export const TELEHEALTH_DOCTOR_WHERE = { isRendering: true, status: "ACTIVE" } as const;
 
 // The telehealth profile for a directory provider, created on first use (licences default to the provider's licence state).
 export async function ensureTelehealthProfile(practiceId: string, renderingProviderId: string) {
@@ -16,7 +17,7 @@ export async function ensureTelehealthProfile(practiceId: string, renderingProvi
   });
 }
 
-// What the booking panel needs: every bookable telehealth doctor (profile active, provider still rendering + supervising,
+// What the booking panel needs: every bookable telehealth doctor (profile active, provider still rendering,
 // linked to a login) with their windows in the range, each window with its live (non-cancelled) reservations. Plain
 // strings and numbers only — it is handed to a client component.
 export async function telehealthBookingData(practiceId: string, from: Date, to: Date) {

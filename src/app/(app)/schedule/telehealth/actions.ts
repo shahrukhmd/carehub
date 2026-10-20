@@ -59,13 +59,13 @@ function readBreakAfter(formData: FormData) {
   return Number.isInteger(n) && n > 0 ? Math.min(n, 24) : null;
 }
 
-// ---- Function 1: doctors (providers from the directory with the Rendering + Supervising types) ----
+// ---- Function 1: doctors (active Rendering providers from the directory, physicians and NPs) ----
 
 // Telehealth settings of a doctor: the states they are licensed in and whether they take telehealth visits.
 export async function saveTelehealthDoctor(renderingProviderId: string, formData: FormData) {
   const user = await requireUser(rolesFor("telehealth.setup"));
   const profile = await ensureTelehealthProfile(user.practiceId, renderingProviderId);
-  if (!profile) adminRedirect("doctors", { error: "That provider is not an active Rendering + Supervising provider." });
+  if (!profile) adminRedirect("doctors", { error: "That provider is not an active Rendering provider." });
   const licenses = [...new Set(formData.getAll("stateLicenses").map(String).filter((s) => s in STATE_NAMES))];
   const status = text(formData, "status") === "INACTIVE" ? "INACTIVE" : "ACTIVE";
   await prisma.telehealthProvider.update({ where: { id: profile.id }, data: { stateLicenses: JSON.stringify(licenses), status } });
@@ -267,7 +267,7 @@ export async function reserveTelehealth(formData: FormData) {
   ]);
   if (!patient) fail("Patient not found.");
   const rp = provider?.renderingProvider;
-  if (!provider || provider.status !== "ACTIVE" || !rp || !rp.isRendering || !rp.isSupervising || rp.status !== "ACTIVE") fail("That doctor is not active for telehealth.");
+  if (!provider || provider.status !== "ACTIVE" || !rp || !rp.isRendering || rp.status !== "ACTIVE") fail("That doctor is not active for telehealth.");
   if (!rp!.userId) fail(`${doctorName(rp!)} has no login linked in the provider directory, so visits can't be filed under them yet.`);
   if (!window || window.providerId !== provider!.id) fail("That window does not belong to the doctor.");
   if (!locationId) fail("Set up a site of service before booking.");

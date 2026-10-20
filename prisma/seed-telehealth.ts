@@ -1,4 +1,4 @@
-// Telehealth scheduler demo data for the Riverside demo practice: the Rendering + Supervising providers (Dr. Chen) get
+// Telehealth scheduler demo data for the Riverside demo practice: the active Rendering providers with a login (physicians and NPs) get
 // telehealth licences and two weeks of online hours, plus one reservation so the calendar and the Reservations tab have
 // something to show.
 //
@@ -16,7 +16,7 @@ export async function seedTelehealth(prisma: PrismaClient, practiceId: string) {
   if (await prisma.telehealthProvider.count({ where: { practiceId } })) return false;
 
   const doctors = await prisma.renderingProvider.findMany({
-    where: { practiceId, isRendering: true, isSupervising: true, status: "ACTIVE", userId: { not: null } },
+    where: { practiceId, isRendering: true, status: "ACTIVE", userId: { not: null } },
     orderBy: { name: "asc" },
   });
   if (doctors.length === 0) return false;
