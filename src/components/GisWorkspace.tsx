@@ -478,6 +478,14 @@ export function GisWorkspace({
             {shown} layer{shown === 1 ? "" : "s"} shown
           </span>
           <span>Total {miles(totalM)}</span>
+          {base && (
+            <span className="muted cn-small">
+              <span className="gis-map-stop gis-map-home gis-legend-home" style={{ background: base.color }}>
+                ⌂
+              </span>{" "}
+              start and end: {base.title}
+            </span>
+          )}
           <span className="muted cn-small">{pending ? "Saving…" : ""}</span>
           {canEdit && (
             <button

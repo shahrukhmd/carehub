@@ -99,10 +99,10 @@ export function GisMapView({
         }
         return new maplibregl.Popup({ offset }).setDOMContent(node);
       };
-      const marker = (p: GisPin, scale: number) => {
+      const marker = (p: GisPin, scale: number, home = false) => {
         if (p.label) {
           const div = document.createElement("div");
-          div.className = "gis-map-stop";
+          div.className = home ? "gis-map-stop gis-map-home" : "gis-map-stop";
           div.style.background = p.color;
           div.style.color = p.textColor ?? "#ffffff";
           div.textContent = p.label;
@@ -111,8 +111,9 @@ export function GisMapView({
         }
         return new maplibregl.Marker({ color: p.color, scale });
       };
-      for (const p of bases) marker(p, 0.85).setLngLat([p.lng, p.lat]).setPopup(popupFor(p, 20)).addTo(map);
       for (const p of pins) marker(p, p.label ? 1 : 0.75).setLngLat([p.lng, p.lat]).setPopup(popupFor(p, 24)).addTo(map);
+      // Home bases last, so the start and end of the drive stays visible even when a stop shares the address.
+      for (const p of bases) marker(p, 0.85, true).setLngLat([p.lng, p.lat]).setPopup(popupFor(p, 26)).addTo(map);
       map.on("load", () => {
         if (!map) return;
         for (const r of regions) {

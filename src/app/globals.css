@@ -11494,3 +11494,21 @@ select.um-pill option {
   max-height: 24rem;
   overflow: auto;
 }
+.gis-map-home {
+  width: 2.1rem;
+  height: 2.1rem;
+  font-size: 1.05rem;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px #111827, 0 2px 6px rgba(0, 0, 0, 0.4);
+  z-index: 2;
+}
+.gis-legend-home {
+  display: inline-grid;
+  width: 1.3rem;
+  height: 1.3rem;
+  font-size: 0.75rem;
+  border-width: 2px;
+  box-shadow: 0 0 0 1px #111827;
+  vertical-align: middle;
+  cursor: default;
+}
