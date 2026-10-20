@@ -100,6 +100,7 @@ Login is required. Seeded accounts (password `carehub123` for all):
 | Riverside Family Practice | `admin@carehub.local` | Administrator |
 | Riverside Family Practice | `maya.chen@carehub.local` | Clinician |
 | Riverside Family Practice | `james.okonkwo@carehub.local` | Clinician |
+| Riverside Family Practice | `laura.cole@carehub.local` | Clinician (NP) |
 | Riverside Family Practice | `priya.shah@carehub.local` | Front desk |
 | Riverside Family Practice | `alex.rivera@carehub.local` | Billing |
 | Lakeside Pediatrics | `admin@lakeside.local` | Administrator |

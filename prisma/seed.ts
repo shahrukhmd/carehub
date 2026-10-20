@@ -46,6 +46,7 @@ async function seedCredentialing(ctx: {
   payers: { horizonBcbs: { id: string }; medicare: { id: string }; aetna: { id: string } };
   maya: { id: string };
   james: { id: string };
+  laura: { id: string };
   lead: { id: string };
 }) {
   const { practiceId, groupId, payers, lead } = ctx;
@@ -130,6 +131,7 @@ async function seedCredentialing(ctx: {
   const lauraProvider = await prisma.renderingProvider.create({
     data: {
       practiceId,
+      userId: ctx.laura.id,
       name: "Cole, Laura",
       firstName: "Laura",
       lastName: "Cole",
@@ -380,7 +382,7 @@ async function main() {
     },
   });
 
-  const [maya, james, priya, alex] = await Promise.all([
+  const [maya, james, laura, priya, alex] = await Promise.all([
     prisma.user.create({
       data: {
         practiceId: riverside.id,
@@ -401,6 +403,17 @@ async function main() {
         passwordHash: DEMO_PASSWORD_HASH,
         npi: "1987654321",
         specialty: "Internal Medicine",
+      },
+    }),
+    prisma.user.create({
+      data: {
+        practiceId: riverside.id,
+        name: "Laura Cole, NP",
+        email: "laura.cole@carehub.local",
+        role: "CLINICIAN",
+        passwordHash: DEMO_PASSWORD_HASH,
+        npi: "1558890123",
+        specialty: "Wound care",
       },
     }),
     prisma.user.create({
@@ -447,6 +460,7 @@ async function main() {
     data: [
       { userId: maya.id, practiceId: riverside.id, role: "CLINICIAN" },
       { userId: james.id, practiceId: riverside.id, role: "CLINICIAN" },
+      { userId: laura.id, practiceId: riverside.id, role: "CLINICIAN" },
       { userId: priya.id, practiceId: riverside.id, role: "FRONT_DESK" },
       { userId: alex.id, practiceId: riverside.id, role: "BILLER" },
       { userId: admin.id, practiceId: riverside.id, role: "ADMIN" },
@@ -460,6 +474,7 @@ async function main() {
     payers: { horizonBcbs, medicare, aetna },
     maya,
     james,
+    laura,
     lead: credentialingLead,
   });
 
