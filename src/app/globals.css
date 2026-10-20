@@ -10930,6 +10930,7 @@ select.um-pill option {
 }
 .app-shell .reg-section {
   overflow: hidden;
+}
 /* ---- Telehealth scheduler (Telehealth Initial Wound Care) ---- */
 .th-blocks {
   display: grid;
