@@ -24,6 +24,12 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M2 20h20M10 13h4M12 11v4" {...s} />
     </>
   ),
+  gis: (
+    <>
+      <path d="M12 21s-6-5.2-6-10.5a6 6 0 0 1 12 0C18 15.8 12 21 12 21z" {...s} />
+      <circle cx="12" cy="10.5" r="2.2" {...s} />
+    </>
+  ),
   connect: (
     <>
       <rect x="6" y="2" width="12" height="20" rx="2.5" {...s} />

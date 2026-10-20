@@ -10,6 +10,7 @@ import { ensureEnrollmentsForProvider, lookupNppes } from "@/lib/credentialing";
 import { OPEN_ENROLLMENT_STATUSES } from "@/lib/format";
 import { allowed, rolesFor } from "@/lib/permissions";
 import { canWorkTeam } from "@/lib/gateway";
+import { addressChanged, CLEAR_GEOCODE } from "@/lib/gis/geocode";
 
 function required(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
@@ -244,7 +245,8 @@ async function writeProvider(user: Actor, providerId: string | null, formData: F
   };
 
   const provider = existing
-    ? await prisma.renderingProvider.update({ where: { id: existing.id }, data })
+    ? // GIS: a moved home base loses its pin; the geocoding job places the new address.
+      await prisma.renderingProvider.update({ where: { id: existing.id }, data: { ...data, ...(addressChanged(existing, data) ? CLEAR_GEOCODE : {}) } })
     : await prisma.renderingProvider.create({ data: { practiceId: user.practiceId, ...data } });
 
   // Dropping the rendering role takes the provider off the credentialing boards;

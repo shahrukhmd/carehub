@@ -74,6 +74,13 @@ export const JOBS: JobDef[] = [
     run: async () => summarize(await (await import("@/lib/ultramist")).runUltramistJob()),
   },
   {
+    key: "gis-geocode",
+    label: "GIS: geocode addresses",
+    cron: "*/10 * * * *",
+    about: "Coordinates for patients and field clinicians whose address has none yet (GIS maps and routes)",
+    run: async () => summarize(await (await import("@/lib/gis/geocode")).runGeocodeJob()),
+  },
+  {
     key: "alerts-expire",
     label: "Expire patient alerts",
     cron: "10 0 * * *",

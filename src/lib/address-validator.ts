@@ -5,7 +5,7 @@ import "server-only";
 // the standardized address it matched. Both only standardize — they never invent an address.
 
 export type AddressIn = { line1: string; line2?: string | null; city?: string | null; state?: string | null; zip?: string | null };
-export type AddressOut = { line1: string; line2: string; city: string; state: string; zip: string; zip4?: string; county?: string };
+export type AddressOut = { line1: string; line2: string; city: string; state: string; zip: string; zip4?: string; county?: string; latitude?: number; longitude?: number };
 export type ValidationResult = {
   status: "VALID" | "CORRECTED" | "NOT_FOUND" | "ERROR";
   provider: "USPS" | "CENSUS";
@@ -50,21 +50,41 @@ export async function validateAddress(input: AddressIn): Promise<ValidationResul
 
 // ---- US Census Bureau geocoder (public, no key). Returns the address as the Census matched it. ----
 type ProviderHit = { address: AddressOut; deliverable?: boolean; vacant?: boolean; business?: boolean };
-type CensusMatch = { matchedAddress: string; addressComponents: { city: string; state: string; zip: string }; geographies?: { Counties?: { BASENAME?: string; NAME?: string }[] } };
+export type CensusMatch = {
+  matchedAddress: string;
+  addressComponents: { city: string; state: string; zip: string };
+  // x = longitude, y = latitude
+  coordinates?: { x: number; y: number };
+  geographies?: { Counties?: { BASENAME?: string; NAME?: string }[] };
+};
 // The county the Census matched the address to ("Cook" rather than "Cook County").
 const countyOf = (m: CensusMatch) => m.geographies?.Counties?.[0]?.BASENAME ?? m.geographies?.Counties?.[0]?.NAME?.replace(/ County$/i, "") ?? undefined;
+const pointOf = (m: CensusMatch) => (m.coordinates && Number.isFinite(m.coordinates.x) && Number.isFinite(m.coordinates.y) ? { latitude: m.coordinates.y, longitude: m.coordinates.x } : {});
 
-// County for an address USPS already standardized (USPS does not return it): a quick Census lookup, best effort.
-async function censusCounty(a: AddressOut): Promise<string | undefined> {
+// Every Census match for an address (the GIS resolver lets a user pick one). Public endpoint, no key.
+export async function censusCandidates(input: AddressIn): Promise<AddressOut[]> {
+  const p = new URLSearchParams({ benchmark: "Public_AR_Current", vintage: "Current_Current", format: "json", street: clean(input.line1) + (clean(input.line2) ? ` ${clean(input.line2)}` : "") });
+  if (clean(input.city)) p.set("city", clean(input.city));
+  if (clean(input.state)) p.set("state", clean(input.state));
+  if (clean(input.zip)) p.set("zip", clean(input.zip).slice(0, 5));
+  const r = await fetch(`https://geocoding.geo.census.gov/geocoder/geographies/address?${p}`, { signal: AbortSignal.timeout(8000), headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error(`Census geocoder returned ${r.status}`);
+  const data = (await r.json()) as { result?: { addressMatches?: CensusMatch[] } };
+  return (data.result?.addressMatches ?? []).map((m) => ({ line1: m.matchedAddress.split(",")[0]?.trim() ?? "", line2: "", city: m.addressComponents.city, state: m.addressComponents.state, zip: m.addressComponents.zip, county: countyOf(m), ...pointOf(m) }));
+}
+
+// County and coordinates for an address USPS already standardized (USPS returns neither): a quick Census lookup,
+// best effort.
+async function censusExtras(a: AddressOut): Promise<Pick<AddressOut, "county" | "latitude" | "longitude">> {
   try {
     const p = new URLSearchParams({ benchmark: "Public_AR_Current", vintage: "Current_Current", format: "json", street: a.line1, city: a.city, state: a.state, zip: a.zip });
     const r = await fetch(`https://geocoding.geo.census.gov/geocoder/geographies/address?${p}`, { signal: AbortSignal.timeout(6000), headers: { Accept: "application/json" } });
-    if (!r.ok) return undefined;
+    if (!r.ok) return {};
     const data = (await r.json()) as { result?: { addressMatches?: CensusMatch[] } };
     const m = data.result?.addressMatches?.[0];
-    return m ? countyOf(m) : undefined;
+    return m ? { county: countyOf(m), ...pointOf(m) } : {};
   } catch {
-    return undefined;
+    return {};
   }
 }
 
@@ -83,7 +103,7 @@ async function census(input: AddressIn): Promise<ProviderHit | null> {
   const parts = m.matchedAddress.split(",").map((s) => s.trim());
   const line1 = parts[0] ?? "";
   const unit = clean(input.line2).toUpperCase();
-  return { address: { line1, line2: unit, city: m.addressComponents.city, state: m.addressComponents.state, zip: m.addressComponents.zip, county: countyOf(m) } };
+  return { address: { line1, line2: unit, city: m.addressComponents.city, state: m.addressComponents.state, zip: m.addressComponents.zip, county: countyOf(m), ...pointOf(m) } };
 }
 
 // ---- USPS Addresses 3.0 (OAuth 2 client credentials; free with a USPS developer account). ----
@@ -117,7 +137,7 @@ async function usps(input: AddressIn): Promise<ProviderHit | null> {
   const d = (await r.json()) as { address?: { streetAddress: string; secondaryAddress?: string; city: string; state: string; ZIPCode: string; ZIPPlus4?: string }; additionalInfo?: { DPVConfirmation?: string; vacant?: string; business?: string } };
   if (!d.address) return null;
   const address: AddressOut = { line1: d.address.streetAddress, line2: d.address.secondaryAddress ?? "", city: d.address.city, state: d.address.state, zip: d.address.ZIPCode, zip4: d.address.ZIPPlus4 };
-  address.county = await censusCounty(address);
+  Object.assign(address, await censusExtras(address));
   return {
     address,
     // DPV "Y" = deliverable as given; "D"/"S" = missing or bad unit; "N" = not deliverable.

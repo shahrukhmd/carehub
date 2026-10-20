@@ -50,6 +50,20 @@ const MENU: { group: string; entries: Entry[] }[] = [
         ],
       },
       { label: "Faxing", icon: "connect", tabs: [{ href: "/faxing", label: "Faxing", permission: "fax.work" }] },
+      {
+        label: "GIS",
+        icon: "gis",
+        tabs: [
+          { href: "/gis", label: "My maps", permission: "gis.view" },
+          { href: "/gis/patients", label: "Patients", permission: "gis.view" },
+          { href: "/gis/providers", label: "Clinicians", permission: "gis.view" },
+          { href: "/gis/groups", label: "Groups", permission: "gis.view" },
+          { href: "/gis/resolver", label: "Resolver", permission: "gis.edit" },
+          { href: "/gis/links", label: "Share links", permission: "gis.edit" },
+          { href: "/gis/notifications", label: "Notifications", permission: "gis.view" },
+          { href: "/gis/settings", label: "Settings", permission: "gis.admin" },
+        ],
+      },
     ],
   },
   {

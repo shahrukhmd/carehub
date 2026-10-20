@@ -31,6 +31,10 @@ export const PERMISSIONS = {
   "gateway.work": { label: "Patient Gateway (intake, verification, scheduling cases)", group: "Front office", roles: [...FRONT, "CLINICIAN"] },
   "connect.work": { label: "Patient Connect (forms, reminders, surveys)", group: "Front office", roles: [...FRONT, "CLINICIAN"] },
   "fax.work": { label: "Faxing", group: "Front office", roles: [...FRONT, "CLINICIAN"] },
+  // GIS is the PCC (patient care coordinator) team's tool: the SCHEDULER role in CareHub, plus administrators.
+  "gis.view": { label: "GIS: maps, routes, patients board and groups", group: "Front office", roles: ["ADMIN", "SCHEDULER"] },
+  "gis.edit": { label: "GIS: plan routes, assign field clinicians, share links", group: "Front office", roles: ["ADMIN", "SCHEDULER"] },
+  "gis.admin": { label: "GIS settings, map key and region overlays", group: "Front office", roles: ["ADMIN"] },
   "eligibility.run": { label: "Run eligibility checks and the nightly batch", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "SCHEDULER", "VERIFICATION", "BILLER", "INTAKE"] },
   "schedule.view": { label: "Scheduler calendar and booking", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
   "schedule.reserve": { label: "Reserved time on the calendar", group: "Front office", roles: ["ADMIN", "FRONT_DESK", "CLINICIAN", "SCHEDULER"] },
